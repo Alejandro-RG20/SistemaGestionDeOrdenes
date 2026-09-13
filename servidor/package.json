@@ -1,0 +1,24 @@
+{
+  "name": "@servitotal/servidor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "construir": "tsc -b",
+    "migrar": "tsx src/infraestructura/migraciones/cli.ts aplicar",
+    "migrar:estado": "tsx src/infraestructura/migraciones/cli.ts estado",
+    "sembrar": "tsx src/infraestructura/semillas/cli.ts",
+    "prueba": "vitest run",
+    "prueba:unidad": "vitest run pruebas/unidad"
+  },
+  "dependencies": {
+    "@servitotal/compartido": "*",
+    "pg": "^8.13.1",
+    "pg-copy-streams": "^6.0.6"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10",
+    "@types/pg-copy-streams": "^1.2.5",
+    "tsx": "^4.19.2"
+  }
+}
