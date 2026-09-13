@@ -41,6 +41,45 @@ export function leerConfiguracionBaseDatos(): ConfiguracionBaseDatos {
   };
 }
 
+export interface ConfiguracionTokens {
+  /** Clave de firma HS256. Debe tener al menos 32 caracteres. */
+  readonly secreto: string;
+  readonly emisor: string;
+  readonly audiencia: string;
+  readonly minutosAcceso: number;
+  readonly horasRefrescoPanel: number;
+  readonly diasRefrescoDispositivo: number;
+}
+
+const LARGO_MINIMO_SECRETO = 32;
+
+export function leerConfiguracionTokens(): ConfiguracionTokens {
+  const secreto = texto('JWT_SECRETO');
+  if (secreto.length < LARGO_MINIMO_SECRETO) {
+    throw new ErrorConfiguracion(
+      `JWT_SECRETO debe tener al menos ${LARGO_MINIMO_SECRETO} caracteres. ` +
+        'Genere uno con: openssl rand -base64 48',
+    );
+  }
+  return {
+    secreto,
+    emisor: texto('JWT_EMISOR', 'servitotal'),
+    audiencia: texto('JWT_AUDIENCIA', 'servitotal-api'),
+    minutosAcceso: entero('JWT_MINUTOS_ACCESO', 15),
+    horasRefrescoPanel: entero('JWT_HORAS_REFRESCO_PANEL', 12),
+    diasRefrescoDispositivo: entero('JWT_DIAS_REFRESCO_DISPOSITIVO', 30),
+  };
+}
+
+/** Intentos fallidos consecutivos tras los cuales la cuenta queda bloqueada. */
+export function leerIntentosParaBloqueo(): number {
+  return entero('SEGURIDAD_INTENTOS_PARA_BLOQUEO', 5);
+}
+
+export function leerPuerto(): number {
+  return entero('PUERTO', 3000);
+}
+
 /** Semilla del generador pseudoaleatorio: fijarla hace la siembra reproducible. */
 export function leerSemillaDatos(): number {
   return entero('SEMILLA_DATOS', 20260913);

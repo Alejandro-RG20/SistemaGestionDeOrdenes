@@ -13,9 +13,8 @@ import type { ContextoSiembra, ReferenciaUsuario } from './contexto.js';
 export const CONTRASENA_DE_PRUEBA = 'ServiTotal.2026';
 
 const NOMBRE_ROL: Readonly<Record<string, string>> = {
-  [CODIGO_ROL.ADMINISTRADOR]: 'Administrador del sistema',
   [CODIGO_ROL.AGENTE_TELEFONIA]: 'Agente de telefonia',
-  [CODIGO_ROL.JEFE_ATENCION_CLIENTE]: 'Jefatura de atencion al cliente',
+  [CODIGO_ROL.JEFE_ATENCION_CLIENTE]: 'Jefatura de atencion al cliente y administracion del sistema',
   [CODIGO_ROL.TECNICO_RUTA]: 'Tecnico de ruta',
   [CODIGO_ROL.TECNICO_PLANTA]: 'Tecnico de planta',
   [CODIGO_ROL.GESTOR_TECNICOS]: 'Gestor de tecnicos',
@@ -26,9 +25,9 @@ const NOMBRE_ROL: Readonly<Record<string, string>> = {
 };
 
 /**
- * Plantilla real del centro: 37 personas.
- * La cuenta `administrador` se suma aparte; es una cuenta de sistema, no una
- * persona del organigrama.
+ * Plantilla real del centro: 37 personas, ni una mas.
+ * La jefatura de atencion al cliente administra el sistema; no hay cuenta
+ * de administrador sin dueno.
  */
 const PLANTILLA: readonly (readonly [string, number])[] = [
   [CODIGO_ROL.TECNICO_RUTA, 8],
@@ -102,7 +101,6 @@ export async function sembrarSeguridad(cliente: PoolClient, contexto: ContextoSi
   for (const [codigoRol, cantidad] of PLANTILLA) {
     for (let i = 0; i < cantidad; i += 1) registrar(codigoRol);
   }
-  registrar(CODIGO_ROL.ADMINISTRADOR);
 
   await copiarFilas(
     cliente,

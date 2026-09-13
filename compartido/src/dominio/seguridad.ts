@@ -1,11 +1,13 @@
 /**
- * Roles y permisos como datos (H12). El servidor autoriza consultando
+ * Roles y permisos como datos (H12).
+ *
+ * No hay rol de administrador aparte: la jefatura de atencion al cliente
+ * administra el sistema. Son 37 personas y ninguna cuenta sin dueno. El servidor autoriza consultando
  * rol_permiso; este catalogo es la fuente unica de los codigos, compartida
  * por el backend, el panel y la aplicacion movil.
  */
 
 export const CODIGO_ROL = {
-  ADMINISTRADOR: 'administrador',
   AGENTE_TELEFONIA: 'agente_telefonia',
   JEFE_ATENCION_CLIENTE: 'jefe_atencion_cliente',
   TECNICO_RUTA: 'tecnico_ruta',

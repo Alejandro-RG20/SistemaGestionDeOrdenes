@@ -34,8 +34,9 @@ beforeAll(async () => {
 afterAll(async () => { await cerrarPiscina(); });
 
 describe('volumenes sembrados', () => {
-  it('siembra los 37 puestos del centro mas la cuenta de administracion', async () => {
-    expect(await escalar('SELECT count(*) FROM usuario')).toBe(38);
+  it('siembra las 37 personas del centro, sin cuentas sin dueno', async () => {
+    expect(await escalar('SELECT count(*) FROM usuario')).toBe(37);
+    expect(await escalar("SELECT count(*) FROM rol WHERE codigo = 'administrador'")).toBe(0);
     expect(await escalar("SELECT count(*) FROM tecnico WHERE tipo = 'ruta'")).toBe(8);
     expect(await escalar("SELECT count(*) FROM tecnico WHERE tipo = 'planta'")).toBe(8);
   });

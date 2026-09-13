@@ -8,12 +8,6 @@ import { CODIGO_ROL, type CodigoPermiso, type CodigoRol } from './seguridad.js';
 const CONSULTA_BASE = ['ordenes.consultar', 'clientes.consultar', 'articulos.consultar'] as const;
 
 export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermiso[]>> = {
-  [CODIGO_ROL.ADMINISTRADOR]: [
-    'seguridad.usuario.gestionar', 'seguridad.rol.gestionar', 'seguridad.dispositivo.vincular',
-    'seguridad.dispositivo.revocar', 'seguridad.bitacora.consultar', 'portal.configurar',
-    ...CONSULTA_BASE, 'inventario.consultar', 'agenda.consultar',
-  ],
-
   [CODIGO_ROL.AGENTE_TELEFONIA]: [
     ...CONSULTA_BASE, 'clientes.crear', 'clientes.editar', 'articulos.crear', 'articulos.editar',
     'ordenes.crear', 'ordenes.cerrar', 'agenda.consultar', 'agenda.programar',
@@ -26,7 +20,11 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
     'ordenes.crear', 'ordenes.anular', 'ordenes.cerrar', 'ordenes.nota_correccion',
     'agenda.consultar', 'agenda.programar', 'garantias.evaluar', 'garantias.reclasificar',
     'taller.cotizacion.autorizar', 'cobros.pago.registrar', 'cobros.indicadores.consultar',
-    'seguridad.bitacora.consultar', 'portal.configurar',
+    'portal.configurar', 'inventario.consultar',
+    // Administra el sistema: no existe un rol de administrador aparte.
+    'seguridad.usuario.gestionar', 'seguridad.rol.gestionar',
+    'seguridad.dispositivo.vincular', 'seguridad.dispositivo.revocar',
+    'seguridad.bitacora.consultar',
   ],
 
   [CODIGO_ROL.TECNICO_RUTA]: [
