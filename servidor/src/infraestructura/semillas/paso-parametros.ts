@@ -31,10 +31,17 @@ const PLAZOS_POR_TIPO: readonly (readonly [string, string, number, number])[] = 
   [ESTADO_ORDEN.EN_DIAGNOSTICO, TIPO_GARANTIA.ADICIONAL, 12, 8],
 ];
 
-/** Lunes a viernes 08:00-17:00; sabado 08:00-12:00. Domingo no se trabaja. */
+/**
+ * Horario real del centro, confirmado por el taller:
+ * lunes a viernes 07:00-20:00 y sabado 07:00-17:00. Siempre hay alguien.
+ *
+ * El domingo no figura: es el unico dia sin atencion. Si el taller abriera
+ * los domingos, basta agregar la fila con dia_semana = 0; el calculo de
+ * horas laborables lo toma de esta tabla, no del codigo.
+ */
 const CALENDARIO: readonly (readonly [number, string, string])[] = [
-  [1, '08:00', '17:00'], [2, '08:00', '17:00'], [3, '08:00', '17:00'],
-  [4, '08:00', '17:00'], [5, '08:00', '17:00'], [6, '08:00', '12:00'],
+  [1, '07:00', '20:00'], [2, '07:00', '20:00'], [3, '07:00', '20:00'],
+  [4, '07:00', '20:00'], [5, '07:00', '20:00'], [6, '07:00', '17:00'],
 ];
 
 /** Feriados nacionales de Nicaragua mas los locales de Managua. */

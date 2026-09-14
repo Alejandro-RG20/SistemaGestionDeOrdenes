@@ -3,10 +3,10 @@
 Taller ServiTotal del distrito VI de Managua, centro de servicio postventa de
 Grupo Unicomer (La Curacao, Almacenes Tropigas, RadioShack).
 
-**Estado del proyecto: etapas 1 y 2 construidas.** Migraciones, datos de
-prueba y el módulo de seguridad con su API REST. Las etapas 3 a 9
-(garantías, órdenes, inventario, sincronización, móvil, cobros y portal)
-todavía no existen.
+**Estado del proyecto: etapas 1, 2 y 3 construidas.** Migraciones, datos de
+prueba, seguridad, clientes, artículos y el motor de garantías. Las etapas 4
+a 9 (órdenes, inventario, sincronización, móvil, cobros y portal) todavía no
+existen.
 
 ## Puesta en marcha
 
@@ -42,8 +42,9 @@ compartido/                   vocabulario del dominio y contratos de la API
 servidor/src/comun/           errores, transacciones, autorización, bitácora,
                               paginación, tokens, respuesta uniforme
 servidor/src/infraestructura/ conexión, ejecutor de migraciones, siembra
-servidor/src/modulos/seguridad/  controlador · servicio · repositorio · dto · esquemas
-servidor/src/dominio/         (etapa 3 en adelante)
+servidor/src/modulos/         seguridad · clientes · articulos · garantias
+                              cada uno: controlador · servicio · repositorio · dto · esquemas
+servidor/src/dominio/garantias/  motor de garantías (Especificación y Estrategia)
 panel/  movil/                (etapas 7 y 9)
 ```
 
@@ -68,9 +69,64 @@ identificador.
 | `GET POST /dispositivos` | `seguridad.dispositivo.vincular` |
 | `POST /dispositivos/:id/revocar` | `seguridad.dispositivo.revocar` |
 | `GET /bitacora` | `seguridad.bitacora.consultar` |
+| `GET /clientes`, `GET /clientes/:id` | `clientes.consultar` |
+| `POST /clientes` | `clientes.crear` |
+| `PATCH /clientes/:id`, `POST /clientes/:id/telefonos`, `/direcciones` | `clientes.editar` |
+| `POST /clientes/:id/fusionar` | `clientes.fusionar` |
+| `GET /articulos`, `/articulos/:id`, `/articulos/serie/:serie` | `articulos.consultar` |
+| `POST /articulos` | `articulos.crear` |
+| `PATCH /articulos/:id` | `articulos.editar` |
+| `PUT /articulos/:id/datos-sensibles` | `articulos.editar_datos_sensibles` |
+| `POST /articulos/:id/transferir`, `/coberturas` | `articulos.editar_datos_sensibles` |
+| `GET /coberturas/reglas`, `POST /coberturas/evaluar` | `garantias.evaluar` |
+| `POST /coberturas/reglas` | `garantias.regla.gestionar` |
 
 No hay ruta `DELETE` para ningún registro del negocio: nada se elimina, se
 desactiva con motivo escrito.
+
+## El motor de garantías
+
+Vive en `servidor/src/dominio/garantias/`, es código puro —no consulta la
+base ni conoce el HTTP— y no tiene un solo condicional fijo: las condiciones
+son **especificaciones** con nombre y los tipos de cobertura son
+**estrategias** ordenadas por prioridad. Los números (meses, exclusiones,
+exigencia de tienda) se leen de `regla_cobertura`.
+
+```
+1. póliza extendida vigente            → adicional
+2. tienda del grupo y dentro de plazo  → proveedor
+3. en cualquier otro caso              → particular
+4. tras el diagnóstico, falla excluida → particular, y la orden se detiene
+```
+
+**La cobertura depende del artículo, nunca de los datos de contacto del
+cliente.** En `ContextoCobertura` no hay teléfono, ni correo, ni dirección:
+solo tienda de origen, fecha de compra, marca y póliza. El único dato de
+cliente que interviene es su identidad, y para una cosa concreta:
+
+**Ni la garantía del fabricante ni la póliza extendida se trasladan al
+revenderse el artículo.** Las tiendas del grupo venden a cliente final y la
+garantía es de esa persona. Se implementa comparando quién pide el servicio
+contra el cliente a cuyo nombre está registrado el artículo: si no
+coinciden, la reparación la paga quien la pide.
+
+Esto significa que `articulo.id_cliente` **es el comprador**, y cambiarlo es
+una operación sensible, no una corrección de ficha: exige jefatura, motivo
+escrito, queda en la bitácora y reevalúa las órdenes abiertas. La alternativa
+—una columna `id_cliente_comprador` aparte— habría exigido tocar el esquema y
+no se hizo.
+
+Cada evaluación devuelve además un **desglose condición por condición**, para
+poder explicarle al taller por qué una orden salió clasificada como salió, en
+lugar de discutir con un `if`.
+
+### Datos sensibles del artículo
+
+Cambiar fecha de compra, tienda de origen, marca o dueño reevalúa **las
+órdenes abiertas** de ese artículo, todo en una sola transacción. Las órdenes
+ya entregadas o cerradas no se tocan: lo que se cobró, cobrado está. Una
+orden abierta que cae a `particular` queda marcada como detenida hasta que el
+cliente acepte la cotización.
 
 ## Sesiones y permisos
 
@@ -215,3 +271,29 @@ el sistema**. Son 37 personas y ninguna cuenta sin dueño.
 - **Un viaje, no uno por permiso.** El usuario y sus permisos se cargan con
   una sola consulta agregada; asignar permisos a un rol resuelve todos los
   códigos de una vez. No hay consultas dentro de bucles.
+
+## Decisiones de la etapa 3
+
+- **El horario laboral real:** lunes a viernes 07:00–20:00 y sábado
+  07:00–17:00, confirmado por el taller. El domingo no figura en
+  `calendario_laboral`; si algún día se abre, basta agregar la fila, porque
+  el cálculo lo lee de la tabla y no del código.
+- **Los datos del cliente son vivos; los de la orden, congelados.** Corregir
+  un teléfono o una dirección los corrige en la ficha y en todo lo que la
+  consulte, pero no toca `direccion_servicio`, `telefono_contacto`, `id_zona`
+  ni `cargo_visita` de las órdenes ya creadas. Hay una prueba que lo verifica
+  sobre una orden real de la siembra.
+- **La fusión de duplicados no borra nada.** Traslada artículos, órdenes y
+  pólizas al cliente principal y deja la ficha absorbida desactivada,
+  apuntando a la buena, para que quien busque el registro viejo llegue al
+  correcto.
+- **Las reglas de cobertura se versionan, no se editan.** Crear una cierra la
+  vigente con fecha y abre la siguiente. Las órdenes ya abiertas conservan la
+  versión que congelaron.
+- **Las reglas de cobertura las versionan ambas jefaturas**, la de técnicos y
+  la de atención al cliente: son un parámetro comercial que se negocia con
+  las marcas.
+- **La reevaluación escribe en `orden_servicio`** porque el módulo de órdenes
+  es de la etapa 4. Está marcado en el código: cuando ese módulo exista, la
+  escritura debe pasar por su servicio y el de garantías quedarse solo con el
+  cálculo.

@@ -21,6 +21,10 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
     'agenda.consultar', 'agenda.programar', 'garantias.evaluar', 'garantias.reclasificar',
     'taller.cotizacion.autorizar', 'cobros.pago.registrar', 'cobros.indicadores.consultar',
     'portal.configurar', 'inventario.consultar',
+    // Las reglas de cobertura son un parametro comercial que se negocia con
+    // las marcas; la jefatura de atencion al cliente las versiona igual que
+    // la de tecnicos.
+    'garantias.regla.gestionar',
     // Administra el sistema: no existe un rol de administrador aparte.
     'seguridad.usuario.gestionar', 'seguridad.rol.gestionar',
     'seguridad.dispositivo.vincular', 'seguridad.dispositivo.revocar',

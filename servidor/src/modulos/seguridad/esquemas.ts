@@ -72,8 +72,12 @@ export const esquemaIdentificador = z.string().uuid('El identificador indicado n
 /**
  * Valida y devuelve el dato tipado. Traduce el fallo de Zod al error de
  * validacion propio, con un mensaje por campo.
+ *
+ * El tipo se toma de la SALIDA del esquema, no de su entrada: asi un campo
+ * con `.default(...)` o `.transform(...)` llega al servicio ya resuelto y
+ * obligatorio, que es como lo declara el contrato compartido.
  */
-export function validar<T>(esquema: z.ZodType<T>, valor: unknown): T {
+export function validar<Salida>(esquema: z.ZodType<Salida, z.ZodTypeDef, unknown>, valor: unknown): Salida {
   const resultado = esquema.safeParse(valor);
   if (resultado.success) return resultado.data;
 

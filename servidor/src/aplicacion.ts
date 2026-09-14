@@ -9,6 +9,9 @@ import { asignarCorrelacion, crearExigirSesion } from './comun/autenticacion.js'
 import { manejarErrores, manejarRutaDesconocida } from './comun/manejador-errores.js';
 import { cargarUsuarioAutenticado } from './modulos/seguridad/servicio-autenticacion.js';
 import { rutasPrivadasDeSeguridad, rutasPublicasDeSeguridad } from './modulos/seguridad/rutas.js';
+import { rutasDeClientes } from './modulos/clientes/rutas.js';
+import { rutasDeArticulos } from './modulos/articulos/rutas.js';
+import { rutasDeGarantias } from './modulos/garantias/rutas.js';
 
 export const RAIZ_API = '/api/v1';
 
@@ -31,6 +34,9 @@ export function construirAplicacion(): Express {
   // A partir de aqui, toda ruta exige sesion valida.
   const exigirSesion = crearExigirSesion(cargarUsuarioAutenticado);
   aplicacion.use(RAIZ_API, exigirSesion, rutasPrivadasDeSeguridad());
+  aplicacion.use(RAIZ_API, exigirSesion, rutasDeClientes());
+  aplicacion.use(RAIZ_API, exigirSesion, rutasDeArticulos());
+  aplicacion.use(RAIZ_API, exigirSesion, rutasDeGarantias());
 
   aplicacion.use(manejarRutaDesconocida);
   aplicacion.use(manejarErrores);

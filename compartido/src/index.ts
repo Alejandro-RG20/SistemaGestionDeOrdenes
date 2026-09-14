@@ -10,3 +10,6 @@ export * from './dominio/seguridad.js';
 export * from './dominio/matriz-permisos.js';
 export * from './api/respuesta.js';
 export * from './api/seguridad.js';
+export * from './api/clientes.js';
+export * from './api/articulos.js';
+export * from './api/garantias.js';
