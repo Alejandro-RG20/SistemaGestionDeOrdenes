@@ -3,10 +3,10 @@
 Taller ServiTotal del distrito VI de Managua, centro de servicio postventa de
 Grupo Unicomer (La Curacao, Almacenes Tropigas, RadioShack).
 
-**Estado del proyecto: etapas 1, 2 y 3 construidas.** Migraciones, datos de
-prueba, seguridad, clientes, artículos y el motor de garantías. Las etapas 4
-a 9 (órdenes, inventario, sincronización, móvil, cobros y portal) todavía no
-existen.
+**Estado del proyecto: etapas 1 a 4 construidas.** Migraciones, datos de
+prueba, seguridad, clientes, artículos, motor de garantías, órdenes y agenda.
+Las etapas 5 a 9 (inventario, sincronización, móvil, cobros y portal) todavía
+no existen.
 
 ## Puesta en marcha
 
@@ -42,9 +42,11 @@ compartido/                   vocabulario del dominio y contratos de la API
 servidor/src/comun/           errores, transacciones, autorización, bitácora,
                               paginación, tokens, respuesta uniforme
 servidor/src/infraestructura/ conexión, ejecutor de migraciones, siembra
-servidor/src/modulos/         seguridad · clientes · articulos · garantias
+servidor/src/modulos/         seguridad · clientes · articulos · garantias · ordenes · agenda
                               cada uno: controlador · servicio · repositorio · dto · esquemas
 servidor/src/dominio/garantias/  motor de garantías (Especificación y Estrategia)
+servidor/src/dominio/ordenes/    máquina de estados (patrón Estado)
+servidor/src/dominio/plazos/     cálculo en horas laborables
 panel/  movil/                (etapas 7 y 9)
 ```
 
@@ -80,6 +82,13 @@ identificador.
 | `POST /articulos/:id/transferir`, `/coberturas` | `articulos.editar_datos_sensibles` |
 | `GET /coberturas/reglas`, `POST /coberturas/evaluar` | `garantias.evaluar` |
 | `POST /coberturas/reglas` | `garantias.regla.gestionar` |
+| `GET /ordenes`, `/ordenes/alertas`, `/ordenes/:id` | `ordenes.consultar` |
+| `POST /ordenes` | `ordenes.crear` |
+| `PUT /ordenes/:id/tecnico` | `ordenes.asignar` |
+| `POST /ordenes/:id/estado` | `ordenes.consultar` + ser el responsable del estado |
+| `POST /ordenes/:id/notas` | `ordenes.nota_correccion` |
+| `GET /agenda`, `/agenda/calendario`, `/ordenes/:id/visitas` | `agenda.consultar` |
+| `POST PUT /ordenes/:id/visitas` | `agenda.programar` |
 
 No hay ruta `DELETE` para ningún registro del negocio: nada se elimina, se
 desactiva con motivo escrito.
@@ -127,6 +136,54 @@ Cambiar fecha de compra, tienda de origen, marca o dueño reevalúa **las
 ya entregadas o cerradas no se tocan: lo que se cobró, cobrado está. Una
 orden abierta que cae a `particular` queda marcada como detenida hasta que el
 cliente acepte la cotización.
+
+## La máquina de estados
+
+Vive en `servidor/src/dominio/ordenes/`, es código puro y es **el único lugar
+donde se declara qué transiciones existen**. Si una transición no aparece en
+`estados.ts`, no ocurre: no hay ningún `if` en un servicio que la deje pasar
+por la puerta de atrás.
+
+Cada estado declara tres cosas: su **responsable único**, el **momento de
+evidencia** que hay que tener completo para salir de él, y los destinos que
+admite con sus requisitos. Una transición inválida falla con un error de
+dominio que dice a dónde **sí** se puede ir:
+
+```
+Una orden en registrada no puede pasar a entregada.
+Desde aqui solo se puede ir a: asignada, anulada.
+```
+
+**De ruta a taller sí; de taller a ruta nunca.** No es una comprobación: es
+que `en_cola_taller` no declara ninguna transición hacia `en_ruta`, ni
+ningún estado posterior. La conversión cambia la modalidad y conserva número
+e historial.
+
+**Ninguna orden avanza sin su evidencia obligatoria**, y el mensaje nombra lo
+que falta, una por una. La matriz sale de `regla_evidencia`, no del código.
+
+**Una orden cerrada no se edita.** Los tres estados finales no admiten
+ninguna salida; lo que se le puede adjuntar es una nota de corrección, y sólo
+a una orden ya cerrada: si sigue abierta, se corrige.
+
+## Plazos en horas laborables
+
+`servidor/src/dominio/plazos/` cuenta contra `calendario_laboral` y
+`dia_no_laborable`, no en horas corridas. La diferencia es la que separa un
+panel que el taller usa de uno que ignora:
+
+> Una orden recibida el **sábado a las 16:00** con plazo de 8 horas vence el
+> **lunes a las 14:00**, no el domingo de madrugada. El lunes por la mañana
+> no aparece en rojo, porque nadie llegó tarde.
+
+Hay una prueba con ese nombre exacto. El horario del centro es lunes a
+viernes 07:00–20:00 y sábado 07:00–17:00; el domingo no figura en la tabla.
+Managua no cambia de hora, así que el desfase es fijo (UTC−6); si alguna vez
+hubiera un centro en otro huso, el desfase tendría que salir de `centro`.
+
+Las **alertas son consulta, no notificación**: `GET /ordenes/alertas`
+devuelve lo vencido y lo que está dentro de su ventana de aviso. Nadie manda
+correos ni mensajes todavía.
 
 ## Sesiones y permisos
 
@@ -293,7 +350,29 @@ el sistema**. Son 37 personas y ninguna cuenta sin dueño.
 - **Las reglas de cobertura las versionan ambas jefaturas**, la de técnicos y
   la de atención al cliente: son un parámetro comercial que se negocia con
   las marcas.
-- **La reevaluación escribe en `orden_servicio`** porque el módulo de órdenes
-  es de la etapa 4. Está marcado en el código: cuando ese módulo exista, la
-  escritura debe pasar por su servicio y el de garantías quedarse solo con el
-  cálculo.
+- **La reevaluación de coberturas** vive ahora en el módulo de órdenes
+  (`servicio-reevaluacion.ts`), que es quien escribe sobre órdenes, y le pide
+  el cálculo al servicio de garantías. La dependencia va en un solo sentido:
+  artículos → órdenes → garantías.
+
+## Decisiones de la etapa 4
+
+- **Una sola puerta para mover una orden:** `POST /ordenes/:id/estado`. No hay
+  un endpoint por transición, porque eso repartiría la máquina de estados en
+  diez sitios.
+- **El responsable único del estado es quien mueve la orden.** Se admiten tres
+  formas de serlo: figurar como responsable actual, tener el rol que el estado
+  designa, o —sólo para anular y cerrar— tener el permiso de jefatura. Lo
+  último no es una puerta trasera: es que la jefatura pueda destrabar una
+  orden cuando quien la tenía no está.
+- **El UUID puede venir del móvil; el correlativo lo asigna el servidor.**
+  Reenviar la misma orden no la duplica: responde que ya llegó.
+- **Una orden en `esperando_repuesto` sigue consumiendo plazo**, con las 120
+  horas laborables que trae `regla_plazo`. Si el centro prefiere congelar el
+  reloj mientras se espera al proveedor, es un cambio de regla, no de código.
+- **La agenda se adelantó a su etapa.** El pliego no la sitúa en la 4, pero el
+  flujo de ruta es incoherente sin ella: una orden no sale a domicilio sin
+  visita programada. Se construyó lo mínimo — programar, reprogramar y
+  consultar — y la doble programación es imposible, no improbable: la prohíbe
+  el índice `ux_visita_tecnico_franja` y aquí sólo se traduce el choque a un
+  mensaje legible.

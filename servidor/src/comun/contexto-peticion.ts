@@ -4,7 +4,7 @@
  * controladores; los servicios lo reciben como argumento explicito, nunca
  * como estado global.
  */
-import type { CodigoRol, UsuarioAutenticado } from '@servitotal/compartido';
+import type { CodigoPermiso, CodigoRol, UsuarioAutenticado } from '@servitotal/compartido';
 
 export interface ContextoPeticion {
   readonly idCorrelacion: string;
@@ -13,12 +13,19 @@ export interface ContextoPeticion {
   readonly idDispositivo?: string;
 }
 
-/** Quien ejecuta la operacion, ya autenticado. Lo exigen los servicios. */
+/**
+ * Quien ejecuta la operacion, ya autenticado. Lo exigen los servicios.
+ *
+ * Lleva los permisos porque algunas reglas del dominio dependen de ellos
+ * —quien puede anular una orden que no tiene a su cargo, por ejemplo— y esa
+ * decision es del dominio, no del middleware que ya dejo pasar la peticion.
+ */
 export interface Actor {
   readonly id: string;
   readonly nombreUsuario: string;
   readonly idCentro: string;
   readonly rol: CodigoRol;
+  readonly permisos: readonly CodigoPermiso[];
 }
 
 declare global {

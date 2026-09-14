@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import type { UsuarioAutenticado } from '@servitotal/compartido';
+import type { Actor } from './contexto-peticion.js';
 import { ErrorAutenticacion } from './errores.js';
 import { TIPO_TOKEN, verificar } from './tokens.js';
 
@@ -54,6 +55,21 @@ export function crearExigirSesion(cargarUsuario: CargarUsuarioAutenticado): Requ
         siguiente();
       })
       .catch(siguiente);
+  };
+}
+
+/**
+ * Actor de la peticion, tal como lo esperan los servicios. Un solo sitio lo
+ * arma, en lugar de repetir el mismo mapeo en cada controlador.
+ */
+export function actorDe(peticion: Request): Actor {
+  const usuario = usuarioDe(peticion);
+  return {
+    id: usuario.id,
+    nombreUsuario: usuario.nombreUsuario,
+    idCentro: usuario.idCentro,
+    rol: usuario.rol,
+    permisos: usuario.permisos,
   };
 }
 

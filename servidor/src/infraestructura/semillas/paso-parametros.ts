@@ -39,13 +39,13 @@ const PLAZOS_POR_TIPO: readonly (readonly [string, string, number, number])[] = 
  * los domingos, basta agregar la fila con dia_semana = 0; el calculo de
  * horas laborables lo toma de esta tabla, no del codigo.
  */
-const CALENDARIO: readonly (readonly [number, string, string])[] = [
+export const CALENDARIO: readonly (readonly [number, string, string])[] = [
   [1, '07:00', '20:00'], [2, '07:00', '20:00'], [3, '07:00', '20:00'],
   [4, '07:00', '20:00'], [5, '07:00', '20:00'], [6, '07:00', '17:00'],
 ];
 
 /** Feriados nacionales de Nicaragua mas los locales de Managua. */
-const FERIADOS: readonly (readonly [string, string])[] = [
+export const FERIADOS: readonly (readonly [string, string])[] = [
   ['2025-12-08', 'La Purisima'], ['2025-12-25', 'Navidad'],
   ['2026-01-01', 'Ano Nuevo'], ['2026-04-02', 'Jueves Santo'], ['2026-04-03', 'Viernes Santo'],
   ['2026-05-01', 'Dia del Trabajo'], ['2026-05-30', 'Dia de las Madres'],

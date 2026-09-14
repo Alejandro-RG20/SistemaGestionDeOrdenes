@@ -20,8 +20,9 @@ import { construirPaginacion } from '../../comun/paginacion.js';
 import { ErrorConflicto, ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import { auditar, type AsientoAuditoria } from '../../comun/auditoria.js';
 // La comunicacion entre modulos pasa por la capa de servicios, nunca por el
-// repositorio ajeno (regla de arquitectura 3).
-import * as servicioGarantias from '../garantias/servicio.js';
+// repositorio ajeno (regla de arquitectura 3). Reevaluar escribe sobre
+// ordenes, asi que lo hace el modulo de ordenes.
+import { reevaluarOrdenesAbiertas } from '../ordenes/servicio-reevaluacion.js';
 import * as repositorio from './repositorio.js';
 import { aFichaArticulo, aResumenArticulo, type FilaArticulo } from './dto.js';
 
@@ -170,7 +171,7 @@ export async function cambiarDatosSensibles(
       ['id_marca', previo.id_marca, peticion.idMarca],
     ]));
 
-    return servicioGarantias.reevaluarOrdenesAbiertas(
+    return reevaluarOrdenesAbiertas(
       cliente, actor, idArticulo, `Cambio de datos del articulo: ${peticion.motivo}`,
     );
   });
@@ -203,7 +204,7 @@ export async function transferir(
       motivo: peticion.motivo, idUsuario: actor.id,
     }]);
 
-    return servicioGarantias.reevaluarOrdenesAbiertas(
+    return reevaluarOrdenesAbiertas(
       cliente, actor, idArticulo, `Cambio de dueno del articulo: ${peticion.motivo}`,
     );
   });
@@ -236,7 +237,7 @@ export async function registrarCobertura(
       campo: 'tipo', valorNuevo: peticion.tipo, idUsuario: actor.id,
     }]);
 
-    await servicioGarantias.reevaluarOrdenesAbiertas(
+    await reevaluarOrdenesAbiertas(
       cliente, actor, idArticulo, 'Se registro una cobertura nueva para el articulo',
     );
   });

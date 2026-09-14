@@ -14,7 +14,10 @@ import { FALLAS_REPORTADAS } from './nombres.js';
 import { construirCadena, construirObjetivos } from './distribucion-estados.js';
 import { evaluarCobertura } from './garantia-provisional.js';
 import { responsableDe } from './responsables.js';
-import { PLAZOS_GENERALES } from './paso-parametros.js';
+import { CALENDARIO, FERIADOS, PLAZOS_GENERALES } from './paso-parametros.js';
+import {
+  construirCalendario, restarHorasLaborables, sumarHorasLaborables,
+} from '../../dominio/plazos/indice.js';
 import { usuariosDe, type ContextoSiembra, type ReferenciaTecnico } from './contexto.js';
 
 export interface ResumenOrden {
@@ -58,6 +61,17 @@ const MOTIVOS_ANULACION = [
 
 const plazoDe = new Map(PLAZOS_GENERALES.map(([estado, maximas]) => [estado, maximas]));
 
+/**
+ * El mismo calendario que se siembra en calendario_laboral, para que
+ * plazo_vence_en quede calculado en HORAS LABORABLES desde el primer dia.
+ * Con horas corridas, el panel de plazos mostraria en rojo ordenes que
+ * llegaron un sabado por la tarde.
+ */
+const CALENDARIO_LABORAL = construirCalendario(
+  CALENDARIO.map(([diaSemana, horaInicio, horaFin]) => ({ diaSemana, horaInicio, horaFin })),
+  FERIADOS.map(([fecha]) => fecha),
+);
+
 export async function sembrarOrdenes(
   cliente: PoolClient,
   contexto: ContextoSiembra,
@@ -99,9 +113,14 @@ export async function sembrarOrdenes(
         sumarHoras(sumarDias(contexto.finVentana, -2), -duracionTotal),
       );
     } else {
+      // La antiguedad del estado se mide en horas LABORABLES, igual que el
+      // plazo: si no, ninguna orden apareceria vencida, porque el plazo en
+      // horas laborables se estira casi al doble en tiempo corrido.
       const plazo = plazoDe.get(objetivo) ?? 24;
-      const antiguedadEstado = azar.decimal(0.5, plazo * azar.elegirPonderado([[0.7, 70], [1.6, 30]]), 1);
-      fechaRecepcion = sumarHoras(contexto.finVentana, -(duracionTotal + antiguedadEstado));
+      const factor = azar.elegirPonderado([[0.7, 70], [1.8, 30]]);
+      const antiguedad = azar.decimal(0.5, Math.max(1, plazo * factor), 1);
+      const inicioDelEstado = restarHorasLaborables(contexto.finVentana, antiguedad, CALENDARIO_LABORAL);
+      fechaRecepcion = sumarHoras(inicioDelEstado, -duracionTotal);
     }
 
     const momentos: Date[] = [fechaRecepcion];
@@ -142,7 +161,7 @@ export async function sembrarOrdenes(
       cadena.nacioEnRuta ? zona.id : null,
       cargoVisita, cobertura.regla.id,
       azar.elegir(FALLAS_REPORTADAS), fechaRecepcion, fechaEstadoDesde,
-      sumarHoras(fechaEstadoDesde, plazoDe.get(estadoFinal) ?? 24),
+      esFinal ? null : sumarHorasLaborables(fechaEstadoDesde, plazoDe.get(estadoFinal) ?? 24, CALENDARIO_LABORAL),
       estadoFinal === ESTADO_ORDEN.ENTREGADA ? fechaEstadoDesde : null,
       total, levantadaEnCampo,
       estadoFinal === ESTADO_ORDEN.ANULADA ? azar.elegir(MOTIVOS_ANULACION) : null,

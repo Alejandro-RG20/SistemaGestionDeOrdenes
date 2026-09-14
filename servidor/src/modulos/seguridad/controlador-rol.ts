@@ -2,7 +2,7 @@
 import type { Request, Response } from 'express';
 import { responderDatos, responderListado } from '../../comun/respuesta.js';
 import { leerParametrosPagina } from '../../comun/paginacion.js';
-import { usuarioDe } from '../../comun/autenticacion.js';
+import { actorDe } from '../../comun/autenticacion.js';
 import { esquemaAsignarPermisos, esquemaIdentificador, validar } from './esquemas.js';
 import * as servicio from './servicio-rol.js';
 
@@ -24,11 +24,7 @@ export async function listarPermisosDeRol(peticion: Request, respuesta: Response
 export async function asignarPermisos(peticion: Request, respuesta: Response): Promise<void> {
   const idRol = validar(esquemaIdentificador, peticion.params['id']);
   const datos = validar(esquemaAsignarPermisos, peticion.body);
-  const usuario = usuarioDe(peticion);
-  const permisos = await servicio.asignarPermisos(
-    { id: usuario.id, nombreUsuario: usuario.nombreUsuario, idCentro: usuario.idCentro, rol: usuario.rol },
-    idRol, datos,
-  );
+  const permisos = await servicio.asignarPermisos(actorDe(peticion), idRol, datos);
   responderDatos(respuesta, permisos);
 }
 

@@ -2,22 +2,13 @@
 import type { Request, Response } from 'express';
 import { responderDatos, responderListado } from '../../comun/respuesta.js';
 import { leerParametrosPagina } from '../../comun/paginacion.js';
-import { usuarioDe } from '../../comun/autenticacion.js';
-import type { Actor } from '../../comun/contexto-peticion.js';
+import { actorDe } from '../../comun/autenticacion.js';
 import { esquemaIdentificador, validar } from '../seguridad/esquemas.js';
 import {
   esquemaActualizarArticulo, esquemaCambiarDatosSensibles, esquemaCrearArticulo,
   esquemaRegistrarCobertura, esquemaTransferir,
 } from './esquemas.js';
 import * as servicio from './servicio.js';
-
-function actorDe(peticion: Request): Actor {
-  const usuario = usuarioDe(peticion);
-  return {
-    id: usuario.id, nombreUsuario: usuario.nombreUsuario,
-    idCentro: usuario.idCentro, rol: usuario.rol,
-  };
-}
 
 const identificador = (peticion: Request): string => validar(esquemaIdentificador, peticion.params['id']);
 
