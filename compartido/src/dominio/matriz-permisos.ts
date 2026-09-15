@@ -38,8 +38,12 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
     'inventario.consultar', 'inventario.consumo.registrar', 'agenda.consultar',
   ],
 
+  // El tecnico de planta usa la misma tableta que el de ruta; lo unico que
+  // cambia es que no sale del taller. Por eso sincroniza igual —la app no
+  // tiene otra via para registrar nada— pero no registra visitas a
+  // domicilio ni levanta ordenes en campo.
   [CODIGO_ROL.TECNICO_PLANTA]: [
-    ...CONSULTA_BASE, 'campo.evidencia.cargar',
+    ...CONSULTA_BASE, 'campo.evidencia.cargar', 'campo.sincronizar',
     'taller.diagnostico.registrar', 'taller.cotizacion.registrar', 'taller.reparacion.registrar',
     'inventario.consultar', 'inventario.consumo.registrar', 'inventario.solicitud.gestionar',
   ],

@@ -5,7 +5,8 @@
   "description": "Sistema web de gestion de ordenes de servicio - ServiTotal, Distrito VI Managua",
   "workspaces": [
     "compartido",
-    "servidor"
+    "servidor",
+    "movil"
   ],
   "engines": {
     "node": ">=20"
@@ -18,7 +19,8 @@
     "prueba:unidad": "npm run prueba:unidad --workspace servidor",
     "verificar-tipos": "tsc -b compartido servidor",
     "iniciar": "npm run iniciar --workspace servidor",
-    "desarrollo": "npm run desarrollo --workspace servidor"
+    "desarrollo": "npm run desarrollo --workspace servidor",
+    "prueba:movil": "npm run prueba --workspace movil"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

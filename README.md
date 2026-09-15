@@ -50,7 +50,12 @@ servidor/src/dominio/ordenes/    máquina de estados (patrón Estado)
 servidor/src/dominio/plazos/     cálculo en horas laborables
 servidor/src/dominio/inventario/ reglas de los movimientos
 servidor/src/dominio/sincronizacion/ resolución de conflictos
-panel/  movil/                (etapas 7 y 9)
+movil/src/datos/              base local (SQLite), espejo de trabajo y puertos
+movil/src/sincronizacion/     las dos colas, el motor y la captura de evidencia
+movil/src/dominio/            constructores de acciones y flujo de campo
+movil/src/app/                coordinador y armado de la aplicación
+movil/src/pantallas/          siete pantallas
+panel/                        (etapa 9)
 ```
 
 ## La API
@@ -499,3 +504,136 @@ el sistema**. Son 37 personas y ninguna cuenta sin dueño.
   consultar — y la doble programación es imposible, no improbable: la prohíbe
   el índice `ux_visita_tecnico_franja` y aquí sólo se traduce el choque a un
   mensaje legible.
+
+## La aplicación móvil
+
+Es la etapa 7. Sirve a los **16 técnicos**, de ruta y de planta: los de planta
+usan la misma tableta, sólo que no salen del taller. Corre sobre React Native
+con Expo y su premisa es la del pliego — *el técnico trabaja en casas sin
+cobertura* —, de modo que **todo funciona sin red y la red es el caso
+excepcional**, no al revés.
+
+### Lo que se baja antes de salir
+
+`GET /campo/jornada` devuelve, en **una sola petición**, todo lo que el técnico
+va a necesitar: sus órdenes vivas, el catálogo de repuestos, lo que lleva en su
+bodega móvil y las reglas de evidencia obligatoria. Podría haber sido cinco
+llamadas a endpoints que ya existían; con mala señal, cinco viajes son cinco
+oportunidades de quedarse a medias.
+
+Eso alimenta el **espejo local**, que es *descartable*: si se pierde, se vuelve
+a bajar y no pasa nada. Las **colas** no lo son — son la única copia del
+trabajo del día hasta que el servidor confirme — y esa diferencia gobierna todo
+el diseño. En el coordinador se traduce en una regla de orden:
+
+> **Primero la cola, después el espejo.**
+
+Si se escribiera el espejo primero y la aplicación muriera en medio, la tableta
+mostraría una orden «en reparación» que el servidor nunca va a conocer: trabajo
+perdido que además parece hecho. Al revés, lo peor que pasa es que la lista
+muestre el estado viejo un rato.
+
+Por lo mismo, al volver al taller se **sube antes de bajar**: descargar primero
+pisaría el espejo con estados viejos —el servidor todavía no sabría de los
+cambios— y el técnico vería retroceder órdenes que él mismo movió.
+
+### Los botones que la app se atreve a ofrecer
+
+`movil/src/dominio/flujo-campo.ts` **no es una segunda máquina de estados**. La
+máquina vive en el servidor y es la única que decide; esto es el subconjunto
+que la aplicación ofrece, y existe porque un botón que el servidor va a
+rechazar no se convierte en un mensaje de error: se convierte en una excepción
+de sincronización que alguien reconcilia a mano al día siguiente, con el
+técnico ya en otra casa.
+
+El criterio es el del servidor: sólo se ofrecen transiciones cuyo estado de
+origen tiene al técnico asignado como responsable — `en_ruta`,
+`en_diagnostico`, `en_reparacion`. Quedan fuera a propósito la cola del taller
+(la reparte la jefatura), el paso a autorización (exige una cotización que no
+se levanta desde la tableta) y **anular y cerrar sin reparar**: son decisiones
+de cierre, y tomarlas solo, sin señal y en el domicilio es justo lo que no debe
+pasar. El técnico registra el resultado de la visita; la jefatura cierra.
+
+Una prueba mantiene esto honesto: `flujo-campo.prueba.ts` lleva una copia
+escrita a mano del grafo del servidor y falla si la app llega a ofrecer algo
+que el servidor no permite.
+
+### Lo que sube, y en qué orden
+
+Al recuperar señal el motor vacía las dos colas: **primero las operaciones, en
+orden**, y después las evidencias. Una evidencia pertenece a una orden que
+quizá todavía no existe en el servidor.
+
+Las **evidencias** viajan aparte porque una foto de cuatro megas con mala señal
+no puede bloquear el resto de la jornada. Se comprimen **al capturarlas** (1600
+px, calidad 0,6) y no en cada reintento, suben por partes de 256 KB y se
+reanudan desde el byte que el **servidor** dice tener, no desde la cuenta
+local: si difieren, manda el servidor. El archivo del dispositivo se borra
+*después* de que el servidor cierre la carga.
+
+La huella SHA-256 se calcula sobre el **archivo ya comprimido y sobre sus bytes
+crudos**, que es exactamente lo que el servidor rehashea al cerrar
+(`infraestructura/almacenamiento-objetos.ts`). Hashear el original, o la cadena
+base64, daría un valor que nunca casa — y el síntoma no sería un error visible
+sino un bucle: el servidor rechaza por huella, el motor reinicia la carga, y la
+evidencia no sube jamás.
+
+### La bandeja de sincronización
+
+Dice cuántas operaciones y cuántas evidencias quedan sin subir, qué contestó el
+servidor y cuándo se bajó la jornada. **No ofrece ningún botón para borrar la
+cola.** Es la pantalla que le da al técnico una razón para confiar en la
+tableta: sin ella, «guardado» es una promesa que nadie puede verificar, y el
+primer día que algo se pierda —o que alguien *crea* que se perdió— la gente
+vuelve a la libreta de papel.
+
+Cerrar sesión tampoco toca la cola. Si queda trabajo sin subir, la app lo avisa
+con todas las letras: sigue en la tableta, pero nadie en el taller lo verá
+hasta que esa persona vuelva a entrar y sincronice.
+
+### Qué se prueba y qué no
+
+Las 46 pruebas de `movil/pruebas/` corren sobre la capa sin conexión, que es
+código puro: las colas, el motor, los constructores de acciones, el flujo de
+campo y el coordinador. **Las pantallas no se prueban aquí**: lo que puede
+perder el trabajo del técnico es la cola, no un botón mal alineado.
+
+## Decisiones de la etapa 7
+
+- **El técnico de planta recibió `campo.sincronizar`.** Usa la misma tableta
+  que el de ruta y la aplicación no tiene otra vía para registrar nada; sin ese
+  permiso, la app le funcionaría hasta el momento de subir. No recibió
+  `campo.visita.registrar` ni `ordenes.crear`: no sale del taller.
+- **Un endpoint nuevo, `GET /campo/jornada`,** en lugar de cinco llamadas a
+  endpoints existentes. Ver arriba.
+- **Las reglas de evidencia bajan sin distinguir categoría ni marca.** Lo que
+  el dispositivo necesita es poder avisar «le falta la foto del artículo» antes
+  de que el técnico se despida del cliente. La verificación que *bloquea* de
+  verdad la sigue haciendo el servidor con `v_evidencia_faltante`, que sí
+  conoce la categoría exacta.
+- **Se puede consumir un repuesto que la bodega móvil no registraba.** Pasa —se
+  lo prestó un compañero, lo trae de otra orden— y negarlo no lo evita: sólo
+  hace que no quede anotado. El servidor ya sabe compensarlo con un ajuste; la
+  tableta lo registra, avisa, y **nunca muestra un saldo negativo**, que no
+  significa nada para quien la usa.
+- **El precio que viaja es el que el cliente firmó**, no el del catálogo. Si
+  para cuando la operación llega el catálogo cambió, el servidor respeta el
+  firmado y anota la diferencia: lo que se pactó en la casa del cliente no se
+  corrige a sus espaldas.
+- **El identificador de una orden levantada en campo es también su clave de
+  idempotencia.** No es una economía: es lo que impide que un reenvío cree dos
+  órdenes, y lo que permite consumir repuestos y tomar fotos contra esa orden
+  antes de que exista en el servidor.
+- **La navegación es un `switch`, no un enrutador.** Son siete pantallas y
+  ninguna necesita enlaces profundos ni historial persistente.
+- **Los tokens viven en el almacén seguro del sistema, no en el SQLite.** Si
+  alguien saca la base de una tableta perdida, no debe sacar con ella la llave
+  para entrar al sistema. Y si el refresco falla —dispositivo revocado a
+  distancia— se cierra la sesión pero **la cola no se toca**.
+- **«Hay wifi» no es «hay internet».** El detector exige además
+  `isInternetReachable` y ante la duda responde que no hay: un falso «no hay
+  conexión» retrasa el envío unos minutos; un falso «sí hay» hace que el motor
+  falle con el técnico mirando la pantalla.
+- **La ubicación se adjunta sólo si el GPS la da rápido** (4 segundos). Bajo un
+  techo de zinc puede tardar un minuto, y detener al técnico por una coordenada
+  sería cambiar algo útil por algo accesorio.

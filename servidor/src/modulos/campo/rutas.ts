@@ -16,6 +16,11 @@ export function rutasDeCampo(): Router {
   const router = Router();
   const cargar = exigirPermiso('campo.evidencia.cargar');
 
+  // La descarga de jornada la pide la app al iniciar sesion y al volver al
+  // taller. Exige el mismo permiso que sincronizar: es la otra mitad del
+  // trabajo sin conexion.
+  router.get('/campo/jornada', exigirPermiso('campo.sincronizar'), asincrono(controlador.descargarJornada));
+
   router.get('/ordenes/:id/evidencias', exigirPermiso('ordenes.consultar'), asincrono(controlador.listarDeOrden));
 
   router.post('/evidencias/cargas', cargar, asincrono(controlador.iniciarCarga));

@@ -6,9 +6,15 @@ import { ErrorValidacion } from '../../comun/errores.js';
 import { esquemaIdentificador, validar } from '../seguridad/esquemas.js';
 import { esquemaIniciarCarga } from '../sincronizacion/esquemas.js';
 import * as servicio from './servicio.js';
+import * as servicioJornada from './servicio-jornada.js';
 
 const identificador = (peticion: Request, clave = 'id'): string =>
   validar(esquemaIdentificador, peticion.params[clave]);
+
+/** Todo lo que el dispositivo necesita para trabajar sin senal, de un viaje. */
+export async function descargarJornada(peticion: Request, respuesta: Response): Promise<void> {
+  responderDatos(respuesta, await servicioJornada.descargar(actorDe(peticion)));
+}
 
 export async function listarDeOrden(peticion: Request, respuesta: Response): Promise<void> {
   responderDatos(respuesta, await servicio.listarDeOrden(identificador(peticion)));
