@@ -173,10 +173,9 @@ export async function fusionar(
       throw new ErrorDominio('FUSION_CONSIGO_MISMO', 'No se puede fusionar un cliente consigo mismo.');
     }
 
-    const [principal, absorbido] = await Promise.all([
-      repositorio.buscarPorId(idPrincipal, cliente),
-      repositorio.buscarPorId(peticion.idClienteAbsorbido, cliente),
-    ]);
+    // En secuencia: comparten el cliente de la transaccion.
+    const principal = await repositorio.buscarPorId(idPrincipal, cliente);
+    const absorbido = await repositorio.buscarPorId(peticion.idClienteAbsorbido, cliente);
     if (principal === null) throw new ErrorNoEncontrado('No existe el cliente que quedaria como principal.');
     if (absorbido === null) throw new ErrorNoEncontrado('No existe el cliente que se quiere fusionar.');
     if (absorbido.id_cliente_principal !== null) {
@@ -189,10 +188,8 @@ export async function fusionar(
       );
     }
 
-    const [articulos, ordenes] = await Promise.all([
-      repositorio.trasladarArticulos(cliente, absorbido.id, principal.id, actor.id),
-      repositorio.trasladarOrdenes(cliente, absorbido.id, principal.id, actor.id),
-    ]);
+    const articulos = await repositorio.trasladarArticulos(cliente, absorbido.id, principal.id, actor.id);
+    const ordenes = await repositorio.trasladarOrdenes(cliente, absorbido.id, principal.id, actor.id);
     await repositorio.trasladarCoberturas(cliente, absorbido.id, principal.id);
     await repositorio.marcarComoAbsorbido(cliente, absorbido.id, principal.id, actor.id);
 

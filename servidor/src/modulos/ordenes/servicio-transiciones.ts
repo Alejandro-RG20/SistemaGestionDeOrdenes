@@ -58,12 +58,11 @@ export async function mover(
     if (fila === null) throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
 
     const momento = momentoEvidenciaDe(fila.estado);
-    const [faltantes, tecnicoDelActor] = await Promise.all([
-      momento === null
-        ? Promise.resolve([])
-        : repositorio.evidenciasFaltantes(idOrden, momento, cliente),
-      repositorio.buscarTecnicoDeUsuario(actor.id, cliente),
-    ]);
+    // En secuencia: comparten el cliente de la transaccion.
+    const faltantes = momento === null
+      ? []
+      : await repositorio.evidenciasFaltantes(idOrden, momento, cliente);
+    const tecnicoDelActor = await repositorio.buscarTecnicoDeUsuario(actor.id, cliente);
 
     const contexto: ContextoTransicion = {
       hacia: peticion.hacia,

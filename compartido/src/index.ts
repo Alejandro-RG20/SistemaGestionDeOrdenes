@@ -15,3 +15,4 @@ export * from './api/articulos.js';
 export * from './api/garantias.js';
 export * from './api/ordenes.js';
 export * from './api/agenda.js';
+export * from './api/inventario.js';

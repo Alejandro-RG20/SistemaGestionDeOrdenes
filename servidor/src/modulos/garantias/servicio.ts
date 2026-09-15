@@ -40,11 +40,11 @@ async function armarContexto(
   fallaReal: string | undefined,
   ejecutor: Ejecutor,
 ): Promise<ContextoCobertura> {
-  const [filaArticulo, filasPoliza, filasRegla] = await Promise.all([
-    repositorio.buscarArticuloParaCobertura(idArticulo, ejecutor),
-    repositorio.listarPolizas(idArticulo, ejecutor),
-    repositorio.listarReglasVigentes(ejecutor),
-  ]);
+  // En secuencia: `ejecutor` puede ser un cliente de transaccion, y esos no
+  // admiten consultas en paralelo.
+  const filaArticulo = await repositorio.buscarArticuloParaCobertura(idArticulo, ejecutor);
+  const filasPoliza = await repositorio.listarPolizas(idArticulo, ejecutor);
+  const filasRegla = await repositorio.listarReglasVigentes(ejecutor);
 
   if (filaArticulo === null) throw new ErrorNoEncontrado('No existe un articulo con ese identificador.');
 

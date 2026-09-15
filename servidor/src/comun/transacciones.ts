@@ -5,7 +5,15 @@
 import type { PoolClient } from 'pg';
 import { obtenerPiscina } from '../infraestructura/conexion.js';
 
-/** Ejecutor de consultas: la piscina o un cliente dentro de una transaccion. */
+/**
+ * Ejecutor de consultas: la piscina o un cliente dentro de una transaccion.
+ *
+ * REGLA: nunca se lanzan consultas en PARALELO sobre el mismo ejecutor
+ * cuando puede ser un cliente de transaccion. Un cliente atiende una
+ * consulta a la vez; pg lo deprecó y deja de admitirlo en la version 9. El
+ * Promise.all solo es seguro contra la piscina, que reparte un cliente por
+ * consulta.
+ */
 export type Ejecutor = Pick<PoolClient, 'query'>;
 
 export async function enTransaccion<T>(trabajo: (cliente: PoolClient) => Promise<T>): Promise<T> {

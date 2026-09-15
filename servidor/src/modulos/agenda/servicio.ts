@@ -41,10 +41,9 @@ export async function obtenerCalendarioLaboral(
   const guardado = CACHE_CALENDARIO.get(idCentro);
   if (guardado !== undefined && guardado.vence > Date.now()) return guardado.calendario;
 
-  const [jornadas, dias] = await Promise.all([
-    repositorio.listarJornadas(idCentro, ejecutor),
-    repositorio.listarDiasNoLaborables(idCentro, ejecutor),
-  ]);
+  // En secuencia: `ejecutor` puede ser un cliente de transaccion.
+  const jornadas = await repositorio.listarJornadas(idCentro, ejecutor);
+  const dias = await repositorio.listarDiasNoLaborables(idCentro, ejecutor);
 
   if (jornadas.length === 0) {
     throw new ErrorDominio(

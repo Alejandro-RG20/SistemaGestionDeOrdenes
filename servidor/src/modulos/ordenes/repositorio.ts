@@ -406,3 +406,27 @@ export async function anotarEventosDeReevaluacion(
       cambios.map((c) => c.observacion), idResponsable],
   );
 }
+
+export interface EventoDeAviso {
+  readonly idOrden: string;
+  readonly estado: string;
+  readonly observacion: string;
+}
+
+/**
+ * Anota varios avisos en la bitacora de otras tantas ordenes, en una sola
+ * sentencia. El estado no cambia: es una nota sobre lo que paso, no una
+ * transicion.
+ */
+export async function anotarAvisosEnBitacora(
+  ejecutor: Ejecutor, avisos: readonly EventoDeAviso[], idResponsable: string,
+): Promise<void> {
+  if (avisos.length === 0) return;
+  await ejecutor.query(
+    `INSERT INTO evento_orden (id_orden, estado_anterior, estado_nuevo, id_responsable, observacion)
+     SELECT a.id_orden, a.estado::estado_orden, a.estado::estado_orden, $4, a.observacion
+       FROM unnest($1::uuid[], $2::text[], $3::text[]) AS a(id_orden, estado, observacion)`,
+    [avisos.map((a) => a.idOrden), avisos.map((a) => a.estado),
+      avisos.map((a) => a.observacion), idResponsable],
+  );
+}

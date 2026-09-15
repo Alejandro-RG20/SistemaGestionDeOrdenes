@@ -3,9 +3,9 @@
 Taller ServiTotal del distrito VI de Managua, centro de servicio postventa de
 Grupo Unicomer (La Curacao, Almacenes Tropigas, RadioShack).
 
-**Estado del proyecto: etapas 1 a 4 construidas.** Migraciones, datos de
-prueba, seguridad, clientes, artículos, motor de garantías, órdenes y agenda.
-Las etapas 5 a 9 (inventario, sincronización, móvil, cobros y portal) todavía
+**Estado del proyecto: etapas 1 a 5 construidas.** Migraciones, datos de
+prueba, seguridad, clientes, artículos, motor de garantías, órdenes, agenda e
+inventario. Las etapas 6 a 9 (sincronización, móvil, cobros y portal) todavía
 no existen.
 
 ## Puesta en marcha
@@ -42,11 +42,13 @@ compartido/                   vocabulario del dominio y contratos de la API
 servidor/src/comun/           errores, transacciones, autorización, bitácora,
                               paginación, tokens, respuesta uniforme
 servidor/src/infraestructura/ conexión, ejecutor de migraciones, siembra
-servidor/src/modulos/         seguridad · clientes · articulos · garantias · ordenes · agenda
+servidor/src/modulos/         seguridad · clientes · articulos · garantias
+                              ordenes · agenda · inventario
                               cada uno: controlador · servicio · repositorio · dto · esquemas
 servidor/src/dominio/garantias/  motor de garantías (Especificación y Estrategia)
 servidor/src/dominio/ordenes/    máquina de estados (patrón Estado)
 servidor/src/dominio/plazos/     cálculo en horas laborables
+servidor/src/dominio/inventario/ reglas de los movimientos
 panel/  movil/                (etapas 7 y 9)
 ```
 
@@ -89,6 +91,10 @@ identificador.
 | `POST /ordenes/:id/notas` | `ordenes.nota_correccion` |
 | `GET /agenda`, `/agenda/calendario`, `/ordenes/:id/visitas` | `agenda.consultar` |
 | `POST PUT /ordenes/:id/visitas` | `agenda.programar` |
+| `GET /bodegas`, `/repuestos`, `/existencias`, `/movimientos` | `inventario.consultar` |
+| `GET /solicitudes-repuesto`, `POST /movimientos` | `inventario.consultar` |
+| `POST /ordenes/:id/consumos` | `inventario.consumo.registrar` |
+| `POST /ordenes/:id/solicitudes-repuesto` | `inventario.solicitud.gestionar` |
 
 No hay ruta `DELETE` para ningún registro del negocio: nada se elimina, se
 desactiva con motivo escrito.
@@ -184,6 +190,47 @@ hubiera un centro en otro huso, el desfase tendría que salir de `centro`.
 Las **alertas son consulta, no notificación**: `GET /ordenes/alertas`
 devuelve lo vencido y lo que está dentro de su ventana de aviso. Nadie manda
 correos ni mensajes todavía.
+
+## Inventario
+
+**Los movimientos son la fuente de verdad.** `existencia` es una proyección
+que se actualiza en la misma transacción y que tiene que poder reconstruirse
+desde cero; hay una prueba que la recalcula desde `movimiento_repuesto` y
+exige cero diferencias.
+
+**Un movimiento no se edita**: se corrige con un ajuste justificado, que es
+otro movimiento. No hay ruta `PATCH` ni `DELETE` para movimientos.
+
+**La bodega central es concurrente; la móvil no.** Descontar de la central
+bloquea la fila de existencia (`SELECT … FOR UPDATE`), de modo que dos
+bodegueros descontando el mismo repuesto a la vez se serializan en lugar de
+leer ambos la misma cantidad. La móvil pertenece a un solo técnico, y por eso
+—y sólo por eso— puede descontarse sin conexión: la central sólo se descuenta
+en línea, y el servidor lo rechaza explícitamente.
+
+**Todo consumo va atado a su orden**, y consumir varios repuestos es todo o
+nada: si al tercero no alcanza, los dos primeros tampoco se descuentan.
+
+**Al ingresar un repuesto, las órdenes que lo esperaban se liberan solas** y
+queda constancia en la bitácora de cada una. Se liberan por orden de llegada
+mientras la cantidad ingresada alcance: el pliego dice «todas las órdenes que
+lo esperaban», pero liberar cinco porque entraron dos unidades sería mentirle
+al taller.
+
+### Una trampa de PostgreSQL que costó encontrar
+
+Mover la existencia con un upsert parece lo natural:
+
+```sql
+INSERT INTO existencia (id_bodega, id_repuesto, cantidad) VALUES ($1, $2, -4)
+ON CONFLICT (id_bodega, id_repuesto) DO UPDATE SET cantidad = existencia.cantidad + EXCLUDED.cantidad
+```
+
+**No funciona.** PostgreSQL evalúa el `CHECK (cantidad >= 0)` sobre la fila
+*propuesta* del `INSERT` antes de resolver el conflicto, así que falla siempre
+que el delta sea negativo, aunque la existencia final fuera 6. Por eso
+`aplicarDelta` intenta primero el `UPDATE` y sólo inserta cuando no había
+renglón. Está comentado en el código para que nadie lo «simplifique» de vuelta.
 
 ## Sesiones y permisos
 

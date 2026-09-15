@@ -14,6 +14,7 @@ import { rutasDeArticulos } from './modulos/articulos/rutas.js';
 import { rutasDeGarantias } from './modulos/garantias/rutas.js';
 import { rutasDeOrdenes } from './modulos/ordenes/rutas.js';
 import { rutasDeAgenda } from './modulos/agenda/rutas.js';
+import { rutasDeInventario } from './modulos/inventario/rutas.js';
 
 export const RAIZ_API = '/api/v1';
 
@@ -41,6 +42,7 @@ export function construirAplicacion(): Express {
   aplicacion.use(RAIZ_API, exigirSesion, rutasDeGarantias());
   aplicacion.use(RAIZ_API, exigirSesion, rutasDeOrdenes());
   aplicacion.use(RAIZ_API, exigirSesion, rutasDeAgenda());
+  aplicacion.use(RAIZ_API, exigirSesion, rutasDeInventario());
 
   aplicacion.use(manejarRutaDesconocida);
   aplicacion.use(manejarErrores);
