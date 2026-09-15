@@ -70,6 +70,7 @@ export function actorDe(peticion: Request): Actor {
     idCentro: usuario.idCentro,
     rol: usuario.rol,
     permisos: usuario.permisos,
+    idDispositivo: peticion.contexto?.idDispositivo,
   };
 }
 

@@ -142,3 +142,19 @@ export async function tecnicoExiste(
   );
   return rows[0] ?? null;
 }
+
+export async function registrarResultado(
+  ejecutor: Ejecutor,
+  datos: {
+    id: string; resultado: string; horaLlegada: Date;
+    horaSalida: Date | null; motivo: string | null;
+  },
+): Promise<void> {
+  await ejecutor.query(
+    `UPDATE visita
+        SET resultado = $2::resultado_visita, hora_llegada = $3, hora_salida = $4,
+            motivo = coalesce($5, motivo)
+      WHERE id = $1`,
+    [datos.id, datos.resultado, datos.horaLlegada, datos.horaSalida, datos.motivo],
+  );
+}

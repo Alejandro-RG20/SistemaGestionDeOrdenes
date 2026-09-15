@@ -148,6 +148,37 @@ export async function programarVisita(
  * Reprogramar cierra la visita anterior y abre otra. La anterior deja de
  * ser vigente, con lo que libera su franja para otra orden.
  */
+export interface ResultadoDeVisita {
+  readonly resultado: string;
+  readonly horaLlegada: string;
+  readonly horaSalida?: string | undefined;
+  readonly motivo?: string | undefined;
+}
+
+/**
+ * Cierra la visita con lo que paso en el domicilio. Llega de la cola de
+ * sincronizacion, asi que corre dentro de la transaccion del motor.
+ */
+export async function registrarResultadoDeVisita(
+  ejecutor: Ejecutor, _actor: Actor, idOrden: string, datos: ResultadoDeVisita,
+): Promise<ResumenVisita> {
+  const vigente = await repositorio.buscarVigenteDeOrden(idOrden, ejecutor);
+  if (vigente === null) {
+    throw new ErrorNoEncontrado('La orden no tiene ninguna visita vigente que cerrar.');
+  }
+
+  await repositorio.registrarResultado(ejecutor, {
+    id: vigente.id,
+    resultado: datos.resultado,
+    horaLlegada: new Date(datos.horaLlegada),
+    horaSalida: datos.horaSalida === undefined ? null : new Date(datos.horaSalida),
+    motivo: datos.motivo ?? null,
+  });
+
+  const fila = await repositorio.buscarPorId(vigente.id, ejecutor);
+  return aResumenVisita(fila!);
+}
+
 export async function reprogramarVisita(
   actor: Actor, idOrden: string, peticion: PeticionReprogramarVisita,
 ): Promise<ResumenVisita> {

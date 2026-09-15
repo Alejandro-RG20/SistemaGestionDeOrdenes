@@ -26,6 +26,8 @@ export interface Actor {
   readonly idCentro: string;
   readonly rol: CodigoRol;
   readonly permisos: readonly CodigoPermiso[];
+  /** Dispositivo movil desde el que actua, si la sesion nacio en la app. */
+  readonly idDispositivo?: string | undefined;
 }
 
 declare global {

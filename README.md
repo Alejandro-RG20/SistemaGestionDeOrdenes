@@ -3,10 +3,10 @@
 Taller ServiTotal del distrito VI de Managua, centro de servicio postventa de
 Grupo Unicomer (La Curacao, Almacenes Tropigas, RadioShack).
 
-**Estado del proyecto: etapas 1 a 5 construidas.** Migraciones, datos de
-prueba, seguridad, clientes, artículos, motor de garantías, órdenes, agenda e
-inventario. Las etapas 6 a 9 (sincronización, móvil, cobros y portal) todavía
-no existen.
+**Estado del proyecto: etapas 1 a 6 construidas.** Migraciones, datos de
+prueba, seguridad, clientes, artículos, motor de garantías, órdenes, agenda,
+inventario y el protocolo de sincronización. Las etapas 7 a 9 (aplicación
+móvil, cobros y portal) todavía no existen.
 
 ## Puesta en marcha
 
@@ -42,13 +42,14 @@ compartido/                   vocabulario del dominio y contratos de la API
 servidor/src/comun/           errores, transacciones, autorización, bitácora,
                               paginación, tokens, respuesta uniforme
 servidor/src/infraestructura/ conexión, ejecutor de migraciones, siembra
-servidor/src/modulos/         seguridad · clientes · articulos · garantias
-                              ordenes · agenda · inventario
+servidor/src/modulos/         seguridad · clientes · articulos · garantias · ordenes
+                              agenda · inventario · sincronizacion · campo
                               cada uno: controlador · servicio · repositorio · dto · esquemas
 servidor/src/dominio/garantias/  motor de garantías (Especificación y Estrategia)
 servidor/src/dominio/ordenes/    máquina de estados (patrón Estado)
 servidor/src/dominio/plazos/     cálculo en horas laborables
 servidor/src/dominio/inventario/ reglas de los movimientos
+servidor/src/dominio/sincronizacion/ resolución de conflictos
 panel/  movil/                (etapas 7 y 9)
 ```
 
@@ -95,6 +96,11 @@ identificador.
 | `GET /solicitudes-repuesto`, `POST /movimientos` | `inventario.consultar` |
 | `POST /ordenes/:id/consumos` | `inventario.consumo.registrar` |
 | `POST /ordenes/:id/solicitudes-repuesto` | `inventario.solicitud.gestionar` |
+| `POST /sincronizacion/cola` | `campo.sincronizar` + sesión con dispositivo |
+| `GET /sincronizacion/excepciones`, `POST .../resolver` | `campo.excepcion.resolver` |
+| `POST /evidencias/cargas`, `PATCH`/`GET .../:idCarga` | `campo.evidencia.cargar` |
+| `POST /evidencias/cargas/:idCarga/cerrar` | `campo.evidencia.cargar` |
+| `GET /ordenes/:id/evidencias` | `ordenes.consultar` |
 
 No hay ruta `DELETE` para ningún registro del negocio: nada se elimina, se
 desactiva con motivo escrito.
@@ -231,6 +237,76 @@ ON CONFLICT (id_bodega, id_repuesto) DO UPDATE SET cantidad = existencia.cantida
 que el delta sea negativo, aunque la existencia final fuera 6. Por eso
 `aplicarDelta` intenta primero el `UPDATE` y sólo inserta cuando no había
 renglón. Está comentado en el código para que nadie lo «simplifique» de vuelta.
+
+## El protocolo de sincronización
+
+Es el componente de mayor riesgo del proyecto, y descansa en tres
+invariantes.
+
+**1. Reenviar no duplica.** El UUID que genera el dispositivo es la clave de
+idempotencia contra `operacion_sincronizada`. Si la operación ya llegó, se
+devuelve el resultado de entonces sin volver a ejecutar nada:
+
+```
+primer envio:   aplicadas=1 repetidas=0  estado=aplicada  -> Orden 40000 registrada.
+mismo envio:    aplicadas=0 repetidas=1  estado=repetida  -> Orden 40000 registrada.
+en la base:     1 orden, numero 40000
+```
+
+Dos envíos simultáneos de la misma operación tampoco duplican: uno gana y el
+otro choca con la clave primaria, lo que el motor trata como repetición, no
+como fallo.
+
+**2. Nada de lo registrado en campo se descarta.** Lo que el servidor no
+puede aplicar va a `excepcion_sincronizacion` con la carga original íntegra
+—la operación tal como llegó, sin recortar ni normalizar—. La bandeja se
+resuelve o se descarta con una explicación escrita; nunca se borra.
+
+**3. El dispositivo no borra sin confirmación.** Toda operación procesada
+vuelve con `confirmada: true`, **incluso si quedó en excepción**: el servidor
+ya tiene el trabajo íntegro y el móvil no debe volver a enviarlo. Sólo un
+fallo inesperado vuelve sin confirmar, para que se reintente.
+
+La operación y su clave de idempotencia se anotan **en la misma
+transacción**. Si se anotaran aparte, una caída entre ambas dejaría la
+operación aplicada y sin registrar, y el reintento la duplicaría: justo lo
+que el protocolo existe para impedir.
+
+### Los tres conflictos
+
+El criterio que los ordena: **ante la duda, prevalece lo que ocurrió
+físicamente en el domicilio del cliente.** La discrepancia administrativa se
+resuelve después, en una bandeja, con una persona mirándola.
+
+| Caso | Qué hace el servidor |
+|---|---|
+| Orden anulada mientras el técnico trabajaba | Conserva el trabajo íntegro en la bandeja. No se descarta nada |
+| Repuesto consumido que no figuraba en la bodega móvil | **Acepta el consumo** y genera un `ajuste` justificado que documenta la diferencia |
+| Precio cambiado entre la descarga y el consumo | Prevalece el precio que el cliente firmó; la diferencia queda anotada |
+
+El caso del repuesto es el que resuelve el choque con `existencia.cantidad >=
+0` que venía arrastrándose desde la etapa 1: el ajuste va **primero** y repone
+lo que faltaba, de modo que el consumo puede descontarse sin dejar la
+existencia negativa. El `CHECK` sigue en pie, los movimientos siguen siendo la
+fuente de verdad, y la diferencia queda registrada como lo que es. Negar el
+consumo dejaría la base «cuadrada» y la realidad sin registrar.
+
+### La segunda cola: las evidencias
+
+El binario no viaja con la operación. Primero se registra la evidencia
+—clave, momento, ubicación— y después el archivo sube **por partes, con
+reanudación**: el dispositivo pregunta `GET /evidencias/cargas/:id` desde qué
+byte continuar y sigue desde ahí. Al cerrar se verifica tamaño y SHA-256; una
+evidencia que no casa con su huella se rechaza, porque no sirve para
+reclamarle nada a un fabricante.
+
+Reanudar desde el byte equivocado se rechaza en lugar de escribir: producir un
+archivo corrupto que sólo se descubre al comparar la huella es peor que no
+reanudar.
+
+El estado de cada carga vive **junto al archivo, no en memoria**, para que
+sobreviva a un reinicio del servidor. Si viviera en memoria, «reanudable»
+sería mentira en cuanto el proceso reiniciara.
 
 ## Sesiones y permisos
 
