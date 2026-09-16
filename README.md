@@ -24,7 +24,10 @@ PostgreSQL real), 46 de la aplicación móvil y 22 del panel.
 
 ## Puesta en marcha
 
-Requiere Node 20 o superior y PostgreSQL 14 o superior.
+Requiere **Node 20.12 o superior** y PostgreSQL 14 o superior.
+
+> Para correrlo en su máquina paso a paso —incluidas las cuentas con las que
+> entrar y qué hacer si algo falla— hay una guía aparte: **[GUIA_LOCAL.md](GUIA_LOCAL.md)**.
 
 ```bash
 npm install
@@ -45,6 +48,7 @@ npm run sembrar               # genera el juego de datos de prueba
 | `npm run prueba:movil` | Pruebas de la aplicación móvil |
 | `npm run prueba:panel` | Pruebas del panel web |
 | `npm run panel` | Arranca el panel en `localhost:5173`, con proxy a la API |
+| `npm run construir` | Recompila `compartido/` y `servidor/` (`npm install` ya lo hace) |
 | `npm run verificar-tipos` | Compila `compartido/` y `servidor/` |
 
 Las pruebas de integración crean y destruyen la base `servitotal_pruebas`

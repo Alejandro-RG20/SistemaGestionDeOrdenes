@@ -23,8 +23,15 @@ import { MisOrdenes } from './pantallas/MisOrdenes.js';
 import { RegistrarDiagnostico } from './pantallas/RegistrarDiagnostico.js';
 import { COLOR, estilos } from './pantallas/estilos.js';
 
-/** Raiz de la API. En produccion la fija el perfil de compilacion. */
-const RAIZ_API = process.env['EXPO_PUBLIC_API'] ?? 'http://10.0.2.2:3000/api';
+/**
+ * Raiz de la API, con la version incluida: el servidor sirve todo bajo
+ * `/api/v1` y sin el `/v1` cada peticion cae en un 404.
+ *
+ * El valor por defecto es el del emulador de Android, donde 10.0.2.2 es la
+ * maquina que lo hospeda. En una tableta de verdad hay que apuntar a la IP
+ * del servidor en la red del centro, con EXPO_PUBLIC_API.
+ */
+const RAIZ_API = process.env['EXPO_PUBLIC_API'] ?? 'http://10.0.2.2:3000/api/v1';
 
 type Vista =
   | { nombre: 'cargando' }

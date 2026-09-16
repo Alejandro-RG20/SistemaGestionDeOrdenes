@@ -18,9 +18,27 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { appendFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ErrorDominio, ErrorNoEncontrado } from '../comun/errores.js';
 
-const RAIZ = process.env['ALMACEN_OBJETOS_RAIZ'] ?? '/var/lib/servitotal/evidencias';
+/**
+ * Donde viven los archivos de evidencia.
+ *
+ * Una ruta relativa se resuelve contra la RAIZ DEL REPOSITORIO, no contra el
+ * directorio desde el que se arranco. Si dependiera del directorio actual,
+ * `npm run desarrollo` y `npm run desarrollo --workspace servidor` dejarian
+ * las evidencias en carpetas distintas, y la mitad de las cargas no se
+ * encontrarian despues sin que nadie entendiera por que.
+ */
+function raizDeObjetos(): string {
+  const configurada = process.env['ALMACEN_OBJETOS_RAIZ'] ?? './datos/evidencias';
+  if (path.isAbsolute(configurada)) return configurada;
+  const aqui = path.dirname(fileURLToPath(import.meta.url));
+  // infraestructura/ -> src/ -> servidor/ -> raiz del repositorio
+  return path.resolve(aqui, '..', '..', '..', configurada);
+}
+
+const RAIZ = raizDeObjetos();
 const CARPETA_PARCIALES = 'parciales';
 
 export interface DescriptorDeCarga {

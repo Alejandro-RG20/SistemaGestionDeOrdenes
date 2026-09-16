@@ -23,7 +23,8 @@
     "desarrollo": "npm run desarrollo --workspace servidor",
     "prueba:movil": "npm run prueba --workspace movil",
     "prueba:panel": "npm run prueba --workspace panel",
-    "panel": "npm run iniciar --workspace panel"
+    "panel": "npm run iniciar --workspace panel",
+    "construir": "npm run construir --workspace compartido && npm run construir --workspace servidor"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
