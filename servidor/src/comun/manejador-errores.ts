@@ -7,6 +7,7 @@
  * legible, nunca el detalle tecnico.
  */
 import type { NextFunction, Request, Response } from 'express';
+import { ErrorDemasiadasPeticiones } from './limite-peticiones.js';
 import {
   ErrorAplicacion, ErrorAutenticacion, ErrorAutorizacion, ErrorConflicto,
   ErrorDominio, ErrorNoEncontrado, ErrorValidacion,
@@ -24,6 +25,7 @@ function estadoDe(error: unknown): number {
   if (error instanceof ErrorAutorizacion) return 403;
   if (error instanceof ErrorNoEncontrado) return 404;
   if (error instanceof ErrorConflicto) return 409;
+  if (error instanceof ErrorDemasiadasPeticiones) return 429;
   if (error instanceof ErrorDominio) return 422;
   return 500;
 }

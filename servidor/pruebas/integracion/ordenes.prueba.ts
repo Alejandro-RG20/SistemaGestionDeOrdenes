@@ -265,13 +265,19 @@ describe('maquina de estados sobre la API', () => {
     const entregada = await mover(agente, creada.id, ESTADO_ORDEN.ENTREGADA);
     expect(entregada.status).toBe(200);
     expect(entregada.body.datos.estadoNuevo).toBe(ESTADO_ORDEN.ENTREGADA);
-    // Una orden entregada ya no tiene plazo que correr.
-    expect(entregada.body.datos.plazoVenceEn).toBeNull();
+    // El plazo de una orden entregada YA NO CORRE, pero no se borra: se
+    // conserva el ultimo vigente porque es el registro de lo que se le
+    // prometio al cliente, y es contra el que se mide el cumplimiento.
+    // Borrarlo dejaba el indicador en 0 de 0 para siempre.
+    expect(entregada.body.datos.plazoVenceEn).toBeTypeOf('string');
 
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${creada.id}`).set(agente).expect(200);
     expect(ficha.body.datos.fechaEntrega).toBeTypeOf('string');
     expect(ficha.body.datos.destinosPosibles).toHaveLength(0);
+    // Y aunque tenga plazo grabado, no aparece como vencida: todo lo que
+    // pregunta "¿esta vencida?" excluye los estados finales.
+    expect(ficha.body.datos.vencida).toBe(false);
     // La bitacora conserva cada paso.
     expect(ficha.body.datos.eventos.length).toBeGreaterThanOrEqual(7);
   });

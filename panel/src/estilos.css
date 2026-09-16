@@ -1,0 +1,211 @@
+/*
+ * Estilos del panel.
+ *
+ * Una hoja, sin framework. El panel lo usan nueve roles en computadoras del
+ * centro, muchas veces viejas; cargar 300 KB de CSS para dibujar tablas y
+ * formularios seria pagarle al navegador un peaje por nada.
+ *
+ * Dos decisiones que no son estetica:
+ *  - Las tablas son densas a proposito: quien atiende telefono compara
+ *    quince ordenes de un vistazo, no una.
+ *  - El estado de una orden nunca se comunica SOLO por color. Siempre lleva
+ *    texto: el daltonismo no es raro y el taller no es un sitio con luz de
+ *    oficina.
+ */
+
+:root {
+  --fondo: #f8fafc;
+  --superficie: #ffffff;
+  --borde: #e2e8f0;
+  --texto: #0f172a;
+  --tenue: #64748b;
+  --acento: #0369a1;
+  --acento-suave: #e0f2fe;
+  --peligro: #b91c1c;
+  --peligro-suave: #fee2e2;
+  --alerta: #b45309;
+  --alerta-suave: #fef3c7;
+  --exito: #15803d;
+  --exito-suave: #dcfce7;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--texto);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+a { color: var(--acento); }
+
+/* ── armazon ── */
+.armazon { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+
+.barra-lateral {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+}
+.marca { padding: 0 20px 20px; font-size: 20px; font-weight: 700; color: #f8fafc; }
+.marca small { display: block; font-size: 12px; font-weight: 400; color: #94a3b8; }
+
+.menu { display: flex; flex-direction: column; flex: 1; }
+.menu a {
+  color: #cbd5e1;
+  text-decoration: none;
+  padding: 11px 20px;
+  border-left: 3px solid transparent;
+}
+.menu a:hover { background: #1e293b; color: #f8fafc; }
+.menu a.activo { background: #1e293b; color: #f8fafc; border-left-color: #38bdf8; }
+.menu .insignia {
+  float: right;
+  background: var(--peligro);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pie-lateral { padding: 16px 20px; border-top: 1px solid #1e293b; font-size: 13px; color: #94a3b8; }
+.pie-lateral strong { display: block; color: #e2e8f0; }
+
+.contenido { padding: 28px 32px; max-width: 1200px; }
+
+/* ── tipografia de pantalla ── */
+h1 { font-size: 24px; margin: 0 0 4px; }
+h2 { font-size: 18px; margin: 28px 0 10px; }
+.subtitulo { color: var(--tenue); margin: 0 0 22px; }
+.tenue { color: var(--tenue); }
+.vacio { color: var(--tenue); padding: 28px 0; text-align: center; }
+
+/* ── tarjetas y cifras ── */
+.tarjeta {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.rejilla { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.cifra { font-size: 28px; font-weight: 700; margin: 4px 0 0; }
+.cifra-critica { color: var(--peligro); }
+.cifra-alerta { color: var(--alerta); }
+.cifra-buena { color: var(--exito); }
+.etiqueta-cifra { color: var(--tenue); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+
+/* ── tablas ── */
+table { width: 100%; border-collapse: collapse; background: var(--superficie); }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--borde); }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--tenue); }
+tbody tr:hover { background: #f1f5f9; }
+td.numero, th.numero { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── estados ── */
+.estado {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--acento-suave);
+  color: var(--acento);
+  white-space: nowrap;
+}
+.estado-critico { background: var(--peligro-suave); color: var(--peligro); }
+.estado-alerta { background: var(--alerta-suave); color: var(--alerta); }
+.estado-exito { background: var(--exito-suave); color: var(--exito); }
+
+/* ── formularios ── */
+label { display: block; font-size: 13px; color: var(--tenue); margin: 12px 0 4px; }
+input, select, textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  font: inherit;
+  background: var(--superficie);
+  color: var(--texto);
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--acento); outline-offset: 1px; }
+textarea { min-height: 96px; resize: vertical; }
+
+.boton {
+  padding: 9px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--acento);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.boton:hover:not(:disabled) { background: #075985; }
+.boton:disabled { opacity: .5; cursor: not-allowed; }
+.boton-secundario { background: var(--superficie); color: var(--texto); border: 1px solid var(--borde); }
+.boton-secundario:hover:not(:disabled) { background: #f1f5f9; }
+.boton-peligro { background: var(--peligro); }
+.acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+.filtros { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+.filtros label { margin: 0 0 4px; }
+.filtros > div { min-width: 160px; }
+
+/* ── avisos ── */
+.aviso { border-radius: 8px; padding: 13px 15px; margin-bottom: 14px; border: 1px solid; }
+.aviso-error { background: var(--peligro-suave); border-color: var(--peligro); color: var(--peligro); }
+.aviso-alerta { background: var(--alerta-suave); border-color: var(--alerta); color: var(--alerta); }
+.aviso-exito { background: var(--exito-suave); border-color: var(--exito); color: var(--exito); }
+.aviso p { margin: 0 0 8px; }
+.aviso p:last-child { margin-bottom: 0; }
+
+/* ── bandeja ── */
+.grupo-aviso { border-left: 4px solid var(--acento); }
+.grupo-aviso.critico { border-left-color: var(--peligro); }
+.grupo-aviso.atencion { border-left-color: var(--alerta); }
+.grupo-aviso .por-que { color: var(--tenue); font-size: 13px; margin: 2px 0 12px; }
+.renglon-aviso {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px solid var(--borde);
+  text-decoration: none;
+  color: inherit;
+}
+.renglon-aviso:hover { background: #f1f5f9; }
+.renglon-aviso small { color: var(--tenue); display: block; }
+
+/* ── paginacion ── */
+.paginacion { display: flex; gap: 10px; align-items: center; margin-top: 14px; color: var(--tenue); }
+
+/* ── portal publico ── */
+.portal { max-width: 620px; margin: 48px auto; padding: 0 20px; }
+.portal .tarjeta { padding: 24px; }
+.recorrido { list-style: none; padding: 0; margin: 20px 0 0; }
+.recorrido li { padding: 9px 0 9px 28px; position: relative; color: var(--tenue); }
+.recorrido li::before {
+  content: "○";
+  position: absolute;
+  left: 4px;
+  color: var(--borde);
+}
+.recorrido li.alcanzado { color: var(--texto); }
+.recorrido li.alcanzado::before { content: "●"; color: var(--exito); }
+.recorrido li.actual { font-weight: 700; color: var(--acento); }
+.recorrido li.actual::before { content: "●"; color: var(--acento); }
+
+/* ── ingreso ── */
+.ingreso { max-width: 380px; margin: 80px auto; }
+
+@media (max-width: 760px) {
+  .armazon { grid-template-columns: 1fr; }
+  .barra-lateral { flex-direction: column; }
+  .menu { flex-direction: row; overflow-x: auto; }
+  .contenido { padding: 18px 16px; }
+}

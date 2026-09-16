@@ -72,6 +72,24 @@ const CALENDARIO_LABORAL = construirCalendario(
   FERIADOS.map(([fecha]) => fecha),
 );
 
+/**
+ * El plazo que quedo grabado en la orden.
+ *
+ * Mientras esta abierta, el del estado en que esta. Al cerrarse NO se borra:
+ * se conserva el del ultimo estado vivo, que es lo que se le prometio al
+ * cliente. Sin ese dato el indicador de cumplimiento sale siempre 0 de 0,
+ * porque no hay contra que comparar la fecha de entrega.
+ */
+function plazoVigenteAlCerrar(
+  estados: readonly EstadoOrden[], momentos: readonly Date[], esFinal: boolean,
+): Date {
+  const indice = esFinal && estados.length > 1 ? estados.length - 2 : estados.length - 1;
+  const estado = estados[indice]!;
+  return sumarHorasLaborables(
+    momentos[indice]!, plazoDe.get(estado) ?? 24, CALENDARIO_LABORAL,
+  );
+}
+
 export async function sembrarOrdenes(
   cliente: PoolClient,
   contexto: ContextoSiembra,
@@ -126,6 +144,27 @@ export async function sembrarOrdenes(
     const momentos: Date[] = [fechaRecepcion];
     for (const horas of brincos) momentos.push(sumarHoras(momentos.at(-1)!, horas));
 
+    // El ultimo tramo de una orden cerrada se estira o se acorta contra su
+    // plazo, igual que se hace con las vivas. Sin esto, la duracion sale del
+    // rango de HORAS_POR_ESTADO en tiempo corrido, el plazo esta en horas
+    // LABORABLES —que en corrido se estiran casi al doble— y entonces
+    // ninguna orden cerrada llega tarde jamas: el indicador de cumplimiento
+    // marcaria 100 % siempre, que es tanto como no medir nada.
+    if (esFinal && momentos.length > 1) {
+      const estadoPrevio = cadena.estados[cadena.estados.length - 2]!;
+      const factor = azar.elegirPonderado([[0.75, 72], [1.6, 28]]);
+      const cierre = sumarHorasLaborables(
+        momentos[momentos.length - 2]!,
+        Math.max(0.5, (plazoDe.get(estadoPrevio) ?? 24) * factor),
+        CALENDARIO_LABORAL,
+      );
+      // Sin pasarse de la ventana sembrada: una entrega en el futuro no
+      // existe, por mas que el reparto quede bonito.
+      momentos[momentos.length - 1] = cierre <= contexto.finVentana
+        ? cierre
+        : momentos[momentos.length - 1]!;
+    }
+
     const tecnico = cadena.estados.includes(ESTADO_ORDEN.ASIGNADA)
       ? azar.elegir(cadena.nacioEnRuta ? tecnicosRuta : tecnicosPlanta)
       : null;
@@ -161,7 +200,7 @@ export async function sembrarOrdenes(
       cadena.nacioEnRuta ? zona.id : null,
       cargoVisita, cobertura.regla.id,
       azar.elegir(FALLAS_REPORTADAS), fechaRecepcion, fechaEstadoDesde,
-      esFinal ? null : sumarHorasLaborables(fechaEstadoDesde, plazoDe.get(estadoFinal) ?? 24, CALENDARIO_LABORAL),
+      plazoVigenteAlCerrar(cadena.estados, momentos, esFinal),
       estadoFinal === ESTADO_ORDEN.ENTREGADA ? fechaEstadoDesde : null,
       total, levantadaEnCampo,
       estadoFinal === ESTADO_ORDEN.ANULADA ? azar.elegir(MOTIVOS_ANULACION) : null,

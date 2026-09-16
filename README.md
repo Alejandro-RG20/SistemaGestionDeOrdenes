@@ -3,10 +3,24 @@
 Taller ServiTotal del distrito VI de Managua, centro de servicio postventa de
 Grupo Unicomer (La Curacao, Almacenes Tropigas, RadioShack).
 
-**Estado del proyecto: etapas 1 a 6 construidas.** Migraciones, datos de
-prueba, seguridad, clientes, artículos, motor de garantías, órdenes, agenda,
-inventario y el protocolo de sincronización. Las etapas 7 a 9 (aplicación
-móvil, cobros y portal) todavía no existen.
+**Sistema completo: las nueve etapas construidas.** Cuatro piezas —la API, el
+panel web, la aplicación móvil de los técnicos y el portal público del
+cliente— sobre una base de datos con doce meses de operación sembrados.
+
+**437 pruebas en verde:** 369 del servidor (unidad e integración contra
+PostgreSQL real), 46 de la aplicación móvil y 22 del panel.
+
+| Módulo | Qué resuelve |
+|---|---|
+| Seguridad | 9 roles, 44 permisos, JWT, dispositivos vinculados |
+| Clientes y artículos | fichas históricas, fusión de duplicados, datos sensibles auditados |
+| Garantías | motor con Especificación y Estrategia sobre reglas versionadas |
+| Órdenes | máquina de 13 estados, responsable único, plazos en horas laborables |
+| Agenda | visitas sin doble programación |
+| Inventario | movimientos como fuente de verdad, bodegas móviles, liberación automática |
+| Sincronización | cola idempotente, dos colas, nada se descarta |
+| Cobros | expedientes contra marca y póliza, bloqueo por evidencia (RF-57) |
+| Panel y portal | bandeja de avisos, indicadores y consulta pública del cliente |
 
 ## Puesta en marcha
 
@@ -27,12 +41,19 @@ npm run sembrar               # genera el juego de datos de prueba
 | `npm run migrar` | Aplica las migraciones pendientes, cada una en su transacción |
 | `npm run migrar:estado` | Muestra qué migraciones están aplicadas, pendientes o alteradas |
 | `npm run sembrar` | Vacía y regenera los datos de prueba |
-| `npm run prueba` | Todas las pruebas (las de integración necesitan PostgreSQL) |
-| `npm run prueba:unidad` | Solo las pruebas que no necesitan base de datos |
+| `npm run prueba` | Pruebas del servidor (las de integración necesitan PostgreSQL) |
+| `npm run prueba:movil` | Pruebas de la aplicación móvil |
+| `npm run prueba:panel` | Pruebas del panel web |
+| `npm run panel` | Arranca el panel en `localhost:5173`, con proxy a la API |
 | `npm run verificar-tipos` | Compila `compartido/` y `servidor/` |
 
 Las pruebas de integración crean y destruyen la base `servitotal_pruebas`
 (configurable con `BD_NOMBRE_PRUEBAS`). Nunca tocan la base de desarrollo.
+
+El sistema son cuatro piezas: la **API**, el **panel web** (`npm run panel`),
+la **aplicación móvil** (`npm run iniciar --workspace movil`, con Expo) y el
+**portal público del cliente**, que vive dentro del panel en `/consulta` y no
+pide cuenta.
 
 ## Estructura
 
@@ -56,7 +77,11 @@ movil/src/sincronizacion/     las dos colas, el motor y la captura de evidencia
 movil/src/dominio/            constructores de acciones y flujo de campo
 movil/src/app/                coordinador y armado de la aplicación
 movil/src/pantallas/          siete pantallas
-panel/                        (etapa 9)
+panel/src/api/                cliente de la API del panel
+panel/src/sesion/             tokens, contexto y que ve cada rol en el menu
+panel/src/pantallas/          bandeja, ordenes, clientes, inventario,
+                              excepciones, cobros, indicadores, administracion
+                              y el portal publico del cliente
 ```
 
 ## La API
@@ -113,6 +138,9 @@ identificador.
 | `POST /expedientes/:id/estado` | `cobros.expediente.enviar` |
 | `GET /pagos`, `POST /ordenes/:id/pagos` | `cobros.pago.registrar` |
 | `GET /cobros/indicadores` | `cobros.indicadores.consultar` |
+| `GET /avisos` | sesión válida; el contenido lo deciden sus permisos |
+| `GET /indicadores/operacion` | `ordenes.consultar` |
+| `GET /portal/ordenes/:numero?telefono=` | **público**, con límite de peticiones |
 
 No hay ruta `DELETE` para ningún registro del negocio: nada se elimina, se
 desactiva con motivo escrito.
@@ -205,9 +233,12 @@ viernes 07:00–20:00 y sábado 07:00–17:00; el domingo no figura en la tabla.
 Managua no cambia de hora, así que el desfase es fijo (UTC−6); si alguna vez
 hubiera un centro en otro huso, el desfase tendría que salir de `centro`.
 
-Las **alertas son consulta, no notificación**: `GET /ordenes/alertas`
-devuelve lo vencido y lo que está dentro de su ventana de aviso. Nadie manda
-correos ni mensajes todavía.
+Las **alertas son consulta, no notificación**, y eso quedó así por decisión
+del negocio: `GET /ordenes/alertas` devuelve lo vencido y lo que está dentro
+de su ventana de aviso, y desde la etapa 9 todo eso desemboca en la bandeja
+del panel. **No se manda ni un correo ni un mensaje**: el responsable entra al
+sistema y ve cómo va la cosa. La consecuencia de esa decisión —y lo que hubo
+que hacer para que fuera fiable— está en «El panel web».
 
 ## Inventario
 
@@ -452,6 +483,9 @@ Cubre los últimos doce meses de operación.
 | `repuesto` | 309 | catálogo declarado, no generado al azar; 24 piezas universales |
 | `expediente_cobro` | ~8 330 | ~670 bloqueados por evidencia faltante |
 | `usuario` | 37 | las personas del centro; ninguna cuenta sin dueño |
+
+Las órdenes cerradas conservan el plazo que estaba vigente al cerrarse, de
+modo que el cumplimiento se puede medir: da **71,4 %**.
 
 El reparto imita un año real: 28 500 órdenes cerradas y unas 1 500 vivas,
 que a 80–150 órdenes diarias son unos doce días de trabajo en curso. Unas
@@ -819,3 +853,173 @@ reconciliara el informe de cumplimiento y encontrara que ninguna orden llega
 nunca a su plazo exacto. Ahora el mismo instante sella el estado y calcula el
 vencimiento, en la creación y en cada transición, y `minutosDelDia` cuenta
 hasta el milisegundo.
+
+## El panel web
+
+Es la etapa 9. React con Vite, una hoja de estilos y `react-router`; sin
+framework de componentes. El panel lo usan nueve roles en computadoras del
+centro, muchas veces viejas, y cargar 300 KB de CSS para dibujar tablas y
+formularios sería cobrarle al navegador un peaje por nada. Compilado pesa
+**216 KB de JavaScript y 5,4 KB de CSS**.
+
+### La bandeja: cómo se resolvió «se notifica al responsable»
+
+El negocio decidió que **el sistema no empuja nada** — ni correo ni mensaje.
+Notificar significa que cuando la persona entra al panel, lo que le toca está
+ahí esperándola.
+
+Eso tiene una consecuencia técnica que conviene entender: **la bandeja no es
+una tabla de notificaciones**, se calcula en el momento contra el estado vivo.
+Una tabla obligaría a marcar leído, a purgar, y sobre todo a mantenerla
+sincronizada con la realidad: una orden que dejó de estar vencida porque
+alguien la movió seguiría gritando hasta que un proceso la limpiara.
+Calculándola, eso no puede pasar — **si el aviso sigue ahí es porque el
+problema sigue ahí**.
+
+Y pone toda la carga en una cosa: que la bandeja sea creíble. Si le muestra a
+cada quien los problemas de los demás se vuelve ruido, se deja de mirar, y
+siendo el único canal, dejar de mirarla es quedarse sin aviso. De ahí dos
+reglas:
+
+1. **Cada grupo se muestra sólo a quien puede hacer algo con él.** El permiso
+   decide, no el rol: quien no puede resolver excepciones no las ve.
+2. **Las órdenes son las suyas.** Quien no tiene mando sobre el taller ve las
+   que tiene a su cargo o asignadas; las jefaturas ven todas, porque destrabar
+   lo de otros es justamente su trabajo.
+
+Cada grupo dice además **por qué** le aparece a esa persona, y cada renglón
+lleva al sitio donde se resuelve. El contador de críticos vive en el menú y se
+refresca cada tres minutos: un aviso que llega cuatro minutos tarde no cambia
+nada, y una conexión abierta todo el día por cada puesto del centro, sí.
+
+Nueve tipos de aviso: órdenes vencidas y por vencer, trabajo de campo sin
+conciliar, expedientes bloqueados, expedientes sin respuesta, órdenes
+cobrables sin expediente, repuestos bajo mínimo y solicitudes pendientes.
+
+### El portal público
+
+`/consulta` queda **fuera de la sesión**: el cliente no tiene cuenta y pedirle
+una para saber si su refrigeradora está lista es la forma más segura de que
+llame por teléfono, que es el trabajo que el portal viene a quitarle al centro.
+Se identifica con **número de orden y teléfono**, y vale el teléfono vigente o
+el que quedó congelado en la orden (RF-66) — la gente cambia de número y no
+tiene por qué recordar cuál dio hace tres semanas. Se compara por dígitos, así
+que el formato con que se escriba no decide si alguien puede ver su orden.
+
+Lo que importa de este endpoint es **lo que no devuelve**: ni teléfono, ni
+dirección, ni nombre completo, ni la falla diagnosticada, ni montos, ni quién
+es el técnico. El nombre va en iniciales para que reconozca su orden sin
+exponerlo, y hay una prueba que recorre la respuesta buscando esos campos.
+
+Los trece estados internos se cuentan como **cinco etapas** — recibido, en
+revisión, en espera, en reparación, listo — porque `en_cola_taller` no le dice
+nada a quien dejó su refrigeradora. Y cuando la orden espera autorización, el
+texto dice claramente que **la pelota la tiene el cliente**.
+
+Dos decisiones de seguridad:
+
+- **No se distingue «no existe» de «no es suya».** El mismo mensaje para los
+  dos casos; si dijeran cosas distintas, probando números con un teléfono
+  cualquiera se sabría qué órdenes existen.
+- **Veinte consultas por minuto por origen.** Más que suficiente para una
+  persona, y suficiente freno para que la consulta no se convierta en un
+  raspador de datos ajenos.
+
+### Indicadores
+
+Sin gráficos, a propósito. Estos números se leen para decidir y para
+discutirlos con una marca; una tabla se compara, se ordena y se copia a un
+correo, y una barra de colores no.
+
+Cumplimiento de plazo, órdenes abiertas por estado, **dónde se atasca el
+trabajo** (horas promedio por estado), productividad por técnico,
+**artículos que vuelven** (RF-72, contados por artículo y no por cliente: es
+el aparato el que falla otra vez) y la recuperación por marca.
+
+**El cumplimiento obligó a un cambio.** Hasta ahora, al cerrarse una orden se
+borraba su `plazo_vence_en`. Eso perdía el único registro de lo que se le
+había prometido al cliente, y el indicador salía invariablemente *0 de 0*: no
+había contra qué comparar la fecha de entrega. Ahora **al cerrar se conserva
+el último plazo vigente**. Es inocuo porque todo lo que pregunta «¿está
+vencida?» ya excluye los estados finales, y a cambio la promesa queda
+registrada, que es justo lo que este sistema hace con todo lo demás (RN-22).
+
+Mide una cosa concreta y conviene saber cuál: **si la entrega ocurrió dentro
+del plazo del último estado vivo**. Una orden que se atrasó en diagnóstico y
+recuperó después cuenta como cumplida. Medir «¿incumplió algún plazo en todo
+su recorrido?» exigiría recorrer la bitácora estado por estado contra el
+calendario laboral de cada uno, y eso es un informe, no una pantalla.
+
+### Detalles que no son estéticos
+
+- **Los filtros viven en la URL.** Quien atiende teléfono puede mandarle a la
+  jefatura el enlace de «las vencidas» sin explicar qué botones apretar, y
+  volver atrás devuelve la búsqueda anterior.
+- **Los filtros son los que el servidor admite de verdad**, ni uno más. Una
+  caja de búsqueda libre que el backend ignora es peor que no tenerla: la
+  gente teclea, no pasa nada, y deja de confiar en la pantalla.
+- **El estado nunca se comunica sólo por color.** Siempre lleva texto: el
+  daltonismo no es raro y el taller no tiene luz de oficina.
+- **Los mensajes de error del servidor se muestran tal cual.** Del otro lado
+  ya se redactaron para que los lea una persona; convertirlos en «Error 422»
+  sería deshacer ese trabajo. Se nota sobre todo al ingresar: cuando una
+  cuenta se bloquea por intentos fallidos, el servidor lo dice con todas las
+  letras.
+- **Los tokens van en `sessionStorage`, no en `localStorage`.** Las máquinas
+  del centro las comparten varias personas por turno; una sesión que sobrevive
+  a cerrar el navegador es una sesión que el siguiente turno hereda sin
+  saberlo.
+- **La renovación de sesión es transparente.** Aquí el usuario está mirando:
+  si el token vence a media tarde no puede perder lo que tenía en pantalla.
+  Sólo se cierra sesión cuando el refresco tampoco vale.
+
+## Decisiones de la etapa 9
+
+- **La bandeja no exige un permiso propio.** Cualquiera con sesión la tiene, y
+  lo que ve dentro lo deciden sus permisos grupo por grupo. Un permiso de
+  entrada sólo lograría que a quien no lo tuviera se le ocultara también lo
+  suyo.
+- **Los indicadores exigen `ordenes.consultar` y no un permiso nuevo.** Son
+  agregados de lo que quien entra ya puede ver orden por orden; inventar un
+  permiso aparte sólo lograría que la jefatura tuviera que pedírselo a sí
+  misma.
+- **El portal vive en la misma aplicación que el panel.** Es una sola pantalla:
+  desplegar un segundo sitio por ella sería más infraestructura que producto.
+- **Ocultar una sección no es control de acceso**, y el código lo dice donde se
+  decide el menú. El servidor comprueba el permiso en cada petición; esto sólo
+  evita que a alguien se le llene la pantalla de secciones que le van a
+  responder 403.
+- **El limitador de peticiones es en memoria del proceso.** Con un solo
+  servidor —que es el caso del centro— alcanza. Si algún día hay varios detrás
+  de un balanceador hay que moverlo a un almacén compartido, y por eso está
+  aparte y no incrustado en la ruta.
+- **Las pruebas del panel cubren el cliente de la API y las reglas del menú**,
+  no los componentes. Lo que rompe el trabajo del centro es pedirle algo mal al
+  servidor o enseñarle a alguien lo que no le toca, no un margen de diez
+  píxeles.
+
+### Cuatro cosas que aparecieron al levantar el sistema completo
+
+Arrancar la API, sembrar y recorrer el sistema de punta a punta destapó lo que
+ninguna prueba unitaria iba a destapar:
+
+1. **El `.env` no lo leía nadie.** El README mandaba copiar `.env.ejemplo` a
+   `.env` y ningún proceso lo cargaba: la puesta en marcha documentada
+   sencillamente no funcionaba. Ahora se carga con `process.loadEnvFile`, que
+   trae Node desde la 20.12, sin sumar una dependencia para parsear cuatro
+   líneas. Lo que ya está en el entorno sigue ganando sobre el archivo.
+2. **El cumplimiento de plazo salía 0 de 0**, por lo del plazo borrado al
+   cerrar. Explicado arriba.
+3. **Y después salía 100 % de 24 000.** El mecanismo ya funcionaba, pero la
+   siembra construía las órdenes cerradas de modo que ninguna llegaba tarde
+   jamás: la duración salía en horas corridas y el plazo estaba en horas
+   laborables, que en corrido se estiran casi al doble. Un taller que nunca
+   falla no sirve para probar nada, así que el último tramo de una orden
+   cerrada ahora se estira o se acorta contra su plazo igual que ya se hacía
+   con las vivas. El juego de datos da **71,4 % de cumplimiento**, que es una
+   cifra con la que se puede trabajar.
+4. **Y conservar el plazo dejó un borde suelto:** una orden entregada hacía un
+   año pasaba a figurar como `vencida: true` en su ficha, porque la bandera se
+   calculaba sólo con las horas restantes. Ahora `vencida` y `enAlerta` son
+   falsas en los estados finales, igual que ya lo asumían todas las consultas
+   SQL. Se cerró antes de que llegara a ninguna pantalla.

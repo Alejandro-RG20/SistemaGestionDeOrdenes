@@ -260,13 +260,22 @@ export async function aplicarTransicion(
     motivoAnulacion: string | null; marcaEntrega: boolean; modificadoPor: string;
     /** El mismo instante con el que se calculo el plazo nuevo. */
     momentoCambio: Date;
+    /**
+     * Al cerrar, el plazo NO se borra: se conserva el ultimo vigente.
+     *
+     * Borrarlo perdia el unico registro de lo que se le prometio al cliente,
+     * y sin el no habia forma de medir si el taller cumplio: el indicador de
+     * cumplimiento salia 0 de 0 siempre. Conservarlo es inocuo porque todo
+     * lo que pregunta "¿esta vencida?" ya excluye los estados finales.
+     */
+    conservarPlazo: boolean;
   },
 ): Promise<void> {
   await ejecutor.query(
     `UPDATE orden_servicio SET
         estado = $2::estado_orden,
         fecha_estado_desde = $9,
-        plazo_vence_en = $3,
+        plazo_vence_en = CASE WHEN $10::boolean THEN plazo_vence_en ELSE $3 END,
         id_responsable_actual = $4,
         modalidad = coalesce($5::modalidad_servicio, modalidad),
         motivo_anulacion = coalesce($6, motivo_anulacion),
@@ -275,7 +284,7 @@ export async function aplicarTransicion(
       WHERE id = $1`,
     [datos.idOrden, datos.estadoNuevo, datos.plazoVenceEn, datos.idResponsableActual,
       datos.modalidadNueva, datos.motivoAnulacion, datos.marcaEntrega, datos.modificadoPor,
-      datos.momentoCambio],
+      datos.momentoCambio, datos.conservarPlazo],
   );
 }
 

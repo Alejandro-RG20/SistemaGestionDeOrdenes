@@ -105,7 +105,8 @@ export async function mover(
       && peticion.hacia === ESTADO_ORDEN.EN_COLA_TALLER;
 
     const calendario = await servicioAgenda.obtenerCalendarioLaboral(fila.id_centro, cliente);
-    const plazo = definicionDe(peticion.hacia).esFinal
+    const cierra = definicionDe(peticion.hacia).esFinal;
+    const plazo = cierra
       ? null
       : await repositorio.buscarPlazo(peticion.hacia, fila.tipo_garantia, cliente);
 
@@ -125,6 +126,9 @@ export async function mover(
       marcaEntrega: peticion.hacia === ESTADO_ORDEN.ENTREGADA,
       modificadoPor: actor.id,
       momentoCambio,
+      // Al cerrar se conserva el ultimo plazo: es el registro de lo que se
+      // prometio, y sin el no se puede medir si se cumplio.
+      conservarPlazo: cierra,
     });
 
     await repositorio.insertarEvento(cliente, {

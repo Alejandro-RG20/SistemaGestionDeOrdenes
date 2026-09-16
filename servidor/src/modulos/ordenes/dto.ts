@@ -1,4 +1,5 @@
 /** Filas de orden y su traduccion a los contratos publicos. */
+import { esEstadoFinal } from '@servitotal/compartido';
 import type {
   EstadoOrden, EventoDeOrden, ModalidadServicio, NotaDeCorreccion, ResumenOrden, TipoGarantia,
 } from '@servitotal/compartido';
@@ -83,8 +84,13 @@ export function aResumenOrden(
     fechaEstadoDesde: fila.fecha_estado_desde.toISOString(),
     plazoVenceEn: fila.plazo_vence_en?.toISOString() ?? null,
     horasParaVencer,
-    vencida: horasParaVencer !== null && horasParaVencer < 0,
-    enAlerta: horasParaVencer !== null && horasParaVencer >= 0
+    // Una orden cerrada conserva el plazo que estaba vigente al cerrarse
+    // —es el registro de lo prometido, y contra el se mide el
+    // cumplimiento—, pero NO esta vencida: ya no corre nada. Sin esta
+    // condicion, cada orden entregada hace un ano figuraria en rojo.
+    vencida: !esEstadoFinal(fila.estado) && horasParaVencer !== null && horasParaVencer < 0,
+    enAlerta: !esEstadoFinal(fila.estado)
+      && horasParaVencer !== null && horasParaVencer >= 0
       && fila.horas_alerta !== null && horasParaVencer <= fila.horas_alerta,
     total: Number(fila.total),
   };

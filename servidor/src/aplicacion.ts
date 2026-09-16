@@ -18,6 +18,9 @@ import { rutasDeInventario } from './modulos/inventario/rutas.js';
 import { rutasDeSincronizacion } from './modulos/sincronizacion/rutas.js';
 import { rutasDeCampo } from './modulos/campo/rutas.js';
 import { rutasDeCobros } from './modulos/cobros/rutas.js';
+import { rutasDeAvisos } from './modulos/avisos/rutas.js';
+import { rutasDeIndicadores } from './modulos/indicadores/rutas.js';
+import { rutasDelPortal } from './modulos/portal/rutas.js';
 
 export const RAIZ_API = '/api/v1';
 
@@ -36,6 +39,10 @@ export function construirAplicacion(): Express {
   });
 
   aplicacion.use(RAIZ_API, rutasPublicasDeSeguridad());
+  // El portal de consulta del cliente es publico a proposito: pedirle cuenta
+  // a quien solo quiere saber si su articulo esta listo es la forma mas
+  // segura de que llame por telefono en vez de consultar.
+  aplicacion.use(RAIZ_API, rutasDelPortal());
 
   // A partir de aqui, toda ruta exige sesion valida.
   const exigirSesion = crearExigirSesion(cargarUsuarioAutenticado);
@@ -49,6 +56,8 @@ export function construirAplicacion(): Express {
   aplicacion.use(RAIZ_API, exigirSesion, rutasDeSincronizacion());
   aplicacion.use(RAIZ_API, exigirSesion, rutasDeCampo());
   aplicacion.use(RAIZ_API, exigirSesion, rutasDeCobros());
+  aplicacion.use(RAIZ_API, exigirSesion, rutasDeAvisos());
+  aplicacion.use(RAIZ_API, exigirSesion, rutasDeIndicadores());
 
   aplicacion.use(manejarRutaDesconocida);
   aplicacion.use(manejarErrores);

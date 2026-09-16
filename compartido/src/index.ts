@@ -19,3 +19,6 @@ export * from './api/inventario.js';
 export * from './api/sincronizacion.js';
 export * from './api/campo.js';
 export * from './api/cobros.js';
+export * from './api/avisos.js';
+export * from './api/portal.js';
+export * from './api/indicadores.js';

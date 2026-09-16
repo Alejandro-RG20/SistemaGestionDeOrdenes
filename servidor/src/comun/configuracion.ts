@@ -1,5 +1,35 @@
 /** Lectura y validacion de la configuracion de entorno. Falla temprano y claro. */
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ErrorConfiguracion } from './errores.js';
+
+/**
+ * Carga el `.env` de la raiz del repositorio, si existe.
+ *
+ * El README manda copiar `.env.ejemplo` a `.env`, asi que alguien tiene que
+ * leerlo. Se usa `process.loadEnvFile`, que trae Node desde la 20.12, en vez
+ * de sumar una dependencia para parsear cuatro lineas.
+ *
+ * Lo que YA esta en el entorno gana sobre el archivo —esa es la semantica de
+ * `loadEnvFile`— y por eso un `BD_NOMBRE=otra npm run migrar` sigue mandando
+ * sobre lo que diga el `.env`.
+ */
+function cargarArchivoDeEntorno(): void {
+  const aqui = path.dirname(fileURLToPath(import.meta.url));
+  // comun/ -> src/ -> servidor/ -> raiz del repositorio
+  const raiz = path.resolve(aqui, '..', '..', '..');
+  const archivo = path.join(raiz, '.env');
+  if (!existsSync(archivo)) return;
+  try {
+    process.loadEnvFile(archivo);
+  } catch {
+    // Un .env ilegible no puede impedir arrancar con variables de entorno
+    // puestas a mano, que es como corre en produccion.
+  }
+}
+
+cargarArchivoDeEntorno();
 
 export interface ConfiguracionBaseDatos {
   readonly host: string;
