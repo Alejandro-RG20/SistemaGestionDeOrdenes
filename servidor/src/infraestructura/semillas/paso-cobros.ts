@@ -55,7 +55,12 @@ export async function sembrarCobros(
     }
 
     const cobrable = orden.tipoGarantia === TIPO_GARANTIA.PROVEEDOR || orden.tipoGarantia === TIPO_GARANTIA.ADICIONAL;
-    if (entregada && cobrable) {
+    // Una parte de las ordenes cobrables queda SIN expediente: es la cola de
+    // trabajo del gestor de cobros. Sembrarlas todas conformadas pintaria un
+    // taller donde nadie se atrasa nunca, y el modulo no tendria sobre que
+    // trabajar el primer dia.
+    const pendienteDeConformar = azar.booleano(0.08);
+    if (entregada && cobrable && !pendienteDeConformar) {
       const esProveedor = orden.tipoGarantia === TIPO_GARANTIA.PROVEEDOR;
       const estado = azar.elegirPonderado([
         [ESTADO_EXPEDIENTE.PAGADO, 46], [ESTADO_EXPEDIENTE.ACEPTADO, 14],

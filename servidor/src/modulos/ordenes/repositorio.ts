@@ -211,6 +211,15 @@ export async function insertarOrden(
     idResponsableActual: string; telefonoContacto: string; direccionServicio: string | null;
     referenciaUbicacion: string | null; idZona: string | null; cargoVisita: number;
     fallaReportada: string; plazoVenceEn: Date | null; levantadaEnCampo: boolean; creadoPor: string;
+    /**
+     * El instante desde el que se cuenta el plazo. Se sella explicitamente,
+     * en vez de dejar el `DEFAULT now()` de la tabla, porque el plazo se
+     * calculo con el reloj de la aplicacion: si el inicio lo pusiera
+     * PostgreSQL medio segundo despues, `plazo_vence_en` no seria
+     * exactamente las horas laborables prometidas desde `fecha_estado_desde`,
+     * y ese desfase se arrastraria a cada informe de cumplimiento.
+     */
+    momentoRecepcion: Date;
   },
 ): Promise<{ id: string; numero: number }> {
   // El numero NO se envia: lo asigna la secuencia del servidor.
@@ -219,15 +228,16 @@ export async function insertarOrden(
        (id, id_centro, id_cliente, id_articulo, modalidad, estado, tipo_garantia,
         id_regla_cobertura, id_responsable_actual, telefono_contacto, direccion_servicio,
         referencia_ubicacion, id_zona, cargo_visita, falla_reportada, plazo_vence_en,
-        levantada_en_campo, creado_por)
+        levantada_en_campo, creado_por, fecha_recepcion, fecha_estado_desde)
      VALUES (coalesce($1::uuid, uuid_generate_v4()), $2, $3, $4, $5::modalidad_servicio,
-             'registrada', $6::tipo_garantia, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+             'registrada', $6::tipo_garantia, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+             $18, $18)
      RETURNING id, numero`,
     [datos.id, datos.idCentro, datos.idCliente, datos.idArticulo, datos.modalidad,
       datos.tipoGarantia, datos.idReglaCobertura, datos.idResponsableActual,
       datos.telefonoContacto, datos.direccionServicio, datos.referenciaUbicacion,
       datos.idZona, datos.cargoVisita, datos.fallaReportada, datos.plazoVenceEn,
-      datos.levantadaEnCampo, datos.creadoPor],
+      datos.levantadaEnCampo, datos.creadoPor, datos.momentoRecepcion],
   );
   return rows[0]!;
 }
@@ -248,21 +258,24 @@ export async function aplicarTransicion(
     idOrden: string; estadoNuevo: string; plazoVenceEn: Date | null;
     idResponsableActual: string | null; modalidadNueva: string | null;
     motivoAnulacion: string | null; marcaEntrega: boolean; modificadoPor: string;
+    /** El mismo instante con el que se calculo el plazo nuevo. */
+    momentoCambio: Date;
   },
 ): Promise<void> {
   await ejecutor.query(
     `UPDATE orden_servicio SET
         estado = $2::estado_orden,
-        fecha_estado_desde = now(),
+        fecha_estado_desde = $9,
         plazo_vence_en = $3,
         id_responsable_actual = $4,
         modalidad = coalesce($5::modalidad_servicio, modalidad),
         motivo_anulacion = coalesce($6, motivo_anulacion),
-        fecha_entrega = CASE WHEN $7::boolean THEN now() ELSE fecha_entrega END,
+        fecha_entrega = CASE WHEN $7::boolean THEN $9 ELSE fecha_entrega END,
         modificado_en = now(), modificado_por = $8
       WHERE id = $1`,
     [datos.idOrden, datos.estadoNuevo, datos.plazoVenceEn, datos.idResponsableActual,
-      datos.modalidadNueva, datos.motivoAnulacion, datos.marcaEntrega, datos.modificadoPor],
+      datos.modalidadNueva, datos.motivoAnulacion, datos.marcaEntrega, datos.modificadoPor,
+      datos.momentoCambio],
   );
 }
 

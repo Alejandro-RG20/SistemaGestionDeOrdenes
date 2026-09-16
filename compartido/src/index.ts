@@ -18,3 +18,4 @@ export * from './api/agenda.js';
 export * from './api/inventario.js';
 export * from './api/sincronizacion.js';
 export * from './api/campo.js';
+export * from './api/cobros.js';

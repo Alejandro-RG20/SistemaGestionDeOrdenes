@@ -7,37 +7,20 @@
  * existencia de repuesto util: lo retirado esta danado y no se vuelve a
  * instalar.
  *
- * Q12 sigue abierta: no hay catalogo corporativo confirmado, asi que los
- * codigos RPT-##### son sinteticos y estan pensados para ser reemplazados.
+ * El catalogo de repuestos NO se genera al azar: sale de
+ * `catalogo-repuestos.ts`, que declara las familias de pieza que el taller
+ * repone de verdad y que marca fabrica cada categoria. Lo unico aleatorio
+ * es el precio dentro del rango de su familia, que es lo que de verdad
+ * varia entre proveedores.
  */
 import type { PoolClient } from 'pg';
 import { CODIGO_ROL, TIPO_BODEGA, VIA_ABASTECIMIENTO } from '@servitotal/compartido';
 import { copiarFilas } from './insercion.js';
+import { generarCatalogo } from './catalogo-repuestos.js';
 import type { ContextoSiembra, ReferenciaBodega, ReferenciaRepuesto } from './contexto.js';
 
 export const NOMBRE_BODEGA_CENTRAL = 'Bodega central';
 export const NOMBRE_BODEGA_PIEZAS = 'Bodega de piezas sustituidas';
-
-/** [familia, precio minimo, precio maximo, via de abastecimiento habitual] */
-const FAMILIAS: readonly (readonly [string, number, number, string])[] = [
-  ['Compresor hermetico', 3200, 9800, VIA_ABASTECIMIENTO.PEDIDO_PROVEEDOR],
-  ['Tarjeta electronica de control', 2400, 7600, VIA_ABASTECIMIENTO.PEDIDO_PROVEEDOR],
-  ['Termostato', 380, 1250, VIA_ABASTECIMIENTO.COMPRA_LOCAL],
-  ['Motor de ventilador', 850, 2600, VIA_ABASTECIMIENTO.COMPRA_LOCAL],
-  ['Bomba de desague', 620, 1900, VIA_ABASTECIMIENTO.COMPRA_LOCAL],
-  ['Banda de transmision', 180, 540, VIA_ABASTECIMIENTO.COMPRA_LOCAL],
-  ['Capacitor de arranque', 150, 480, VIA_ABASTECIMIENTO.COMPRA_LOCAL],
-  ['Resistencia calefactora', 420, 1400, VIA_ABASTECIMIENTO.COMPRA_LOCAL],
-  ['Sensor de temperatura', 240, 780, VIA_ABASTECIMIENTO.COMPRA_LOCAL],
-  ['Empaque de puerta', 560, 1850, VIA_ABASTECIMIENTO.PEDIDO_PROVEEDOR],
-  ['Valvula solenoide', 480, 1600, VIA_ABASTECIMIENTO.COMPRA_LOCAL],
-  ['Filtro secador', 120, 380, VIA_ABASTECIMIENTO.COMPRA_LOCAL],
-  ['Gas refrigerante R-134a', 780, 1600, VIA_ABASTECIMIENTO.COMPRA_LOCAL],
-  ['Perilla de mando', 90, 260, VIA_ABASTECIMIENTO.COMPRA_LOCAL],
-  ['Modulo de potencia inverter', 3600, 11200, VIA_ABASTECIMIENTO.PEDIDO_PROVEEDOR],
-];
-
-const CANTIDAD_REPUESTOS = 320;
 
 export async function sembrarInventarioBase(cliente: PoolClient, contexto: ContextoSiembra): Promise<void> {
   const { azar } = contexto;
@@ -66,21 +49,23 @@ export async function sembrarInventarioBase(cliente: PoolClient, contexto: Conte
   );
   contexto.bodegas = bodegas;
 
+  const porNombre = new Map(contexto.marcas.map((marca) => [marca.nombre, marca.id]));
   const repuestos: ReferenciaRepuesto[] = [];
   const filasRepuesto: unknown[][] = [];
-  for (let i = 0; i < CANTIDAD_REPUESTOS; i += 1) {
-    const [familia, precioMinimo, precioMaximo, via] = FAMILIAS[i % FAMILIAS.length]!;
-    const marca = contexto.marcas[i % contexto.marcas.length]!;
+
+  for (const articulo of generarCatalogo(contexto.marcas.map((marca) => marca.nombre))) {
     const repuesto: ReferenciaRepuesto = {
       id: azar.uuid(),
-      codigo: `RPT-${String(10_000 + i).padStart(5, '0')}`,
-      precio: azar.decimal(precioMinimo, precioMaximo),
-      viaAbastecimiento: via,
+      codigo: articulo.codigo,
+      precio: azar.decimal(articulo.precioMinimo, articulo.precioMaximo),
+      viaAbastecimiento: articulo.via,
     };
     repuestos.push(repuesto);
     filasRepuesto.push([
-      repuesto.id, repuesto.codigo, `${familia} ${marca.nombre} serie ${i % 40}`,
-      marca.id, 'u', repuesto.precio, azar.entero(1, 6), repuesto.viaAbastecimiento, true,
+      repuesto.id, repuesto.codigo, articulo.descripcion,
+      // Null cuando la pieza es universal: la marca la pone el articulo.
+      articulo.marca === null ? null : porNombre.get(articulo.marca) ?? null,
+      articulo.unidad, repuesto.precio, articulo.stockMinimo, repuesto.viaAbastecimiento, true,
     ]);
   }
 

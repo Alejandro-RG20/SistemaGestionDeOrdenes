@@ -109,15 +109,22 @@ export async function mover(
       ? null
       : await repositorio.buscarPlazo(peticion.hacia, fila.tipo_garantia, cliente);
 
+    // Un solo instante para el plazo nuevo y para el sello del estado: dos
+    // relojes distintos harian que el plazo no sea el que se prometio.
+    const momentoCambio = new Date();
+
     await repositorio.aplicarTransicion(cliente, {
       idOrden,
       estadoNuevo: peticion.hacia,
-      plazoVenceEn: plazo === null ? null : sumarHorasLaborables(new Date(), plazo.horas_maximas, calendario),
+      plazoVenceEn: plazo === null
+        ? null
+        : sumarHorasLaborables(momentoCambio, plazo.horas_maximas, calendario),
       idResponsableActual: await responsableDelNuevoEstado(peticion.hacia, actor, fila.id_tecnico, cliente),
       modalidadNueva: convierteATaller ? MODALIDAD_SERVICIO.TALLER : null,
       motivoAnulacion: peticion.hacia === ESTADO_ORDEN.ANULADA ? peticion.motivo ?? null : null,
       marcaEntrega: peticion.hacia === ESTADO_ORDEN.ENTREGADA,
       modificadoPor: actor.id,
+      momentoCambio,
     });
 
     await repositorio.insertarEvento(cliente, {

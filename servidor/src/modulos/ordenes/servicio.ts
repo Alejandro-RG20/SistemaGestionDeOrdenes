@@ -149,9 +149,12 @@ export async function crear(actor: Actor, peticion: PeticionCrearOrden): Promise
 
     const calendario = await servicioAgenda.obtenerCalendarioLaboral(actor.idCentro, cliente);
     const plazo = await repositorio.buscarPlazo(ESTADO_ORDEN.REGISTRADA, cobertura.tipo, cliente);
+    // Un solo instante para el plazo y para el sello de recepcion: si cada
+    // uno tomara su propia hora, el plazo no seria exactamente el prometido.
+    const momentoRecepcion = new Date();
     const plazoVenceEn = plazo === null
       ? null
-      : sumarHorasLaborables(new Date(), plazo.horas_maximas, calendario);
+      : sumarHorasLaborables(momentoRecepcion, plazo.horas_maximas, calendario);
 
     const creada = await repositorio.insertarOrden(cliente, {
       id: peticion.id ?? null,
@@ -171,6 +174,7 @@ export async function crear(actor: Actor, peticion: PeticionCrearOrden): Promise
       plazoVenceEn,
       levantadaEnCampo: peticion.levantadaEnCampo ?? false,
       creadoPor: actor.id,
+      momentoRecepcion,
     });
 
     await repositorio.insertarEvento(cliente, {

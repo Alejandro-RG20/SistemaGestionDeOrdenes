@@ -69,7 +69,14 @@ export function jornadaDe(local: Date, calendario: CalendarioLaboral): JornadaLa
 }
 
 export function minutosDelDia(local: Date): number {
-  return local.getUTCHours() * 60 + local.getUTCMinutes() + local.getUTCSeconds() / 60;
+  // Hasta el milisegundo, no hasta el segundo. Si se descartaran los
+  // milisegundos, el vencimiento calculado quedaria hasta un segundo antes
+  // de las horas prometidas contadas desde `fecha_estado_desde`, y el
+  // informe de cumplimiento arrastraria ese sesgo en todas las ordenes.
+  return local.getUTCHours() * 60
+    + local.getUTCMinutes()
+    + local.getUTCSeconds() / 60
+    + local.getUTCMilliseconds() / 60_000;
 }
 
 /** Medianoche local del dia siguiente. */

@@ -43,13 +43,14 @@ servidor/src/comun/           errores, transacciones, autorización, bitácora,
                               paginación, tokens, respuesta uniforme
 servidor/src/infraestructura/ conexión, ejecutor de migraciones, siembra
 servidor/src/modulos/         seguridad · clientes · articulos · garantias · ordenes
-                              agenda · inventario · sincronizacion · campo
+                              agenda · inventario · sincronizacion · campo · cobros
                               cada uno: controlador · servicio · repositorio · dto · esquemas
 servidor/src/dominio/garantias/  motor de garantías (Especificación y Estrategia)
 servidor/src/dominio/ordenes/    máquina de estados (patrón Estado)
 servidor/src/dominio/plazos/     cálculo en horas laborables
 servidor/src/dominio/inventario/ reglas de los movimientos
 servidor/src/dominio/sincronizacion/ resolución de conflictos
+servidor/src/dominio/cobros/     expediente, destinatario y monto reclamable
 movil/src/datos/              base local (SQLite), espejo de trabajo y puertos
 movil/src/sincronizacion/     las dos colas, el motor y la captura de evidencia
 movil/src/dominio/            constructores de acciones y flujo de campo
@@ -106,6 +107,12 @@ identificador.
 | `POST /evidencias/cargas`, `PATCH`/`GET .../:idCarga` | `campo.evidencia.cargar` |
 | `POST /evidencias/cargas/:idCarga/cerrar` | `campo.evidencia.cargar` |
 | `GET /ordenes/:id/evidencias` | `ordenes.consultar` |
+| `GET /campo/jornada` | `campo.sincronizar` |
+| `GET /expedientes`, `/expedientes/:id` | `cobros.expediente.conformar` |
+| `POST /ordenes/:id/expediente`, `POST /expedientes/:id/verificar` | `cobros.expediente.conformar` |
+| `POST /expedientes/:id/estado` | `cobros.expediente.enviar` |
+| `GET /pagos`, `POST /ordenes/:id/pagos` | `cobros.pago.registrar` |
+| `GET /cobros/indicadores` | `cobros.indicadores.consultar` |
 
 No hay ruta `DELETE` para ningún registro del negocio: nada se elimina, se
 desactiva con motivo escrito.
@@ -227,6 +234,41 @@ queda constancia en la bitácora de cada una. Se liberan por orden de llegada
 mientras la cantidad ingresada alcance: el pliego dice «todas las órdenes que
 lo esperaban», pero liberar cinco porque entraron dos unidades sería mentirle
 al taller.
+
+### El catálogo de repuestos
+
+`servidor/src/infraestructura/semillas/catalogo-repuestos.ts` **no es ruido
+generado**: declara las familias de pieza que un taller de línea blanca, aire
+y electrónica repone de verdad, y qué categorías fabrica cada marca. De ahí
+salen 309 SKU.
+
+Los códigos se leen sin manual — `REF-CMP-003` es *refrigeración, compresor,
+tercero* — y eso no es estética: un bodeguero que busca «todos los compresores
+de refrigeración» filtra por `REF-CMP`, mientras que un correlativo plano como
+`RPT-10284` obliga a consultar la pantalla para saber qué se tiene en la mano.
+
+Tres dimensiones del catálogo son decisiones de negocio, no adornos:
+
+- **Vía de abastecimiento.** Una pieza de compra local se consigue en Managua
+  el mismo día; una de pedido a proveedor se importa y tarda semanas. Eso
+  decide si la orden pasa a `en_reparacion` o se queda en
+  `esperando_repuesto`, y con ello el plazo que se le prometió al cliente.
+- **Pieza universal o de marca.** Un capacitor sirva la marca que sirva y se
+  cataloga una vez, sin marca; una tarjeta de LG no entra en una Mabe y se
+  cataloga una vez por marca. La distinción también importa al cobrar: un
+  repuesto de marca identifica al fabricante en el expediente; uno universal
+  no, y ahí la marca la pone el artículo.
+- **Stock mínimo.** El de una tarjeta importada de C$7 000 no puede ser el de
+  un empaque de C$300. Una prueba falla si alguien pone mínimo alto a algo
+  caro o importado.
+
+El catálogo tampoco inventa un compresor Sony ni una televisión Oster:
+`CATEGORIAS_POR_MARCA` dice qué hace cada fabricante, y pedir una pieza que la
+marca no produce es una orden parada dos semanas por nada.
+
+**Cuando el corporativo entregue su propia codificación de SKU, este archivo
+es lo único que cambia**: el código que genera viaja a `repuesto.codigo` y
+nada más lo interpreta.
 
 ### Una trampa de PostgreSQL que costó encontrar
 
@@ -407,7 +449,8 @@ Cubre los últimos doce meses de operación.
 | `diagnostico_item` | ~76 000 | mediciones tipificadas, con fuera de rango |
 | `movimiento_repuesto` | ~36 000 | fuente de verdad del inventario |
 | `visita` | ~9 400 | sin dos vigentes en la misma franja |
-| `expediente_cobro` | ~8 900 | ~750 bloqueados por evidencia faltante |
+| `repuesto` | 309 | catálogo declarado, no generado al azar; 24 piezas universales |
+| `expediente_cobro` | ~8 330 | ~670 bloqueados por evidencia faltante |
 | `usuario` | 37 | las personas del centro; ninguna cuenta sin dueño |
 
 El reparto imita un año real: 28 500 órdenes cerradas y unas 1 500 vivas,
@@ -415,6 +458,9 @@ que a 80–150 órdenes diarias son unos doce días de trabajo en curso. Unas
 180 de las activas están vencidas, para que el panel de jefaturas tenga qué
 mostrar, y ~14 000 órdenes tienen alguna evidencia obligatoria faltante,
 para que el bloqueo de expedientes tenga casos reales que detectar.
+
+Otras ~710 órdenes cobrables quedan **sin expediente conformado**: es la cola
+de trabajo del gestor de cobros el primer día.
 
 Todos los usuarios sembrados comparten la contraseña `ServiTotal.2026`,
 derivada con scrypt. **Son datos de prueba: no deben salir de un entorno de
@@ -637,3 +683,139 @@ perder el trabajo del técnico es la cola, no un botón mal alineado.
 - **La ubicación se adjunta sólo si el GPS la da rápido** (4 segundos). Bajo un
   techo de zinc puede tardar un minuto, y detener al técnico por una coordenada
   sería cambiar algo útil por algo accesorio.
+
+## Cobros: recuperarle a la marca lo que el cliente no pagó
+
+Es la etapa 8. El taller repara miles de artículos al año que el cliente no
+paga; lo que decide si eso es un servicio o una sangría es cuánto se le
+recupera al fabricante y a la aseguradora. Un **expediente de cobro** es la
+carpeta con la que se le reclama a ese tercero.
+
+### A quién se le cobra
+
+Tres tipos de garantía, tres bolsillos, y el sistema no puede confundirlos:
+
+| Garantía | Responde | Qué se abre |
+|---|---|---|
+| `proveedor` | la marca | expediente contra el fabricante |
+| `adicional` | la póliza | expediente contra la aseguradora |
+| `particular` | el cliente | ningún expediente: se registra un pago |
+| `por_validar` | nadie todavía | se resuelve la garantía primero |
+
+### La regla que existe todo el módulo para hacer cumplir
+
+> **RF-57: un expediente con evidencia incompleta no se envía.**
+
+No es burocracia. Un expediente que sale sin la foto de la placa de serie
+vuelve rechazado semanas después, con el artículo ya entregado y la evidencia
+imposible de conseguir; ahí el costo del repuesto se lo come el taller.
+Bloquear antes de enviar es más barato que reclamar dos veces.
+
+Y **no se consulta una bandera guardada** para saberlo: se vuelve a preguntar
+a `v_evidencia_faltante` en cada movimiento, porque entre que se conformó y
+que se envía pudo subir una foto — o caerse una. Cuando bloquea, el error no
+se limita a negarse: **enumera qué falta**, para que alguien pueda ir a
+buscarlo.
+
+### El monto sale de los datos, no de un supuesto
+
+```
+monto reclamado = repuestos consumidos + mano de obra + cargo de visita
+```
+
+Los repuestos, **al precio congelado del movimiento** (RN-22) y no al de hoy:
+si el compresor subió de C$6 000 a C$7 000 después de instalarlo, se reclama
+lo que costó entonces, que es lo que la factura respalda. El cargo de visita,
+sólo si el servicio fue a domicilio — cobrarle al fabricante un viaje que no
+se hizo es como una marca deja de pagar los que sí.
+
+**Límite conocido, y no disimulado.** No existe una tarifa de mano de obra
+parametrizada en el sistema, y en una orden de garantía de proveedor rara vez
+hay cotización — el cliente no autoriza lo que no paga. El módulo devuelve
+`manoObra: 0` y una advertencia visible en la ficha en lugar de inventar un
+valor.
+
+Tampoco se admite **teclearla** al conformar. Es tentador y estuvo escrito,
+pero el expediente se recalcula solo en cada paso y ninguna tabla guarda ese
+número: el primer recálculo lo borraba. Una casilla que borra lo que uno
+escribe es peor que no tenerla. Para reclamar mano de obra hay dos caminos, y
+los dos son decisiones del negocio: registrar la cotización también en las
+órdenes de garantía, o parametrizar una tarifa — lo segundo exige una tabla
+nueva y por tanto tocar el esquema.
+
+### El ciclo
+
+```
+en_conformacion ⇄ bloqueado_por_evidencia
+       ↓
+listo_para_enviar → enviado → aceptado → pagado
+                        ↓
+                    rechazado → en_conformacion
+```
+
+Un rechazo **no es el final**: se corrige lo que señaló el tercero y se vuelve
+a presentar. Eso es plata que de otro modo se pierde. Sólo `pagado` es final.
+
+Rechazar exige escribir el motivo — sin él nadie sabe qué corregir — y marcar
+pagado exige decir cuánto pagaron, porque la diferencia entre lo reclamado y
+lo cobrado es el indicador que mide si al taller le conviene reclamarle a esa
+marca.
+
+Hay **una sola puerta** para mover un expediente, `POST
+/expedientes/:id/estado`, igual que con las órdenes. Y no hay ruta para editar
+el monto a mano: se recalcula desde los datos con `/verificar`; si está mal,
+lo que está mal son los consumos o la cotización, y se corrigen allí.
+
+### Indicadores
+
+`GET /cobros/indicadores` da lo reclamado, lo cobrado, la tasa de
+recuperación, cuántos expedientes están bloqueados por evidencia, cuántos
+llevan días enviados sin respuesta, y **lo expuesto**: lo reclamado que
+todavía no entró y tampoco fue rechazado.
+
+El desglose por marca es el que importa para negociar: una marca que paga el
+40 % de lo que se le reclama está trasladando su garantía al taller, y esa
+conversación se tiene con el número delante.
+
+## Decisiones de la etapa 8
+
+- **El expediente se conforma sobre una orden entregada, no antes.** Mientras
+  el artículo sigue en el taller la reparación puede cambiar, y reclamar sobre
+  un costo que después se mueve es como se pierde credibilidad ante una marca.
+- **Una orden, un expediente.** Se le reclama a un solo tercero; intentar
+  conformar dos veces responde 409.
+- **El monto que sale es el de hoy, no el del día en que se conformó.** Cada
+  movimiento de estado recalcula antes. Un expediente conformado en enero y
+  enviado en marzo con el monto de enero es una diferencia que el fabricante
+  devuelve.
+- **Mover el expediente exige `cobros.expediente.enviar`; conformarlo y
+  consultarlo, `cobros.expediente.conformar`.** Lo que saca la carpeta del
+  centro y lo que anota el resultado no es la misma responsabilidad que
+  armarla.
+- **Se admite registrar un pago del cliente aunque la garantía la cubra la
+  marca.** El cliente puede pagar el cargo de visita o un repuesto excluido de
+  la cobertura; negarlo obligaría a cobrar por fuera del sistema, que es justo
+  lo que no se quiere.
+- **La siembra deja ~8 % de las órdenes cobrables sin expediente.** Es la cola
+  de trabajo del gestor de cobros. Sembrarlas todas conformadas pintaría un
+  taller donde nadie se atrasa nunca, y el módulo no tendría sobre qué
+  trabajar el primer día.
+- **Rechazar sin motivo lo rechaza el dominio, no el esquema de validación.**
+  La regla vive en la máquina de estados, que es donde se puede razonar sobre
+  ella junto con las demás.
+- **No hay casilla para teclear la mano de obra.** Ver arriba: se escribió, no
+  se persistía en ninguna tabla y el primer recálculo la borraba. Se quitó.
+
+### Una corrección que salió de esta etapa
+
+Al correr la suite apareció que `plazo_vence_en` no era exactamente las horas
+prometidas desde `fecha_estado_desde`: el plazo se calculaba con el reloj de
+la aplicación y el inicio lo sellaba `DEFAULT now()` de PostgreSQL medio
+segundo más tarde. Encima, la aritmética de horas laborables descartaba los
+milisegundos del instante de partida.
+
+Son décimas de segundo y nadie las habría notado — hasta que alguien
+reconciliara el informe de cumplimiento y encontrara que ninguna orden llega
+nunca a su plazo exacto. Ahora el mismo instante sella el estado y calcula el
+vencimiento, en la creación y en cada transición, y `minutosDelDia` cuenta
+hasta el milisegundo.
