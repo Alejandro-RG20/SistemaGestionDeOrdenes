@@ -12,7 +12,7 @@ import { Link } from 'react-router-dom';
 import type { ResumenCliente } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
-import { Cargando, Fallo, Vacio } from '../componentes/carga.js';
+import { Cargando, Fallo, Vacio } from '../componentes/piezas.js';
 import type { PaginaDeDatos } from '../api/cliente.js';
 
 /** Lo que se espera desde la ultima tecla. */
@@ -37,8 +37,8 @@ export function Clientes(): JSX.Element {
 
   return (
     <>
-      <h1>Clientes</h1>
-      <p className="subtitulo">
+      <h2 className="scr">Clientes</h2>
+      <p className="sub">
         Busque por nombre, identificacion o telefono. La busqueda ignora acentos y mayusculas.
       </p>
 
@@ -82,7 +82,7 @@ export function Clientes(): JSX.Element {
                   <td>
                     {cliente.nombres} {cliente.apellidos ?? ''}
                     {cliente.idClientePrincipal === null ? null : (
-                      <span className="estado estado-alerta" style={{ marginLeft: 8 }}>
+                      <span className="tag t-a" style={{ marginLeft: 8 }}>
                         fusionado
                       </span>
                     )}

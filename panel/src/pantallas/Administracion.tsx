@@ -12,7 +12,7 @@ import { useState } from 'react';
 import type { ResumenDispositivo, ResumenUsuario } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
-import { Cargando, Fallo, Vacio } from '../componentes/carga.js';
+import { Cargando, Fallo, Vacio } from '../componentes/piezas.js';
 import { ErrorDeApi, type PaginaDeDatos } from '../api/cliente.js';
 
 export function Administracion(): JSX.Element {
@@ -55,12 +55,12 @@ export function Administracion(): JSX.Element {
 
   return (
     <>
-      <h1>Administracion</h1>
-      <p className="subtitulo">
+      <h2 className="scr">Administracion</h2>
+      <p className="sub">
         No existe un rol de administrador aparte: esta jefatura administra el sistema.
       </p>
 
-      {error === null ? null : <div className="aviso aviso-error"><p>{error}</p></div>}
+      {error === null ? null : <div className="alert"><p>{error}</p></div>}
 
       <h2>Usuarios</h2>
       {usuarios.cargando ? <Cargando que="los usuarios" /> : null}
@@ -82,17 +82,17 @@ export function Administracion(): JSX.Element {
                 <td className="tenue">{usuario.rol.replace(/_/g, ' ')}</td>
                 <td>
                   {usuario.bloqueado ? (
-                    <span className="estado estado-critico">bloqueado</span>
+                    <span className="tag t-r">bloqueado</span>
                   ) : usuario.activo ? (
-                    <span className="estado estado-exito">activo</span>
+                    <span className="tag t-t">activo</span>
                   ) : (
-                    <span className="estado">desactivado</span>
+                    <span className="tag t-b">desactivado</span>
                   )}
                 </td>
                 <td>
                   {usuario.bloqueado ? (
                     <button
-                      type="button" className="boton boton-secundario" disabled={trabajando}
+                      type="button" className="btn" disabled={trabajando}
                       onClick={() => void desbloquear(usuario.id)}
                     >
                       Desbloquear
@@ -132,13 +132,13 @@ export function Administracion(): JSX.Element {
                   <td className="tenue">{dispositivo.modelo ?? '—'}</td>
                   <td>
                     {dispositivo.revocadoEn === null
-                      ? <span className="estado estado-exito">vigente</span>
-                      : <span className="estado estado-critico">revocado</span>}
+                      ? <span className="tag t-t">vigente</span>
+                      : <span className="tag t-r">revocado</span>}
                   </td>
                   <td>
                     {dispositivo.revocadoEn === null ? (
                       <button
-                        type="button" className="boton boton-peligro" disabled={trabajando}
+                        type="button" className="btn peligro" disabled={trabajando}
                         onClick={() => void revocar(dispositivo.id)}
                       >
                         Revocar

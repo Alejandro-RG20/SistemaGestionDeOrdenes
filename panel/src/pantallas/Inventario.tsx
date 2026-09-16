@@ -12,7 +12,7 @@ import type {
 } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
-import { Cargando, Fallo, Vacio } from '../componentes/carga.js';
+import { Cargando, Fallo, Vacio } from '../componentes/piezas.js';
 import type { PaginaDeDatos } from '../api/cliente.js';
 
 export function Inventario(): JSX.Element {
@@ -41,8 +41,8 @@ export function Inventario(): JSX.Element {
 
   return (
     <>
-      <h1>Inventario</h1>
-      <p className="subtitulo">
+      <h2 className="scr">Inventario</h2>
+      <p className="sub">
         Los movimientos son la fuente de verdad; estas existencias son su proyeccion.
       </p>
 
@@ -126,8 +126,8 @@ export function SolicitudesDeRepuesto(): JSX.Element {
 
   return (
     <>
-      <h1>Repuestos pedidos</h1>
-      <p className="subtitulo">
+      <h2 className="scr">Repuestos pedidos</h2>
+      <p className="sub">
         Cuando uno entra, las ordenes que lo esperaban se liberan solas por orden de llegada.
       </p>
 

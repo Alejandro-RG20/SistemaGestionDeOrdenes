@@ -223,6 +223,49 @@ describe('portal publico', () => {
   });
 });
 
+describe('catalogos de apoyo', () => {
+  it('trae todo lo que el formulario de una orden nueva necesita', async () => {
+    // En una sola peticion: con mala conexion, cinco viajes son cinco
+    // oportunidades de dibujar media pantalla.
+    const agente = await sesionDe(CODIGO_ROL.AGENTE_TELEFONIA);
+    const respuesta = await peticion(entorno.aplicacion)
+      .get(`${RAIZ}/catalogos`).set(agente).expect(200);
+    const catalogos = respuesta.body.datos;
+
+    for (const clave of ['marcas', 'categorias', 'tiendas', 'zonas', 'tecnicos']) {
+      expect(catalogos[clave].length, `${clave} vino vacio`).toBeGreaterThan(0);
+    }
+  });
+
+  it('la tienda dice si pertenece al grupo, que es lo que decide quien paga', async () => {
+    const agente = await sesionDe(CODIGO_ROL.AGENTE_TELEFONIA);
+    const respuesta = await peticion(entorno.aplicacion)
+      .get(`${RAIZ}/catalogos`).set(agente).expect(200);
+
+    const tiendas: { nombre: string; perteneceAlGrupo: boolean }[] = respuesta.body.datos.tiendas;
+    expect(tiendas.some((tienda) => tienda.perteneceAlGrupo)).toBe(true);
+    expect(tiendas.some((tienda) => !tienda.perteneceAlGrupo)).toBe(true);
+  });
+
+  it('cada tecnico trae la carga que ya lleva encima', async () => {
+    // Sin ese numero, la asignacion se hace por costumbre y siempre recae
+    // en el mismo.
+    const agente = await sesionDe(CODIGO_ROL.AGENTE_TELEFONIA);
+    const respuesta = await peticion(entorno.aplicacion)
+      .get(`${RAIZ}/catalogos`).set(agente).expect(200);
+
+    for (const tecnico of respuesta.body.datos.tecnicos) {
+      expect(['ruta', 'planta']).toContain(tecnico.tipo);
+      expect(tecnico.cargaActual).toBeGreaterThanOrEqual(0);
+      expect(tecnico.especialidad).toBeTruthy();
+    }
+  });
+
+  it('sin sesion no hay catalogos', async () => {
+    await peticion(entorno.aplicacion).get(`${RAIZ}/catalogos`).expect(401);
+  });
+});
+
 describe('indicadores de operacion', () => {
   it('cuadran entre si', async () => {
     const jefatura = await sesionDe(CODIGO_ROL.JEFE_ATENCION_CLIENTE);

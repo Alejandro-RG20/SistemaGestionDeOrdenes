@@ -13,7 +13,7 @@ import {
 } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
-import { Cargando, Fallo, Vacio } from '../componentes/carga.js';
+import { Cargando, Fallo, Vacio } from '../componentes/piezas.js';
 import { ErrorDeApi, type PaginaDeDatos } from '../api/cliente.js';
 
 function claseDeEstado(estado: string): string {
@@ -47,8 +47,8 @@ export function Cobros(): JSX.Element {
 
   return (
     <>
-      <h1>Expedientes de cobro</h1>
-      <p className="subtitulo">
+      <h2 className="scr">Expedientes de cobro</h2>
+      <p className="sub">
         Lo que el taller le reclama a las marcas y a las aseguradoras.
       </p>
 
@@ -115,14 +115,14 @@ export function Cobros(): JSX.Element {
 
             <div className="paginacion">
               <button
-                type="button" className="boton boton-secundario" disabled={pagina <= 1}
+                type="button" className="btn" disabled={pagina <= 1}
                 onClick={() => cambiar('pagina', String(pagina - 1))}
               >
                 Anterior
               </button>
               <span>Pagina {datos.paginacion.pagina} de {datos.paginacion.totalPaginas}</span>
               <button
-                type="button" className="boton boton-secundario"
+                type="button" className="btn"
                 disabled={pagina >= datos.paginacion.totalPaginas}
                 onClick={() => cambiar('pagina', String(pagina + 1))}
               >
@@ -193,8 +193,8 @@ export function DetalleExpediente(): JSX.Element {
   return (
     <>
       <p><Link to="/cobros">‹ Expedientes</Link></p>
-      <h1>Orden {expediente.numeroOrden}</h1>
-      <p className="subtitulo">
+      <h2 className="scr">Orden {expediente.numeroOrden}</h2>
+      <p className="sub">
         <span className={claseDeEstado(expediente.estado)}>
           {expediente.estado.replace(/_/g, ' ')}
         </span>{' '}
@@ -202,7 +202,7 @@ export function DetalleExpediente(): JSX.Element {
       </p>
 
       {expediente.evidenciaPendiente.length > 0 ? (
-        <div className="aviso aviso-error">
+        <div className="alert">
           <p><strong>Este expediente no puede salir.</strong> Falta evidencia obligatoria:</p>
           <ul style={{ margin: '4px 0 0 18px' }}>
             {expediente.evidenciaPendiente.map((pendiente) => (
@@ -215,15 +215,15 @@ export function DetalleExpediente(): JSX.Element {
       ) : null}
 
       {expediente.desglose.advertencias.map((advertencia) => (
-        <div key={advertencia} className="aviso aviso-alerta"><p>{advertencia}</p></div>
+        <div key={advertencia} className="alert warn"><p>{advertencia}</p></div>
       ))}
 
-      <div className="rejilla">
-        <div className="tarjeta">
+      <div className="g g4">
+        <div className="card">
           <p className="etiqueta-cifra">Reclamado</p>
           <p className="cifra">C$ {expediente.montoReclamado.toFixed(2)}</p>
         </div>
-        <div className="tarjeta">
+        <div className="card">
           <p className="etiqueta-cifra">Cobrado</p>
           <p className={expediente.montoCobrado === null ? 'cifra tenue' : 'cifra cifra-buena'}>
             {expediente.montoCobrado === null ? '—' : `C$ ${expediente.montoCobrado.toFixed(2)}`}
@@ -308,16 +308,16 @@ export function DetalleExpediente(): JSX.Element {
         </>
       ) : null}
 
-      <div className="acciones">
+      <div className="tools">
         <button
-          type="button" className="boton boton-secundario" disabled={trabajando}
+          type="button" className="btn" disabled={trabajando}
           onClick={() => void verificar()}
         >
           Recalcular contra los datos de hoy
         </button>
         {expediente.estadosPosibles.map((destino) => (
           <button
-            key={destino} type="button" className="boton" disabled={trabajando}
+            key={destino} type="button" className="btn pri" disabled={trabajando}
             onClick={() => void mover(destino)}
           >
             {destino.replace(/_/g, ' ')}
@@ -325,7 +325,7 @@ export function DetalleExpediente(): JSX.Element {
         ))}
       </div>
 
-      {error === null ? null : <div className="aviso aviso-error"><p>{error}</p></div>}
+      {error === null ? null : <div className="alert"><p>{error}</p></div>}
     </>
   );
 }

@@ -21,6 +21,7 @@ import { rutasDeCobros } from './modulos/cobros/rutas.js';
 import { rutasDeAvisos } from './modulos/avisos/rutas.js';
 import { rutasDeIndicadores } from './modulos/indicadores/rutas.js';
 import { rutasDelPortal } from './modulos/portal/rutas.js';
+import { rutasDeCatalogos } from './modulos/catalogos/rutas.js';
 
 export const RAIZ_API = '/api/v1';
 
@@ -58,6 +59,7 @@ export function construirAplicacion(): Express {
   aplicacion.use(RAIZ_API, exigirSesion, rutasDeCobros());
   aplicacion.use(RAIZ_API, exigirSesion, rutasDeAvisos());
   aplicacion.use(RAIZ_API, exigirSesion, rutasDeIndicadores());
+  aplicacion.use(RAIZ_API, exigirSesion, rutasDeCatalogos());
 
   aplicacion.use(manejarRutaDesconocida);
   aplicacion.use(manejarErrores);

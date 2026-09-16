@@ -71,3 +71,23 @@ export interface JornadaDelDispositivo {
   readonly existencias: readonly ExistenciaDeJornada[];
   readonly reglasEvidencia: readonly ReglaEvidenciaDeJornada[];
 }
+
+/**
+ * Una evidencia ya registrada en una orden, tal como la ve el panel.
+ *
+ * NO lleva el binario: solo su ruta, su huella y quien la tomo. El archivo
+ * se sirve aparte; meterlo aqui haria que listar una orden con treinta
+ * fotos descargara treinta fotos.
+ */
+export interface EvidenciaDeOrden {
+  readonly id: string;
+  readonly clave: string;
+  readonly tipo: string;
+  readonly rutaArchivo: string | null;
+  readonly huellaDigital: string | null;
+  readonly autor: string | null;
+  readonly momentoDispositivo: string;
+  readonly bytes: number | null;
+  /** El binario ya llego y se verifico contra su huella. */
+  readonly sincronizada: boolean;
+}

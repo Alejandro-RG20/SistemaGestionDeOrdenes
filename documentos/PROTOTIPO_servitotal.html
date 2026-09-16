@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototipo — Sistema web de gestión de órdenes ServiTotal</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#14202B;--paper:#EDF1F5;--blue:#1F5C8B;--amber:#B4690E;--teal:#2E7D6F;--red:#A63A2E;--soft:#4A5D70;--rule:#C3CDD8;--line:#DCE3EA}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;line-height:1.55}
+.page{max-width:1260px;margin:0 auto;padding:34px 18px 90px}
+header.doc{border-bottom:3px solid var(--ink);padding-bottom:18px;margin-bottom:22px}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--soft);margin:0 0 8px}
+h1.doc{font-family:Archivo,sans-serif;font-size:clamp(24px,4vw,36px);line-height:1.08;margin:0 0 12px;font-weight:800;letter-spacing:-.5px}
+.meta{display:flex;flex-wrap:wrap;gap:7px 22px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--soft)}
+
+.controls{background:#fff;border:1px solid var(--rule);border-radius:5px;padding:13px 15px;margin-bottom:20px}
+.grp{margin-bottom:11px}.grp:last-child{margin:0}
+.ctl-label{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--soft);margin-bottom:6px}
+.screens{display:flex;flex-wrap:wrap;gap:5px}
+.screens button{font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:5px 9px;border:1px solid var(--rule);background:#F7F9FB;color:var(--soft);border-radius:3px;cursor:pointer}
+.screens button:hover{border-color:var(--blue);color:var(--blue)}
+.screens button[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.screens.mob button[aria-pressed="true"]{background:var(--teal);border-color:var(--teal)}
+.screens.pub button[aria-pressed="true"]{background:var(--amber);border-color:var(--amber)}
+
+.stage{overflow-x:auto;padding:4px 0}
+.stage-in{display:flex;justify-content:center;min-width:min-content}
+.frame-desk{width:1180px;border:1px solid var(--ink);border-radius:7px;overflow:hidden;background:#fff;box-shadow:0 10px 32px rgba(20,32,43,.13)}
+.chrome{background:#E3E9EF;border-bottom:1px solid var(--rule);padding:8px 12px;display:flex;align-items:center;gap:9px}
+.dots{display:flex;gap:5px}.dots i{width:9px;height:9px;border-radius:50%;background:#C3CDD8;display:block}
+.urlbar{flex:1;background:#fff;border:1px solid var(--rule);border-radius:20px;padding:3px 13px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--soft)}
+.frame-mob{width:392px;border:9px solid var(--ink);border-radius:34px;overflow:hidden;background:#fff;box-shadow:0 12px 34px rgba(20,32,43,.2)}
+.statusbar{background:var(--ink);color:#fff;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:5px 18px 7px;display:flex;justify-content:space-between}
+
+.app{display:flex;min-height:660px;background:#F7F9FB}
+.app.m{display:block;min-height:700px;position:relative;padding-bottom:58px}
+.side{width:206px;flex:0 0 206px;background:var(--ink);color:#B9C6D2;padding:14px 0 20px;font-size:12.5px}
+.side .who{padding:0 15px 13px;margin-bottom:10px;border-bottom:1px solid #2A3947}
+.side .who b{display:block;color:#fff;font-size:12.5px}
+.side .who span{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7D8FA0}
+.side .sep{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:1.3px;color:#66788A;padding:12px 15px 5px}
+.side a{display:block;padding:7px 15px;color:#B9C6D2;text-decoration:none;cursor:pointer;border-left:3px solid transparent}
+.side a:hover{background:#1D2C3A;color:#fff}
+.side a.on{background:#1D2C3A;color:#fff;border-left-color:var(--amber);font-weight:600}
+.side a .bdg{float:right;background:var(--red);color:#fff;font-family:'IBM Plex Mono',monospace;font-size:9px;padding:0 5px;border-radius:8px}
+
+.topbar{display:none}
+.app.m .topbar{display:flex;align-items:center;justify-content:space-between;background:var(--ink);color:#fff;padding:10px 13px;position:sticky;top:0;z-index:5}
+.topbar .t{font-family:Archivo,sans-serif;font-weight:700;font-size:13.5px}
+.tabbar{display:none}
+.app.m .tabbar{display:flex;position:absolute;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--rule);z-index:6}
+.tabbar a{flex:1;text-align:center;padding:8px 2px 10px;text-decoration:none;color:var(--soft);cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:9px;min-height:54px}
+.tabbar a em{display:block;font-size:16px;font-style:normal}
+.tabbar a.on{color:var(--teal);font-weight:600}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.crumb{background:#fff;border-bottom:1px solid var(--line);padding:8px 20px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--soft);display:flex;gap:9px;align-items:center}
+.crumb .code{background:var(--ink);color:#fff;padding:2px 6px;border-radius:2px;font-size:9.5px}
+.body{padding:20px;flex:1}
+.app.m .body{padding:13px}
+h2.scr{font-family:Archivo,sans-serif;font-size:19px;font-weight:700;margin:0 0 3px}
+.app.m h2.scr{font-size:16px}
+p.sub{color:var(--soft);font-size:12px;margin:0 0 14px}
+
+.g{display:grid;gap:11px}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}.g5{grid-template-columns:repeat(5,1fr)}
+.app.m .g2,.app.m .g3,.app.m .g4,.app.m .g5{grid-template-columns:1fr}
+.app.m .g3.tri{grid-template-columns:1fr 1fr 1fr}
+.card{background:#fff;border:1px solid var(--line);border-radius:4px;padding:14px 15px;margin-bottom:12px}
+.card h3{font-family:Archivo,sans-serif;font-size:12.5px;font-weight:700;margin:0 0 11px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:4px;padding:12px 13px}
+.kpi b{display:block;font-family:Archivo,sans-serif;font-size:24px;line-height:1;font-weight:800}
+.kpi span{font-size:11px;color:var(--soft)}
+
+label{display:block;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--soft);margin-bottom:3px}
+input,select,textarea{width:100%;font-family:'IBM Plex Sans',sans-serif;font-size:12.5px;padding:7px 9px;border:1px solid var(--rule);border-radius:3px;background:#fff;color:var(--ink)}
+.app.m input,.app.m select,.app.m textarea{font-size:15px;padding:11px 12px}
+textarea{resize:vertical}
+.btn{font-family:'IBM Plex Sans',sans-serif;font-size:12.5px;font-weight:600;padding:8px 14px;border:1px solid var(--rule);background:#fff;color:var(--ink);border-radius:3px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.btn.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn.teal{background:var(--teal);color:#fff;border-color:var(--teal)}
+.btn.amber{background:var(--amber);color:#fff;border-color:var(--amber)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.app.m .btn{min-height:46px;font-size:15px;justify-content:center;width:100%}
+.tools{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.app.m .tools{flex-direction:column}
+.app.m .stickybar{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--rule);padding:10px 13px;margin:12px -13px -13px;display:flex;flex-direction:column;gap:7px;z-index:4}
+
+table.d{width:100%;border-collapse:collapse;font-size:12px}
+table.d th{background:#EEF2F6;text-align:left;padding:7px 9px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--soft);border-bottom:1px solid var(--rule)}
+table.d td{padding:8px 9px;border-bottom:1px solid var(--line)}
+table.d tr:hover td{background:#F7F9FB}
+.rowcard{background:#fff;border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:4px;padding:10px 12px;margin-bottom:8px}
+.rowcard .r1{display:flex;justify-content:space-between;align-items:center;gap:7px;margin-bottom:3px}
+.rowcard .cod{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600}
+.rowcard .r2{font-size:13px;font-weight:600}
+.rowcard .r3{font-size:11px;color:var(--soft);margin-top:1px}
+
+.tag{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:9.5px;padding:2px 7px;border-radius:10px;border:1px solid;white-space:nowrap}
+.t-b{color:var(--blue);border-color:var(--blue);background:#EAF1F7}
+.t-a{color:var(--amber);border-color:var(--amber);background:#FFF1DF}
+.t-r{color:var(--red);border-color:var(--red);background:#FBECE9}
+.t-t{color:var(--teal);border-color:var(--teal);background:#E7F2EF}
+.t-g{color:var(--soft);border-color:var(--rule);background:#EDF1F5}
+.war{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:9px;padding:1px 6px;border-radius:2px;font-weight:600}
+.w-prov{background:#EAF1F7;color:var(--blue)}
+.w-adic{background:#E7F2EF;color:var(--teal)}
+.w-part{background:#FFF1DF;color:var(--amber)}
+
+.alert{display:flex;gap:8px;background:#FBECE9;border-left:3px solid var(--red);padding:9px 12px;font-size:12px;margin-bottom:9px;border-radius:0 3px 3px 0}
+.alert.warn{background:#FFF1DF;border-color:var(--amber)}
+.alert.ok{background:#E7F2EF;border-color:var(--teal)}
+.alert.info{background:#EAF1F7;border-color:var(--blue)}
+.alert a{color:var(--teal);font-weight:600;cursor:pointer}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--rule);margin-bottom:12px;overflow-x:auto}
+.tabs span{padding:7px 12px;font-size:12px;color:var(--soft);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs span.on{color:var(--ink);font-weight:600;border-bottom-color:var(--amber)}
+.steps{display:flex;gap:4px;margin-bottom:12px}
+.steps i{flex:1;height:4px;border-radius:2px;background:var(--line);display:block}
+.steps i.on{background:var(--teal)}
+.sync{display:flex;align-items:center;justify-content:space-between;background:#E7F2EF;border:1px solid var(--teal);border-radius:4px;padding:8px 11px;font-size:11.5px;color:var(--teal);font-weight:600;margin-bottom:11px}
+.sync.off{background:#FFF1DF;border-color:var(--amber);color:var(--amber)}
+.meas{display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border:1px solid var(--line);border-radius:3px;margin-bottom:6px;font-size:12.5px;background:#fff}
+.meas.bad{border-color:var(--amber);background:#FFF7EC}
+.meas b{font-family:'IBM Plex Mono',monospace}
+.ev{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:3px;margin-bottom:6px;font-size:12px;background:#fff}
+.ev.done{border-color:var(--teal);background:#F4F9F8}
+.ev.miss{border-color:var(--red);background:#FBECE9}
+.ev em{font-style:normal;margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10px}
+.login{display:flex;align-items:center;justify-content:center;padding:60px 20px;background:#F7F9FB;min-height:660px;width:100%}
+.loginbox{width:100%;max-width:380px;background:#fff;border:1px solid var(--rule);border-radius:5px;padding:26px 24px}
+.brand{font-family:Archivo,sans-serif;font-weight:800;font-size:22px;letter-spacing:-.4px}
+.brand span{color:var(--amber)}
+.portal{background:var(--ink);color:#fff;min-height:660px;width:100%;padding:40px 22px}
+.portalbox{max-width:620px;margin:0 auto}
+.portal label{color:#7D8FA0}
+.portal input{background:#14202B;border-color:#3A4E60;color:#fff}
+.pres{background:#fff;color:var(--ink);border-radius:5px;padding:18px;margin-top:15px}
+.tl{list-style:none;margin:12px 0 0;padding:0}
+.tl li{position:relative;padding:0 0 15px 22px;border-left:2px solid var(--line);font-size:12px}
+.tl li:last-child{border-left-color:transparent;padding-bottom:0}
+.tl li::before{content:"";position:absolute;left:-7px;top:3px;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--rule)}
+.tl li.done::before{background:var(--teal);border-color:var(--teal)}
+.tl li.now::before{background:var(--amber);border-color:var(--amber)}
+.tl li.now{font-weight:600}
+.tl small{display:block;color:var(--soft);font-family:'IBM Plex Mono',monospace;font-size:10px}
+.hint{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--soft);margin:9px 0 0;text-align:center}
+.note{background:#fff;border-left:3px solid var(--amber);padding:12px 15px;font-size:13.5px;margin:20px 0}
+h2.sec{font-family:Archivo,sans-serif;font-size:19px;font-weight:700;margin:38px 0 8px;padding-bottom:9px;border-bottom:1px solid var(--rule)}
+.num{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--amber);margin-right:9px}
+table.doc{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff;margin:12px 0}
+table.doc th,table.doc td{border:1px solid var(--rule);padding:7px 10px;text-align:left;vertical-align:top}
+table.doc th{background:var(--ink);color:#fff;font-family:Archivo,sans-serif;font-size:11.5px}
+code{font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:#E4EAF0;padding:1px 5px;border-radius:2px}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc">
+  <p class="eyebrow">Diseño de Sistemas en Internet · Prototipo de presentación</p>
+  <h1 class="doc">Sistema web de gestión de órdenes — Taller ServiTotal</h1>
+  <div class="meta">
+    <span>DISTRITO VI / Managua · Grupo Unicomer</span>
+    <span>CLIENTES / Panel web · App móvil · Portal público</span>
+    <span>PANTALLAS / 21</span>
+    <span>VERSIÓN / 1.0</span>
+  </div>
+</header>
+
+<div class="controls">
+  <div class="grp"><div class="ctl-label">Panel web · personal interno</div><div class="screens" id="pw"></div></div>
+  <div class="grp"><div class="ctl-label">Aplicación móvil · técnico de ruta (opera sin conexión)</div><div class="screens mob" id="pm"></div></div>
+  <div class="grp"><div class="ctl-label">Portal público · cliente</div><div class="screens pub" id="pp"></div></div>
+</div>
+
+<div class="stage"><div class="stage-in" id="stage"></div></div>
+<p class="hint" id="hint"></p>
+
+<h2 class="sec"><span class="num">01</span> Correspondencia con el modelo de presentación</h2>
+<table class="doc">
+  <tr><th style="width:16%">Pantalla</th><th style="width:32%">Grupos de presentación</th><th>Qué demuestra</th></tr>
+  <tr><td><code>W-03</code> Nueva orden</td><td>Cliente, artículo, cobertura, modalidad, asignación</td><td>La garantía se evalúa <b>al crear la orden</b>, no al facturar (CU-03)</td></tr>
+  <tr><td><code>W-05</code> Detalle de la orden</td><td>Cabecera con plazo, pestañas, evidencia, materiales, cobro</td><td>El plazo comprometido es visible en todo momento (RN-16)</td></tr>
+  <tr><td><code>W-09</code> Expedientes de cobro</td><td>Listado, verificación de evidencia, acciones</td><td>El sistema <b>impide enviar</b> un expediente incompleto (RF-57)</td></tr>
+  <tr><td><code>W-10</code> Excepciones</td><td>Bandeja de sincronización rechazada</td><td>Nada de lo registrado en campo se descarta (RN-19)</td></tr>
+  <tr><td><code>M-03</code> Diagnóstico</td><td>Lista de verificación con campos tipificados</td><td>Las mediciones son datos numéricos con rango, no fotografías</td></tr>
+  <tr><td><code>M-04</code> Evidencia</td><td>Checklist de evidencia obligatoria</td><td>No se puede avanzar sin completarla (RN-06)</td></tr>
+  <tr><td><code>M-07</code> Cierre</td><td>Resumen, firma, cola de sincronización</td><td>El trabajo queda íntegro en el dispositivo aunque no haya red</td></tr>
+  <tr><td><code>P-01</code> Consulta pública</td><td>Formulario, estado, línea de tiempo</td><td>El cliente ve el mismo estado que ve el técnico (P1)</td></tr>
+  <tr><td><code>W-13</code> Ficha del cliente</td><td>Datos, teléfonos, direcciones, artículos</td><td><b>Datos vivos frente a datos congelados:</b> cambiar la dirección no altera las órdenes ya programadas</td></tr>
+  <tr><td><code>W-14</code> Artículo</td><td>Datos de compra, coberturas, historial</td><td>Los tres campos que cambian quién paga están restringidos a jefatura y exigen motivo</td></tr>
+  <tr><td><code>W-15</code> Reglas de cobertura</td><td>Parámetros por marca y categoría</td><td>El motor de garantías es dirigido por datos: se ajusta sin desplegar código</td></tr>
+</table>
+
+<h2 class="sec"><span class="num">02</span> Lógica de creación, modificación y baja</h2>
+<p style="color:var(--soft);font-size:14px;max-width:76ch">El prototipo implementa las reglas del documento de ciclo de vida de los datos. Estas son las tres que más consecuencias tienen.</p>
+<table class="doc">
+  <tr><th style="width:26%">Regla</th><th>Qué significa en el sistema</th></tr>
+  <tr><td><b>Nada se elimina</b></td><td>Cliente, artículo, orden, repuesto y usuario se <b>desactivan</b>, nunca se borran: sustentan expedientes de cobro ya presentados a proveedores. Solo un registro creado por error y aún no referenciado se anula, conservándose con su motivo y responsable.</td></tr>
+  <tr><td><b>Datos vivos frente a datos congelados</b></td><td>El nombre y el teléfono del cliente son <b>vivos</b>: se actualizan en todas partes. La dirección de la visita, la zona, el cargo por visita, el precio del repuesto y el tipo de garantía son <b>congelados</b>: la orden los copió al crearse y describen cómo eran las cosas cuando ocurrió el servicio. Actualizar retroactivamente produciría expedientes que no coinciden con lo presentado al proveedor.</td></tr>
+  <tr><td><b>La garantía depende del artículo, no del cliente</b></td><td>Cambiar teléfono, nombre o dirección <b>no afecta la cobertura</b>, porque esta se determina por tienda de origen, fecha de compra, marca y póliza. Corregir cualquiera de esos tres primeros <b>sí la reevalúa</b>, y por eso exige rol de jefatura, motivo escrito, evidencia documental y bitácora inmutable.</td></tr>
+</table>
+
+<div class="note" style="border-left-color:var(--red)"><b>Por qué el control sobre «tienda de origen» no es burocracia.</b> Un artículo
+registrado como comprado en La Curacao hace ocho meses lo paga el proveedor; el mismo artículo registrado como externo lo paga el
+cliente. Sin restricción de rol, motivo y bitácora, ese campo se convierte en un interruptor que traslada el costo del cliente al
+proveedor con dos clics y sin dejar rastro. Es un control interno, y conviene poder explicarlo así en la defensa.</div>
+
+<div class="note"><b>Los tres detalles que conviene señalar en la defensa.</b> El <b>indicador de sincronización</b> está permanentemente
+visible en la aplicación móvil: un técnico que no sabe si su trabajo se guardó vuelve al papel como respaldo, y ahí el proyecto
+fracasa aunque el sistema funcione. El <b>bloqueo del expediente incompleto</b> convierte la evidencia en condición y no en
+recordatorio, que es lo que sostiene el beneficio económico. Y la <b>medición fuera de rango</b> demuestra por qué las mediciones
+se modelaron como datos tipificados: como fotografía, esa advertencia sería imposible.</div>
+
+</div>
+
+<script>
+(function(){
+  var cur='panel';
+  var NAVM=[['ruta','Ruta','▤'],['diagnostico','Servicio','◧'],['repuestos','Bodega','▩'],['cierre','Enviar','⇪']];
+
+  function side(a){
+    var h='<nav class="side"><div class="who"><b>C. Rodríguez</b><span>Agente de telefonía</span></div>';
+    h+='<a data-go="panel" class="'+(a==='panel'?'on':'')+'">Panel principal</a>';
+    h+='<div class="sep">OPERACIÓN</div>';
+    h+='<a data-go="clientes" class="'+(a==='clientes'?'on':'')+'">Clientes y artículos</a>';
+    h+='<a data-go="ordenes" class="'+(a==='ordenes'?'on':'')+'">Órdenes de servicio</a>';
+    h+='<a data-go="agenda" class="'+(a==='agenda'?'on':'')+'">Agenda y rutas</a>';
+    h+='<a data-go="taller" class="'+(a==='taller'?'on':'')+'">Cola de taller</a>';
+    h+='<div class="sep">CONTROL</div>';
+    h+='<a data-go="inventario" class="'+(a==='inventario'?'on':'')+'">Inventario y bodegas</a>';
+    h+='<a data-go="coberturas" class="'+(a==='coberturas'?'on':'')+'">Reglas de cobertura</a>';
+    h+='<a data-go="cobros" class="'+(a==='cobros'?'on':'')+'">Expedientes de cobro</a>';
+    h+='<a data-go="excepciones" class="'+(a==='excepciones'?'on':'')+'">Excepciones<span class="bdg">3</span></a>';
+    h+='<a data-go="indicadores" class="'+(a==='indicadores'?'on':'')+'">Indicadores</a>';
+    h+='<div class="sep">SESIÓN</div><a data-go="login">Cerrar sesión</a></nav>';
+    return h;
+  }
+  function tabbar(a){
+    return '<div class="tabbar">'+NAVM.map(function(n){return '<a data-go="'+n[0]+'" class="'+(a===n[0]?'on':'')+'"><em>'+n[2]+'</em>'+n[1]+'</a>';}).join('')+'</div>';
+  }
+  function syncbar(off){
+    return off ? '<div class="sync off"><span>◇ Sin conexión · trabajando localmente</span><span>4 en cola</span></div>'
+               : '<div class="sync"><span>◆ En línea · todo sincronizado</span><span>0 en cola</span></div>';
+  }
+
+  var S={};
+
+  // ───────── PANEL WEB ─────────
+  S.login={k:'w',code:'W-01',title:'Acceso',plain:true,render:function(){
+    return '<div class="login"><div class="loginbox"><div class="brand">Servi<span>Total</span></div>'+
+      '<p class="sub">Gestión de órdenes · Distrito VI</p>'+
+      '<div style="margin-bottom:11px"><label>Usuario</label><input value="crodriguez"></div>'+
+      '<div style="margin-bottom:14px"><label>Contraseña</label><input type="password" value="••••••••••"></div>'+
+      '<button class="btn pri" data-go="panel" style="width:100%;justify-content:center">Entrar</button>'+
+      '<p style="font-size:11px;color:var(--soft);margin:13px 0 0;text-align:center">¿Es cliente? '+
+      '<a data-go="portal" style="color:var(--teal);font-weight:600;cursor:pointer">Consulte su orden aquí</a></p></div></div>';
+  }};
+
+  S.panel={k:'w',code:'W-02',title:'Panel',nav:'panel',crumb:'Inicio',render:function(){
+    var h='<h2 class="scr">Panel principal</h2><p class="sub">Martes 12 de mayo · 118 órdenes activas</p>';
+    h+='<div class="g g5" style="margin-bottom:12px">'+
+      '<div class="kpi"><b>118</b><span>Órdenes activas</span></div>'+
+      '<div class="kpi"><b style="color:var(--red)">9</b><span>Plazo vencido</span></div>'+
+      '<div class="kpi"><b style="color:var(--amber)">14</b><span>Esperando repuesto</span></div>'+
+      '<div class="kpi"><b style="color:var(--teal)">31</b><span>Visitas hoy</span></div>'+
+      '<div class="kpi"><b style="color:var(--blue)">1 800</b><span>Expedientes del mes</span></div></div>';
+    h+='<div class="alert"><span><b>9 órdenes superaron su plazo comprometido.</b> 4 sin diagnóstico tras 24 h, 3 sin autorización tras 72 h, 2 finalizadas sin retirar. <a data-go="ordenes">Ver listado</a></span></div>';
+    h+='<div class="alert warn"><span><b>6 repuestos ingresaron hoy y liberaron sus órdenes automáticamente.</b> Los técnicos ya fueron notificados. <a data-go="inventario">Ver movimientos</a></span></div>';
+    h+='<div class="alert info"><span><b>3 registros de campo rechazados en la sincronización.</b> Ninguno se descartó: esperan resolución. <a data-go="excepciones">Abrir bandeja</a></span></div>';
+    h+='<div class="card"><h3>Órdenes que requieren atención</h3><table class="d">'+
+      '<tr><th>N.º</th><th>Cliente</th><th>Artículo</th><th>Garantía</th><th>Estado</th><th>Plazo</th></tr>'+
+      '<tr data-go="detalle" style="cursor:pointer"><td>10482</td><td>Ana Munguía</td><td>Refrigeradora LG</td><td><span class="war w-prov">Proveedor</span></td><td><span class="tag t-r">Esperando repuesto</span></td><td style="color:var(--red)">vencido 2 d</td></tr>'+
+      '<tr><td>10476</td><td>Ferretería El Roble</td><td>Aire acond. 18k</td><td><span class="war w-adic">Adicional</span></td><td><span class="tag t-a">En diagnóstico</span></td><td style="color:var(--amber)">vence en 4 h</td></tr>'+
+      '<tr><td>10471</td><td>Rodrigo Castillo</td><td>Televisor TCL 55"</td><td><span class="war w-part">Particular</span></td><td><span class="tag t-b">Esperando autorización</span></td><td style="color:var(--red)">vencido 1 d</td></tr>'+
+      '<tr><td>10468</td><td>Silvia Munguía</td><td>Lavadora Mabe</td><td><span class="war w-prov">Proveedor</span></td><td><span class="tag t-t">Finalizada</span></td><td>sin retirar 5 d</td></tr></table></div>';
+    h+='<div class="tools"><button class="btn pri" data-go="nueva">Nueva orden</button><button class="btn" data-go="ordenes">Todas las órdenes</button><button class="btn" data-go="agenda">Agenda de hoy</button></div>';
+    return h;
+  }};
+
+  S.nueva={k:'w',code:'W-03',title:'Nueva orden',nav:'ordenes',crumb:'Órdenes › Nueva',render:function(){
+    var h='<h2 class="scr">Nueva orden de servicio</h2><p class="sub">El número correlativo se genera al guardar</p>';
+    h+='<div class="card"><h3>1 · Cliente</h3><div class="g g3">'+
+      '<div><label>Buscar</label><input value="Munguía"></div>'+
+      '<div><label>Nombre</label><input value="Ana Munguía Reyes" readonly></div>'+
+      '<div><label>Teléfono</label><input value="8845-2210" readonly></div></div></div>';
+    h+='<div class="card"><h3>2 · Artículo</h3><div class="g g4">'+
+      '<div><label>Tipo</label><select><option>Refrigeradora</option><option>Aire acondicionado</option><option>Lavadora</option><option>Televisor</option><option>Equipo de sonido</option></select></div>'+
+      '<div><label>Marca</label><select><option>LG</option><option>TCL</option><option>Mastertech</option><option>Whirlpool</option></select></div>'+
+      '<div><label>Modelo</label><input value="GT32BPP"></div>'+
+      '<div><label>N.º de serie</label><input value="LG2403118742"></div></div>'+
+      '<div class="g g3" style="margin-top:11px">'+
+      '<div><label>Tienda de origen</label><select><option>La Curacao</option><option>Almacenes Tropigas</option><option>RadioShack</option><option>Externa</option></select></div>'+
+      '<div><label>Fecha de compra</label><input type="date" value="2025-08-14"></div>'+
+      '<div><label>Factura</label><button class="btn" style="width:100%;justify-content:center">Adjuntar factura</button></div></div></div>';
+    h+='<div class="card" style="border-left:3px solid var(--blue)"><h3>3 · Evaluación de cobertura</h3>'+
+      '<div class="alert info" style="margin:0 0 11px"><span><b>El sistema determinó: garantía de proveedor.</b> Artículo de La Curacao, comprado hace 9 meses, marca LG con cobertura vigente de 12 meses. <b>Costo para el cliente: C$ 0.00</b>, se reclama al proveedor.</span></div>'+
+      '<div class="g g3"><div><label>Tipo de garantía</label><select><option>Proveedor</option><option>Adicional (extendida)</option><option>Cliente particular</option></select></div>'+
+      '<div><label>Cobertura vigente hasta</label><input value="14/08/2026" readonly></div>'+
+      '<div><label>Responsable del pago</label><input value="LG · proveedor de marca" readonly></div></div>'+
+      '<p style="font-size:11.5px;color:var(--soft);margin:10px 0 0">La cobertura se reevalúa tras el diagnóstico: si la falla resulta excluida, la orden se detiene y pasa a particular (RN-04, RN-05).</p></div>';
+    h+='<div class="card"><h3>4 · Falla y asignación</h3><div class="g g2">'+
+      '<div><label>Falla reportada por el cliente</label><textarea rows="3">No enfría la parte baja. El motor enciende pero se apaga a los pocos minutos.</textarea></div>'+
+      '<div><label>Modalidad</label><select><option>Ruta — visita a domicilio</option><option>Taller — el cliente traslada el artículo</option></select>'+
+      '<div style="margin-top:10px"><label>Técnico</label><select><option>R. Mejía — refrigeración</option><option>D. Espinoza — refrigeración</option><option>Sin asignar</option></select></div></div></div></div>';
+    h+='<div class="tools"><button class="btn pri" data-go="agenda">Guardar y programar visita</button><button class="btn" data-go="ordenes">Cancelar</button></div>';
+    return h;
+  }};
+
+  S.ordenes={k:'w',code:'W-04',title:'Órdenes',nav:'ordenes',crumb:'Órdenes de servicio',render:function(){
+    var h='<h2 class="scr">Órdenes de servicio</h2><p class="sub">118 activas · filtradas por estado, garantía y modalidad</p>';
+    h+='<div class="card"><h3>Filtros</h3><div class="g g5">'+
+      '<div><label>Estado</label><select><option>Todos</option><option>En diagnóstico</option><option>Esperando repuesto</option><option>Finalizada</option></select></div>'+
+      '<div><label>Garantía</label><select><option>Todas</option><option>Proveedor</option><option>Adicional</option><option>Particular</option></select></div>'+
+      '<div><label>Modalidad</label><select><option>Todas</option><option>Ruta</option><option>Taller</option></select></div>'+
+      '<div><label>Marca</label><select><option>Todas</option><option>LG</option><option>TCL</option><option>Mastertech</option></select></div>'+
+      '<div><label>Buscar</label><input placeholder="N.º, cliente o serie"></div></div></div>';
+    var rows=[['10482','Ana Munguía','Refrigeradora LG','w-prov','Proveedor','Ruta','t-r','Esperando repuesto','vencido 2 d'],
+              ['10481','Colegio San Marcos','Equipo de sonido Sony','w-part','Particular','Taller','t-a','En reparación','vence en 1 d'],
+              ['10476','Ferretería El Roble','Aire acond. 18k','w-adic','Adicional','Ruta','t-a','En diagnóstico','vence en 4 h'],
+              ['10471','Rodrigo Castillo','Televisor TCL 55"','w-part','Particular','Taller','t-b','Esperando autorización','vencido 1 d'],
+              ['10468','Silvia Munguía','Lavadora Mabe','w-prov','Proveedor','Taller','t-t','Finalizada','sin retirar 5 d'],
+              ['10465','Marlon Téllez','Refrigeradora Mastertech','w-prov','Proveedor','Ruta','t-g','Entregada','—']];
+    h+='<div class="card"><table class="d"><tr><th>N.º</th><th>Cliente</th><th>Artículo</th><th>Garantía</th><th>Modalidad</th><th>Estado</th><th>Plazo</th></tr>';
+    rows.forEach(function(r){
+      h+='<tr data-go="detalle" style="cursor:pointer"><td style="font-family:IBM Plex Mono,monospace">'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+
+        '</td><td><span class="war '+r[3]+'">'+r[4]+'</span></td><td>'+r[5]+'</td><td><span class="tag '+r[6]+'">'+r[7]+'</span></td>'+
+        '<td'+(r[8].indexOf('vencido')===0?' style="color:var(--red);font-weight:600"':'')+'>'+r[8]+'</td></tr>';
+    });
+    h+='</table></div><div class="tools"><button class="btn pri" data-go="nueva">Nueva orden</button><button class="btn" data-go="detalle">Abrir</button><button class="btn">Exportar</button></div>';
+    return h;
+  }};
+
+  S.detalle={k:'w',code:'W-05',title:'Detalle',nav:'ordenes',crumb:'Órdenes › 10482',render:function(){
+    var h='<h2 class="scr">Orden 10482</h2><p class="sub">Ana Munguía Reyes · Refrigeradora LG GT32BPP · <span class="war w-prov">Garantía de proveedor</span> · La Curacao</p>';
+    h+='<div class="g g4" style="margin-bottom:12px">'+
+      '<div class="kpi"><b style="font-size:13px;color:var(--red)">Esperando repuesto</b><span>Estado actual</span></div>'+
+      '<div class="kpi"><b style="font-size:13px">R. Mejía</b><span>Responsable actual</span></div>'+
+      '<div class="kpi"><b style="font-size:13px;color:var(--red)">Vencido hace 2 días</b><span>Plazo comprometido</span></div>'+
+      '<div class="kpi"><b style="font-size:13px">C$ 0.00</b><span>Costo al cliente</span></div></div>';
+    h+='<div class="tabs"><span class="on">Resumen</span><span>Diagnóstico</span><span>Evidencia</span><span>Repuestos</span><span>Visitas</span><span>Cobro</span><span>Bitácora</span></div>';
+    h+='<div class="card"><h3>Diagnóstico registrado en campo</h3>'+
+      '<p style="font-size:12.5px;margin:0 0 9px">Compresor con baja presión de succión y consumo elevado. Requiere sustitución completa del compresor; no puede repararse en sitio.</p>'+
+      '<div class="meas bad"><span>Presión de succión</span><span><b>42 psi</b> · esperado 55–70 <span class="tag t-a">fuera de rango</span></span></div>'+
+      '<div class="meas"><span>Amperaje del compresor</span><span><b>6.8 A</b> · esperado 4–7</span></div>'+
+      '<div class="meas"><span>Temperatura de congelador</span><span><b>-4 °C</b> · esperado -18 a -15 <span class="tag t-a">fuera de rango</span></span></div>'+
+      '<p style="font-size:11px;color:var(--soft);margin:9px 0 0">Registrado sin conexión el 10/05 a las 10:24 · sincronizado el 10/05 a las 14:05</p></div>';
+    h+='<div class="card"><h3>Repuesto solicitado</h3><table class="d">'+
+      '<tr><th>Repuesto</th><th>Vía</th><th>Solicitado</th><th>Arribo estimado</th><th>Estado</th></tr>'+
+      '<tr><td>Compresor LG 1/3 HP R600a</td><td>Pedido al proveedor</td><td>10/05</td><td>24/05</td><td><span class="tag t-r">En tránsito</span></td></tr></table>'+
+      '<div class="alert warn" style="margin:11px 0 0"><span>Al ingresar la pieza, esta orden se libera automáticamente y se notifica al técnico (RF-53). La fecha estimada ya fue comunicada al cliente en el portal.</span></div></div>';
+    h+='<div class="card"><h3>Evidencia para el expediente de cobro</h3>'+
+      '<div class="ev done"><span>✓</span><span>Serie y modelo del artículo</span><em>recepción</em></div>'+
+      '<div class="ev done"><span>✓</span><span>Fotografía del artículo</span><em>campo · 10/05</em></div>'+
+      '<div class="ev done"><span>✓</span><span>Factura de compra</span><em>recepción</em></div>'+
+      '<div class="ev miss"><span>✕</span><span>Fotografía del repuesto dañado</span><em>pendiente</em></div>'+
+      '<div class="ev miss"><span>✕</span><span>Devolución de la pieza sustituida</span><em>pendiente</em></div>'+
+      '<p style="font-size:11.5px;color:var(--soft);margin:9px 0 0">El expediente no podrá enviarse mientras falte evidencia obligatoria (RF-57).</p></div>';
+    h+='<div class="tools"><button class="btn pri">Registrar entrega</button><button class="btn" data-go="cobros">Ver expediente</button><button class="btn">Reasignar</button><button class="btn" data-go="ordenes">Volver</button></div>';
+    return h;
+  }};
+
+  S.agenda={k:'w',code:'W-06',title:'Agenda',nav:'agenda',crumb:'Agenda y rutas',render:function(){
+    var h='<h2 class="scr">Agenda y rutas del día</h2><p class="sub">Martes 12 de mayo · 31 visitas entre 8 técnicos</p>';
+    h+='<div class="g g4" style="margin-bottom:12px">'+
+      '<div class="kpi"><b>31</b><span>Programadas</span></div>'+
+      '<div class="kpi"><b style="color:var(--teal)">18</b><span>Resueltas en sitio</span></div>'+
+      '<div class="kpi"><b style="color:var(--amber)">6</b><span>Requieren traslado</span></div>'+
+      '<div class="kpi"><b style="color:var(--red)">2</b><span>Cliente ausente</span></div></div>';
+    h+='<div class="card"><h3>Ruta de R. Mejía · zona norte</h3><table class="d">'+
+      '<tr><th>Franja</th><th>Orden</th><th>Cliente</th><th>Artículo</th><th>Dirección</th><th>Garantía</th><th>Estado</th></tr>'+
+      '<tr><td>8:00–10:00</td><td>10482</td><td>Ana Munguía</td><td>Refrigeradora LG</td><td>Bo. Larreynaga</td><td><span class="war w-prov">Proveedor</span></td><td><span class="tag t-a">Requiere traslado</span></td></tr>'+
+      '<tr><td>10:00–12:00</td><td>10476</td><td>Ferretería El Roble</td><td>Aire acond. 18k</td><td>Bo. Monseñor Lezcano</td><td><span class="war w-adic">Adicional</span></td><td><span class="tag t-b">En curso</span></td></tr>'+
+      '<tr><td>13:00–15:00</td><td>10490</td><td>Marta Sequeira</td><td>Lavadora Whirlpool</td><td>Villa Fontana</td><td><span class="war w-part">Particular</span></td><td><span class="tag t-g">Programada</span></td></tr>'+
+      '<tr><td>15:00–17:00</td><td>10491</td><td>Luis Traña</td><td>Refrigeradora Mastertech</td><td>Ciudad Sandino</td><td><span class="war w-prov">Proveedor</span></td><td><span class="tag t-g">Programada</span></td></tr></table>'+
+      '<p style="font-size:11.5px;color:var(--soft);margin:10px 0 0">Un técnico no puede tener dos visitas en la misma franja: la restricción se aplica en la base de datos, no solo en la validación (RN-14).</p></div>';
+    h+='<div class="tools"><button class="btn pri">Programar visita</button><button class="btn">Reordenar ruta por zona</button><button class="btn">Reprogramar</button></div>';
+    return h;
+  }};
+
+  S.taller={k:'w',code:'W-07',title:'Taller',nav:'taller',crumb:'Cola de taller',render:function(){
+    var h='<h2 class="scr">Cola de taller</h2><p class="sub">47 artículos en el centro · 8 técnicos de planta</p>';
+    h+='<div class="alert"><span><b>4 artículos llevan más de 24 h sin diagnóstico.</b> Ningún técnico los ha tomado. Corresponde asignación forzada.</span></div>';
+    h+='<div class="card"><h3>Pendientes de asignación</h3><table class="d">'+
+      '<tr><th>N.º</th><th>Ingreso</th><th>Artículo</th><th>Garantía</th><th>Sin diagnóstico</th><th>Acción</th></tr>'+
+      '<tr><td>10471</td><td>10/05 09:15</td><td>Televisor TCL 55"</td><td><span class="war w-part">Particular</span></td><td style="color:var(--red);font-weight:600">2 d 4 h</td><td><button class="btn" style="padding:4px 9px;font-size:11px">Asignar</button></td></tr>'+
+      '<tr><td>10479</td><td>11/05 11:40</td><td>Microondas Oster</td><td><span class="war w-adic">Adicional</span></td><td style="color:var(--red);font-weight:600">1 d 6 h</td><td><button class="btn" style="padding:4px 9px;font-size:11px">Asignar</button></td></tr>'+
+      '<tr><td>10483</td><td>11/05 15:20</td><td>Lavadora Mabe</td><td><span class="war w-prov">Proveedor</span></td><td style="color:var(--amber)">18 h</td><td><button class="btn" style="padding:4px 9px;font-size:11px">Asignar</button></td></tr></table></div>';
+    h+='<div class="card"><h3>Carga por técnico</h3><table class="d">'+
+      '<tr><th>Técnico</th><th>Especialidad</th><th>En diagnóstico</th><th>En reparación</th><th>Esperando repuesto</th></tr>'+
+      '<tr><td>J. Silva</td><td>Refrigeración</td><td>2</td><td>3</td><td>1</td></tr>'+
+      '<tr><td>E. Toruño</td><td>Audio y video</td><td>1</td><td>4</td><td>2</td></tr>'+
+      '<tr><td>N. Calero</td><td>Lavado</td><td>3</td><td>2</td><td>0</td></tr></table></div>';
+    return h;
+  }};
+
+  S.inventario={k:'w',code:'W-08',title:'Bodegas',nav:'inventario',crumb:'Inventario y bodegas',render:function(){
+    var h='<h2 class="scr">Inventario y bodegas</h2><p class="sub">Bodega central más 8 bodegas móviles · toda pieza tiene responsable</p>';
+    h+='<div class="alert ok"><span><b>6 repuestos ingresaron hoy y liberaron 6 órdenes detenidas.</b> Los técnicos responsables ya fueron notificados automáticamente.</span></div>';
+    h+='<div class="card"><h3>Bodegas móviles · existencia actual</h3><table class="d">'+
+      '<tr><th>Bodega</th><th>Responsable</th><th>Piezas</th><th>Valor</th><th>Último despacho</th><th>Pendiente de conciliar</th></tr>'+
+      '<tr><td>Móvil 01</td><td>R. Mejía</td><td>24</td><td>C$ 18 400</td><td>12/05 07:10</td><td>—</td></tr>'+
+      '<tr><td>Móvil 02</td><td>D. Espinoza</td><td>19</td><td>C$ 14 100</td><td>12/05 07:15</td><td><span class="tag t-a">2 piezas</span></td></tr>'+
+      '<tr><td>Móvil 03</td><td>A. Fuentes</td><td>27</td><td>C$ 21 900</td><td>12/05 07:05</td><td>—</td></tr>'+
+      '<tr><td>Central</td><td>Bodega</td><td>1 842</td><td>C$ 1 204 000</td><td>—</td><td>—</td></tr></table>'+
+      '<p style="font-size:11.5px;color:var(--soft);margin:10px 0 0">La bodega móvil pertenece a un solo técnico, por lo que no hay concurrencia y puede descontarse sin conexión. La central es concurrente y solo se descuenta en línea.</p></div>';
+    h+='<div class="card"><h3>Movimientos recientes</h3><table class="d">'+
+      '<tr><th>Fecha</th><th>Repuesto</th><th>Tipo</th><th>Origen → destino</th><th>Orden</th><th>Responsable</th></tr>'+
+      '<tr><td>12/05 07:10</td><td>Capacitor 35 µF</td><td>Despacho</td><td>Central → Móvil 01</td><td>—</td><td>Bodeguero / R. Mejía</td></tr>'+
+      '<tr><td>10/05 11:32</td><td>Gas R-600a (lb)</td><td>Consumo</td><td>Móvil 01 → orden</td><td>10476</td><td>R. Mejía</td></tr>'+
+      '<tr><td>10/05 17:40</td><td>Capacitor 35 µF ×2</td><td>Devolución</td><td>Móvil 01 → Central</td><td>—</td><td>R. Mejía / Bodeguero</td></tr>'+
+      '<tr><td>12/05 09:05</td><td>Compresor LG 1/3 HP</td><td>Ingreso</td><td>Proveedor → Central</td><td>libera 10482</td><td>Bodeguero</td></tr></table></div>';
+    h+='<div class="tools"><button class="btn pri">Despachar a bodega móvil</button><button class="btn">Registrar ingreso</button><button class="btn">Conteo cíclico</button></div>';
+    return h;
+  }};
+
+  S.cobros={k:'w',code:'W-09',title:'Cobros',nav:'cobros',crumb:'Expedientes de cobro',render:function(){
+    var h='<h2 class="scr">Expedientes de cobro</h2><p class="sub">Reclamos a proveedores de marca y a pólizas de garantía extendida</p>';
+    h+='<div class="g g4" style="margin-bottom:12px">'+
+      '<div class="kpi"><b>1 800</b><span>Expedientes del mes</span></div>'+
+      '<div class="kpi"><b style="color:var(--teal)">1 402</b><span>Listos para enviar</span></div>'+
+      '<div class="kpi"><b style="color:var(--red)">238</b><span>Bloqueados por evidencia</span></div>'+
+      '<div class="kpi"><b style="color:var(--amber)">C$ 476 000</b><span>Monto en riesgo</span></div></div>';
+    h+='<div class="alert"><span><b>238 expedientes no pueden enviarse por evidencia faltante.</b> El sistema identifica qué falta y en qué momento debió capturarse, de modo que el rechazo se previene en lugar de descubrirse semanas después.</span></div>';
+    h+='<div class="card"><h3>Expedientes pendientes</h3><table class="d">'+
+      '<tr><th>Orden</th><th>Destinatario</th><th>Monto</th><th>Evidencia</th><th>Falta</th><th>Acción</th></tr>'+
+      '<tr><td>10482</td><td>LG · proveedor</td><td>C$ 4 850</td><td><span class="tag t-r">3 de 5</span></td><td>Foto del repuesto dañado · devolución de pieza</td><td><button class="btn" style="padding:4px 9px;font-size:11px" disabled>Enviar</button></td></tr>'+
+      '<tr><td>10476</td><td>Póliza Unicomer</td><td>C$ 3 200</td><td><span class="tag t-t">5 de 5</span></td><td>—</td><td><button class="btn amber" style="padding:4px 9px;font-size:11px">Enviar</button></td></tr>'+
+      '<tr><td>10465</td><td>Mastertech · proveedor</td><td>C$ 2 100</td><td><span class="tag t-t">5 de 5</span></td><td>—</td><td><button class="btn amber" style="padding:4px 9px;font-size:11px">Enviar</button></td></tr>'+
+      '<tr><td>10459</td><td>TCL · proveedor</td><td>C$ 1 950</td><td><span class="tag t-r">4 de 5</span></td><td>Mediciones del servicio</td><td><button class="btn" style="padding:4px 9px;font-size:11px" disabled>Enviar</button></td></tr></table>'+
+      '<p style="font-size:11.5px;color:var(--soft);margin:10px 0 0">El botón de envío permanece deshabilitado mientras falte evidencia obligatoria (RF-57). No es un aviso: es un bloqueo.</p></div>';
+    h+='<div class="card"><h3>Causas de rechazo · últimos 3 meses</h3><table class="d">'+
+      '<tr><th>Causa</th><th>Casos</th><th>%</th><th>Evitable con el sistema</th></tr>'+
+      '<tr><td>Evidencia fotográfica faltante</td><td>162</td><td>60 %</td><td><span class="tag t-t">Sí</span></td></tr>'+
+      '<tr><td>Pieza sustituida no devuelta</td><td>41</td><td>15 %</td><td><span class="tag t-t">Sí</span></td></tr>'+
+      '<tr><td>Cobertura vencida</td><td>47</td><td>17 %</td><td><span class="tag t-g">No</span></td></tr>'+
+      '<tr><td>Otras causas del proveedor</td><td>20</td><td>8 %</td><td><span class="tag t-g">No</span></td></tr></table></div>';
+    return h;
+  }};
+
+  S.excepciones={k:'w',code:'W-10',title:'Excepciones',nav:'excepciones',crumb:'Excepciones de sincronización',render:function(){
+    var h='<h2 class="scr">Excepciones de sincronización</h2><p class="sub">Registros de campo que el servidor no pudo aceptar automáticamente</p>';
+    h+='<div class="alert info"><span><b>Nada de lo registrado en campo se descarta.</b> Ante un conflicto se preserva lo que ocurrió físicamente en el domicilio del cliente, y la discrepancia administrativa se resuelve aquí (RN-19).</span></div>';
+    h+='<div class="card"><h3>Pendientes de resolución</h3>'+
+      '<div class="rowcard" style="border-left-color:var(--red)"><div class="r1"><span class="cod">Orden 10455 · D. Espinoza</span><span class="tag t-r">Orden anulada en oficina</span></div>'+
+      '<div class="r3">El técnico registró diagnóstico, evidencia y firma del cliente el 11/05 a las 15:20. La orden había sido anulada en oficina a las 14:10.</div>'+
+      '<div class="r3" style="margin-top:5px"><b>El trabajo se conserva íntegro.</b> Decidir si se reabre la orden o se registra como servicio no facturable.</div>'+
+      '<div class="tools" style="margin-top:8px"><button class="btn" style="padding:4px 10px;font-size:11px">Reabrir orden</button><button class="btn" style="padding:4px 10px;font-size:11px">Registrar como no facturable</button></div></div>'+
+      '<div class="rowcard" style="border-left-color:var(--amber)"><div class="r1"><span class="cod">Orden 10468 · D. Espinoza</span><span class="tag t-a">Repuesto no registrado en bodega móvil</span></div>'+
+      '<div class="r3">Consumió 1 termostato universal que el servidor no tenía asignado a su bodega móvil.</div>'+
+      '<div class="r3" style="margin-top:5px"><b>El consumo se aceptó</b> y se generó una diferencia de inventario para conciliación. El servicio al cliente no se detiene por un descuadre administrativo.</div>'+
+      '<div class="tools" style="margin-top:8px"><button class="btn" style="padding:4px 10px;font-size:11px">Conciliar con bodega</button></div></div>'+
+      '<div class="rowcard" style="border-left-color:var(--blue)"><div class="r1"><span class="cod">Orden 10473 · A. Fuentes</span><span class="tag t-b">Precio desactualizado</span></div>'+
+      '<div class="r3">Cotizó con el precio descargado en la mañana; el repuesto subió C$ 180 durante el día.</div>'+
+      '<div class="r3" style="margin-top:5px"><b>Prevalece el precio que el cliente firmó.</b> La diferencia queda registrada para revisión.</div>'+
+      '<div class="tools" style="margin-top:8px"><button class="btn" style="padding:4px 10px;font-size:11px">Aceptar diferencia</button></div></div></div>';
+    return h;
+  }};
+
+  S.indicadores={k:'w',code:'W-11',title:'Indicadores',nav:'indicadores',crumb:'Indicadores',render:function(){
+    var W=760,H=190,data=[['Ene',86],['Feb',92],['Mar',78],['Abr',95],['May',68]],max=110,bw=W/data.length;
+    var bars=data.map(function(d,i){var bh=(d[1]/max)*(H-34);
+      return '<rect x="'+(i*bw+bw*0.2)+'" y="'+(H-26-bh)+'" width="'+(bw*0.6)+'" height="'+bh+'" fill="#1F5C8B"/>'+
+        '<text x="'+(i*bw+bw/2)+'" y="'+(H-12)+'" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10" fill="#4A5D70">'+d[0]+'</text>'+
+        '<text x="'+(i*bw+bw/2)+'" y="'+(H-32-bh)+'" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10">'+d[1]+'</text>';}).join('');
+    var h='<h2 class="scr">Indicadores de gestión</h2><p class="sub">Mayo 2026 · comparado con el trimestre anterior</p>';
+    h+='<div class="g g4" style="margin-bottom:12px">'+
+      '<div class="kpi"><b style="font-size:20px">3.1 d</b><span>Tiempo medio de reparación</span></div>'+
+      '<div class="kpi"><b style="font-size:20px;color:var(--teal)">71 %</b><span>Resueltas en primera visita</span></div>'+
+      '<div class="kpi"><b style="font-size:20px;color:var(--red)">7.6 %</b><span>Órdenes con plazo vencido</span></div>'+
+      '<div class="kpi"><b style="font-size:20px;color:var(--amber)">13 %</b><span>Expedientes rechazados</span></div></div>';
+    h+='<div class="card"><h3>Horas promedio en estado «esperando repuesto» por mes</h3>'+
+      '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto"><line x1="0" y1="'+(H-26)+'" x2="'+W+'" y2="'+(H-26)+'" stroke="#C3CDD8"/>'+bars+'</svg></div>';
+    h+='<div class="card"><h3>Órdenes por tipo de garantía</h3><table class="d">'+
+      '<tr><th>Tipo</th><th>Órdenes</th><th>%</th><th>Monto reclamado</th><th>Tiempo medio</th></tr>'+
+      '<tr><td><span class="war w-prov">Proveedor</span></td><td>1 320</td><td>44 %</td><td>C$ 2 640 000</td><td>3.4 d</td></tr>'+
+      '<tr><td><span class="war w-adic">Adicional</span></td><td>480</td><td>16 %</td><td>C$ 960 000</td><td>2.9 d</td></tr>'+
+      '<tr><td><span class="war w-part">Particular</span></td><td>1 200</td><td>40 %</td><td>—</td><td>2.6 d</td></tr></table></div>';
+    return h;
+  }};
+
+
+  S.clientes={k:'w',code:'W-12',title:'Clientes',nav:'clientes',crumb:'Clientes',render:function(){
+    var h='<h2 class="scr">Clientes</h2><p class="sub">18 420 registrados · búsqueda por nombre, teléfono o identificación</p>';
+    h+='<div class="card"><h3>Buscar</h3><div class="g g4">'+
+      '<div><label>Nombre</label><input value="Mungu"></div>'+
+      '<div><label>Teléfono</label><input placeholder="8845-2210"></div>'+
+      '<div><label>Identificación</label><input placeholder="001-..."></div>'+
+      '<div style="display:flex;align-items:flex-end"><button class="btn pri" style="width:100%;justify-content:center">Buscar</button></div></div></div>';
+    h+='<div class="alert warn"><span><b>Posible duplicado detectado.</b> «Ana Munguia R.» y «Ana Munguía Reyes» comparten el teléfono 8845-2210. Conviene fusionarlos antes de abrir órdenes nuevas (RF-70, RF-75).</span></div>';
+    h+='<div class="card"><table class="d"><tr><th>Cliente</th><th>Identificación</th><th>Teléfono vigente</th><th>Artículos</th><th>Órdenes</th><th>Estado</th></tr>'+
+      '<tr data-go="ficha" style="cursor:pointer"><td>Ana Munguía Reyes</td><td>001-140592-0004K</td><td>8845-2210</td><td>3</td><td>7</td><td><span class="tag t-t">Activo</span></td></tr>'+
+      '<tr><td>Ana Munguia R.</td><td>—</td><td>8845-2210</td><td>1</td><td>1</td><td><span class="tag t-a">Posible duplicado</span></td></tr>'+
+      '<tr><td>Ferretería El Roble</td><td>J031-0000-12345</td><td>2278-4410</td><td>9</td><td>21</td><td><span class="tag t-t">Activo</span></td></tr>'+
+      '<tr><td>Marlon Téllez Aguirre</td><td>001-220780-0011X</td><td>8712-9930</td><td>2</td><td>4</td><td><span class="tag t-g">Desactivado</span></td></tr></table>'+
+      '<p style="font-size:11.5px;color:var(--soft);margin:10px 0 0">Un cliente desactivado no aparece en órdenes nuevas, pero conserva su historial completo. <b>Nunca se elimina</b> (RN-21).</p></div>';
+    h+='<div class="tools"><button class="btn pri">Nuevo cliente</button><button class="btn" data-go="ficha">Abrir ficha</button><button class="btn">Fusionar duplicados</button></div>';
+    return h;
+  }};
+
+  S.ficha={k:'w',code:'W-13',title:'Ficha de cliente',nav:'clientes',crumb:'Clientes › Ana Munguía Reyes',render:function(){
+    var h='<h2 class="scr">Ana Munguía Reyes</h2><p class="sub">Cliente desde 03/2023 · 7 órdenes · 3 artículos registrados</p>';
+    h+='<div class="tabs"><span class="on">Datos</span><span>Artículos</span><span>Órdenes</span><span>Coberturas</span><span>Bitácora</span></div>';
+    h+='<div class="card"><h3>Datos personales <span style="float:right;font-weight:400;font-size:10.5px;color:var(--teal)">datos vivos · se actualizan en todas partes</span></h3>'+
+      '<div class="g g3"><div><label>Nombres y apellidos</label><input value="Ana Munguía Reyes"></div>'+
+      '<div><label>Identificación</label><input value="001-140592-0004K"></div>'+
+      '<div><label>Correo</label><input value="amunguia@correo.com"></div></div></div>';
+    h+='<div class="card"><h3>Teléfonos</h3><table class="d">'+
+      '<tr><th>Número</th><th>Tipo</th><th>Estado</th><th>Desde</th><th></th></tr>'+
+      '<tr><td>8845-2210</td><td>Celular</td><td><span class="tag t-t">Vigente</span></td><td>03/2023</td><td><button class="btn" style="padding:3px 8px;font-size:11px">Editar</button></td></tr>'+
+      '<tr><td>2249-1180</td><td>Casa</td><td><span class="tag t-g">Anterior</span></td><td>03/2023 – 01/2026</td><td>—</td></tr></table>'+
+      '<div class="tools"><button class="btn">Agregar teléfono</button></div>'+
+      '<div class="alert info" style="margin:11px 0 0"><span>El número anterior se conserva: la consulta del portal público acepta tanto el teléfono vigente como el que estaba registrado al abrirse cada orden.</span></div></div>';
+    h+='<div class="card"><h3>Direcciones</h3><table class="d">'+
+      '<tr><th>Dirección</th><th>Zona</th><th>Cargo por visita</th><th>Estado</th><th></th></tr>'+
+      '<tr><td>Bo. Larreynaga, de la farmacia 1 c. al sur</td><td>Norte 1</td><td>C$ 350</td><td><span class="tag t-t">Principal</span></td><td><button class="btn" style="padding:3px 8px;font-size:11px">Editar</button></td></tr>'+
+      '<tr><td>Villa Fontana, casa 214</td><td>Este 2</td><td>C$ 450</td><td><span class="tag t-g">Anterior</span></td><td>—</td></tr></table>'+
+      '<div class="tools"><button class="btn">Agregar dirección</button></div>'+
+      '<div class="alert warn" style="margin:11px 0 0"><span><b>Cambiar la dirección no altera las órdenes ya programadas.</b> Cada orden conservó la dirección, la zona y el cargo por visita vigentes al momento de programarse (RF-73, RN-22). La dirección nueva se usará en órdenes futuras.</span></div></div>';
+    h+='<div class="card"><h3>Artículos del cliente</h3><table class="d">'+
+      '<tr><th>Artículo</th><th>N.º de serie</th><th>Tienda</th><th>Compra</th><th>Cobertura</th><th>Servicios</th></tr>'+
+      '<tr data-go="articulo" style="cursor:pointer"><td>Refrigeradora LG GT32BPP</td><td>LG2403118742</td><td>La Curacao</td><td>14/08/2025</td><td><span class="war w-prov">Proveedor · vence 14/08/2026</span></td><td>2</td></tr>'+
+      '<tr><td>Televisor TCL 43"</td><td>TCL2210044</td><td>RadioShack</td><td>02/11/2022</td><td><span class="war w-part">Vencida</span></td><td>1</td></tr>'+
+      '<tr><td>Lavadora Whirlpool</td><td>WP1908773</td><td>Almacenes Tropigas</td><td>19/03/2024</td><td><span class="war w-adic">Adicional · vence 19/03/2029</span></td><td>4</td></tr></table></div>';
+    h+='<div class="tools"><button class="btn pri" data-go="nueva">Nueva orden para este cliente</button><button class="btn">Desactivar cliente</button><button class="btn" data-go="clientes">Volver</button></div>';
+    h+='<div class="alert"><span><b>Desactivar no es eliminar.</b> El cliente deja de aparecer en búsquedas y no puede usarse en órdenes nuevas, pero sus 7 órdenes, sus 3 artículos y sus coberturas permanecen intactos porque sustentan expedientes de cobro ya presentados.</span></div>';
+    return h;
+  }};
+
+  S.articulo={k:'w',code:'W-14',title:'Artículo',nav:'clientes',crumb:'Clientes › Ana Munguía › Refrigeradora LG',render:function(){
+    var h='<h2 class="scr">Refrigeradora LG GT32BPP</h2><p class="sub">Serie LG2403118742 · Ana Munguía Reyes · 2 servicios registrados</p>';
+    h+='<div class="card" style="border-left:3px solid var(--blue)"><h3>Datos de compra <span style="float:right;font-weight:400;font-size:10.5px;color:var(--red)">determinan quién paga · solo jefatura</span></h3>'+
+      '<div class="g g4"><div><label>Tienda de origen</label><input value="La Curacao" readonly></div>'+
+      '<div><label>Fecha de compra</label><input value="14/08/2025" readonly></div>'+
+      '<div><label>Marca</label><input value="LG" readonly></div>'+
+      '<div><label>Factura</label><input value="Adjunta · F-88214" readonly></div></div>'+
+      '<div class="alert" style="margin:11px 0 0"><span><b>Estos tres campos cambian quién paga la reparación.</b> Un artículo registrado como comprado en el grupo lo cubre el proveedor; el mismo artículo como externo lo paga el cliente. Su modificación exige rol de jefatura, motivo escrito y evidencia documental, y queda en bitácora (RF-78, RN-24).</span></div>'+
+      '<div class="tools"><button class="btn amber">Solicitar corrección con motivo</button></div></div>';
+    h+='<div class="card"><h3>Coberturas</h3><table class="d">'+
+      '<tr><th>Tipo</th><th>Origen</th><th>Vigencia</th><th>Cubre</th><th>Estado</th></tr>'+
+      '<tr><td><span class="war w-prov">Proveedor</span></td><td>LG · 12 meses</td><td>14/08/2025 – 14/08/2026</td><td>Defectos de fabricación</td><td><span class="tag t-t">Vigente</span></td></tr>'+
+      '<tr><td><span class="war w-adic">Adicional</span></td><td>No contratada</td><td>—</td><td>—</td><td><span class="tag t-g">No aplica</span></td></tr></table>'+
+      '<div class="tools"><button class="btn">Registrar póliza extendida</button></div></div>';
+    h+='<div class="card"><h3>Historial de servicios <span style="float:right;font-weight:400;font-size:10.5px;color:var(--soft)">acompaña al artículo, no al dueño</span></h3><table class="d">'+
+      '<tr><th>Orden</th><th>Fecha</th><th>Falla</th><th>Garantía</th><th>Resultado</th></tr>'+
+      '<tr data-go="detalle" style="cursor:pointer"><td>10482</td><td>10/05/2026</td><td>No enfría · compresor</td><td><span class="war w-prov">Proveedor</span></td><td><span class="tag t-r">Esperando repuesto</span></td></tr>'+
+      '<tr><td>10120</td><td>18/12/2025</td><td>Ruido en ventilador</td><td><span class="war w-prov">Proveedor</span></td><td><span class="tag t-g">Entregada</span></td></tr></table>'+
+      '<div class="alert warn" style="margin:11px 0 0"><span><b>Segundo servicio en 5 meses.</b> La reincidencia es un dato que el proveedor examina al evaluar el reclamo, y se incluye automáticamente en el expediente.</span></div></div>';
+    h+='<div class="tools"><button class="btn pri" data-go="nueva">Abrir orden para este artículo</button><button class="btn">Reasignar a otro cliente</button><button class="btn" data-go="ficha">Volver a la ficha</button></div>';
+    return h;
+  }};
+
+  S.coberturas={k:'w',code:'W-15',title:'Reglas',nav:'coberturas',crumb:'Garantías › Reglas de cobertura',render:function(){
+    var h='<h2 class="scr">Reglas de cobertura</h2><p class="sub">Parametrizables sin intervención de desarrollo · versionadas</p>';
+    h+='<div class="alert info"><span>El motor de garantías evalúa cada orden contra estas reglas. Al modificarlas se crea una versión nueva, y <b>cada orden conserva la versión vigente al momento de abrirse</b> (RF-86, RN-22).</span></div>';
+    h+='<div class="card"><h3>Reglas vigentes</h3><table class="d">'+
+      '<tr><th>Marca</th><th>Categoría</th><th>Meses</th><th>Tiendas</th><th>Exclusiones</th><th>Versión</th></tr>'+
+      '<tr><td>LG</td><td>Refrigeración</td><td>12</td><td>Curacao, Tropigas</td><td>Daño por descarga, golpe, mal uso</td><td>v3 · 01/2026</td></tr>'+
+      '<tr><td>TCL</td><td>Audio y video</td><td>12</td><td>Curacao, RadioShack</td><td>Pantalla quebrada, humedad</td><td>v2 · 09/2025</td></tr>'+
+      '<tr><td>Mastertech</td><td>Línea blanca</td><td>18</td><td>Tropigas</td><td>Daño por descarga, instalación indebida</td><td>v1 · 03/2025</td></tr>'+
+      '<tr><td>Whirlpool</td><td>Lavado</td><td>12</td><td>Curacao, Tropigas</td><td>Sobrecarga, objetos ajenos</td><td>v2 · 11/2025</td></tr></table></div>';
+    h+='<div class="card"><h3>Póliza de garantía adicional</h3><div class="g g4">'+
+      '<div><label>Duración máxima</label><input value="5 años" readonly></div>'+
+      '<div><label>Inicio de vigencia</label><input value="Al vencer la del proveedor" readonly></div>'+
+      '<div><label>Responsable del pago</label><input value="Póliza corporativa Unicomer" readonly></div>'+
+      '<div><label>Cede al revender</label><select><option>No, salvo cesión formal</option><option>Sí</option></select></div></div>'+
+      '<p style="font-size:11.5px;color:var(--soft);margin:10px 0 0">La garantía de proveedor acompaña al artículo; la póliza acompaña al contratante (RN-28). Pendiente de confirmar con la jefatura de compras.</p></div>';
+    h+='<div class="tools"><button class="btn pri">Nueva regla</button><button class="btn">Ver versiones anteriores</button></div>';
+    return h;
+  }};
+
+  // ───────── APP MÓVIL ─────────
+  S.ruta={k:'m',code:'M-01',title:'Mi ruta',nav:'ruta',crumb:'Ruta del día',render:function(){
+    var h=syncbar(true);
+    h+='<h2 class="scr">Mi ruta · martes 12</h2><p class="sub">R. Mejía · 4 visitas · zona norte</p>';
+    var rows=[['8:00','10482','Ana Munguía','Refrigeradora LG','Bo. Larreynaga','w-prov','Proveedor','t-a','En curso'],
+              ['10:00','10476','Ferretería El Roble','Aire acond. 18k','Bo. Mons. Lezcano','w-adic','Adicional','t-g','Pendiente'],
+              ['13:00','10490','Marta Sequeira','Lavadora Whirlpool','Villa Fontana','w-part','Particular','t-g','Pendiente'],
+              ['15:00','10491','Luis Traña','Refrigeradora Mastertech','Ciudad Sandino','w-prov','Proveedor','t-g','Pendiente']];
+    rows.forEach(function(r){
+      h+='<div class="rowcard" data-go="diagnostico" style="cursor:pointer;border-left-color:var(--teal)">'+
+        '<div class="r1"><span class="cod">'+r[0]+' · N.º '+r[1]+'</span><span class="tag '+r[7]+'">'+r[8]+'</span></div>'+
+        '<div class="r2">'+r[3]+'</div><div class="r3">'+r[2]+' · <span class="war '+r[5]+'">'+r[6]+'</span></div>'+
+        '<div class="r3">📍 '+r[4]+'</div></div>';
+    });
+    h+='<div class="alert warn"><span>La ruta se descargó a las 7:05 con todos sus datos. Podés trabajar sin señal durante toda la jornada.</span></div>';
+    return h;
+  }};
+
+  S.diagnostico={k:'m',code:'M-03',title:'Diagnóstico',nav:'diagnostico',crumb:'Orden 10482 › paso 2 de 6',render:function(){
+    var h=syncbar(true);
+    h+='<div class="steps"><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></div>';
+    h+='<h2 class="scr">Diagnóstico</h2><p class="sub">N.º 10482 · Refrigeradora LG · <span class="war w-prov">Proveedor</span></p>';
+    h+='<div class="card"><h3>Mediciones · refrigeración</h3>'+
+      '<div style="margin-bottom:9px"><label>Presión de succión (psi)</label><input value="42"></div>'+
+      '<div class="alert warn" style="margin-bottom:9px"><span><b>Fuera de rango.</b> Esperado entre 55 y 70 psi. La advertencia queda registrada en la orden.</span></div>'+
+      '<div style="margin-bottom:9px"><label>Amperaje del compresor (A)</label><input value="6.8"></div>'+
+      '<div style="margin-bottom:9px"><label>Temperatura del congelador (°C)</label><input value="-4"></div>'+
+      '<div class="alert warn" style="margin-bottom:0"><span><b>Fuera de rango.</b> Esperado entre -18 y -15 °C.</span></div></div>';
+    h+='<div class="card"><h3>Falla real</h3>'+
+      '<div style="margin-bottom:9px"><label>Componente afectado</label><select><option>Compresor</option><option>Termostato</option><option>Fuga en el sistema</option><option>Tarjeta electrónica</option></select></div>'+
+      '<div><label>Descripción</label><textarea rows="3">Compresor con baja presión de succión y consumo elevado. Requiere sustitución completa; no puede repararse en sitio.</textarea></div></div>';
+    h+='<div class="alert info"><span><b>La cobertura se mantiene.</b> La falla del compresor está cubierta por la garantía de proveedor. Costo al cliente: C$ 0.00.</span></div>';
+    h+='<div class="stickybar"><button class="btn teal" data-go="evidencia">Continuar al paso 3</button></div>';
+    return h;
+  }};
+
+  S.evidencia={k:'m',code:'M-04',title:'Evidencia',nav:'diagnostico',crumb:'Orden 10482 › paso 3 de 6',render:function(){
+    var h=syncbar(true);
+    h+='<div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div>';
+    h+='<h2 class="scr">Evidencia obligatoria</h2><p class="sub">Requerida por la garantía de proveedor · marca LG</p>';
+    h+='<div class="card"><h3>Capturas requeridas</h3>'+
+      '<div class="ev done"><span>✓</span><span>Fotografía del artículo</span><em>10:31</em></div>'+
+      '<div class="ev done"><span>✓</span><span>Placa con número de serie</span><em>10:33</em></div>'+
+      '<div class="ev miss"><span>○</span><span>Fotografía del compresor dañado</span><em>obligatoria</em></div>'+
+      '<div class="tools" style="margin-top:10px"><button class="btn teal">📷 Tomar fotografía</button></div></div>';
+    h+='<div class="alert"><span><b>Falta 1 de 3 evidencias obligatorias.</b> No se puede continuar sin completarla: sin esta fotografía, el expediente de cobro a LG será rechazado y el centro no recuperará C$ 4 850.</span></div>';
+    h+='<div class="card"><h3>Ya capturado</h3><div class="g g2">'+
+      '<div style="background:#EDF1F5;border:1px solid var(--rule);border-radius:3px;height:96px;display:flex;align-items:center;justify-content:center;color:var(--soft);font-size:11px">Fotografía del artículo</div>'+
+      '<div style="background:#EDF1F5;border:1px solid var(--rule);border-radius:3px;height:96px;display:flex;align-items:center;justify-content:center;color:var(--soft);font-size:11px">Placa de serie</div></div>'+
+      '<p style="font-size:11px;color:var(--soft);margin:9px 0 0">Cada evidencia se guarda con autor, fecha, hora y huella digital, de modo que sirva como sustento ante el proveedor.</p></div>';
+    h+='<div class="stickybar"><button class="btn teal" disabled>Continuar · falta evidencia</button></div>';
+    return h;
+  }};
+
+  S.repuestos={k:'m',code:'M-05',title:'Repuestos',nav:'repuestos',crumb:'Orden 10482 › paso 4 de 6',render:function(){
+    var h=syncbar(true);
+    h+='<div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div>';
+    h+='<h2 class="scr">Repuestos</h2><p class="sub">Mi bodega móvil · 24 piezas</p>';
+    h+='<div class="card"><h3>Registrar consumo</h3>'+
+      '<button class="btn teal" style="margin-bottom:10px">⌗ Escanear código del repuesto</button>'+
+      '<div class="ev done"><span>✓</span><span>Gas R-600a · 1 lb</span><em>consumido</em></div>'+
+      '<p style="font-size:11.5px;color:var(--soft);margin:9px 0 0">El descuento se aplica localmente sobre tu bodega. Es seguro sin conexión porque nadie más consume de ella.</p></div>';
+    h+='<div class="alert warn"><span><b>El compresor LG 1/3 HP no está en tu bodega móvil.</b> Al sincronizar se generará la solicitud al proveedor y la orden pasará a «esperando repuesto».</span></div>';
+    h+='<div class="card"><h3>Mi bodega móvil</h3>'+
+      '<div class="meas"><span>Capacitor 35 µF</span><b>3</b></div>'+
+      '<div class="meas"><span>Gas R-600a (lb)</span><b>4</b></div>'+
+      '<div class="meas"><span>Termostato universal</span><b>2</b></div>'+
+      '<div class="meas"><span>Filtro secador</span><b>6</b></div></div>';
+    h+='<div class="stickybar"><button class="btn teal" data-go="cierre">Continuar al paso 5</button></div>';
+    return h;
+  }};
+
+  S.cierre={k:'m',code:'M-07',title:'Cierre',nav:'cierre',crumb:'Orden 10482 › paso 6 de 6',render:function(){
+    var h=syncbar(true);
+    h+='<div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>';
+    h+='<h2 class="scr">Cierre del servicio</h2><p class="sub">N.º 10482 · Ana Munguía Reyes</p>';
+    h+='<div class="card"><h3>Resumen</h3>'+
+      '<div class="meas"><span>Resultado</span><b>Requiere traslado al taller</b></div>'+
+      '<div class="meas"><span>Garantía aplicada</span><b>Proveedor · LG</b></div>'+
+      '<div class="meas"><span>Costo al cliente</span><b>C$ 0.00</b></div>'+
+      '<div class="meas"><span>Repuesto solicitado</span><b>Compresor 1/3 HP</b></div>'+
+      '<div class="meas"><span>Evidencias capturadas</span><b>3 de 3</b></div></div>';
+    h+='<div class="card"><h3>Firma de conformidad del cliente</h3>'+
+      '<div style="background:#F7F9FB;border:1px dashed var(--rule);border-radius:4px;height:110px;display:flex;align-items:center;justify-content:center;color:var(--soft);font-size:12px">Firmar con el dedo</div>'+
+      '<p style="font-size:11px;color:var(--soft);margin:8px 0 0">La firma se registra con fecha, hora y ubicación, y forma parte del expediente de cobro.</p></div>';
+    h+='<div class="alert ok"><span><b>El trabajo ya está guardado en el dispositivo.</b> Se enviará automáticamente al recuperar señal. No hace falta esperar ni volver a digitarlo en el taller.</span></div>';
+    h+='<div class="card"><h3>Cola de envío</h3>'+
+      '<div class="ev"><span>◇</span><span>Orden 10482 · datos y diagnóstico</span><em>pendiente</em></div>'+
+      '<div class="ev"><span>◇</span><span>Orden 10482 · 3 fotografías</span><em>pendiente</em></div>'+
+      '<div class="ev"><span>◇</span><span>Orden 10476 · cierre</span><em>pendiente</em></div>'+
+      '<div class="ev done"><span>✓</span><span>Orden 10465 · cierre</span><em>enviado 09:12</em></div></div>';
+    h+='<div class="stickybar"><button class="btn teal" data-go="ruta">Cerrar orden y volver a la ruta</button></div>';
+    return h;
+  }};
+
+  // ───────── PORTAL ─────────
+  S.portal={k:'p',code:'P-01',title:'Consulta pública',plain:true,render:function(){
+    return '<div class="portal"><div class="portalbox">'+
+      '<div style="font-family:Archivo,sans-serif;font-weight:800;font-size:23px;margin-bottom:4px">Servi<span style="color:var(--amber)">Total</span></div>'+
+      '<p style="color:#9DB0C0;font-size:12.5px;margin-bottom:20px">Consulte el estado de su orden con el número que aparece en su comprobante de recepción.</p>'+
+      '<div style="background:#1D2C3A;border:1px solid #2E4152;border-radius:5px;padding:18px">'+
+      '<div class="g g2"><div><label>Número de orden</label><input value="10482"></div>'+
+      '<div><label>Teléfono registrado</label><input value="8845-2210"></div></div>'+
+      '<button class="btn amber" style="width:100%;justify-content:center;margin-top:13px">Consultar</button>'+
+      '<p style="font-size:10.5px;color:#7D8FA0;margin:10px 0 0">Pedimos los dos datos para que nadie más pueda ver el estado de su equipo.</p></div>'+
+      '<div class="pres"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:9px;flex-wrap:wrap">'+
+      '<div><div style="font-family:IBM Plex Mono,monospace;font-size:11.5px;color:var(--soft)">Orden 10482</div>'+
+      '<div style="font-family:Archivo,sans-serif;font-size:17px;font-weight:700">Refrigeradora LG GT32BPP</div></div>'+
+      '<span class="tag t-r">Esperando repuesto</span></div>'+
+      '<ul class="tl">'+
+      '<li class="done">Orden registrada<small>10 de mayo, 08:40 · visita a domicilio</small></li>'+
+      '<li class="done">Visita técnica realizada<small>10 de mayo, 10:24 · requiere traslado al taller</small></li>'+
+      '<li class="done">Artículo recibido en el taller<small>10 de mayo, 16:05</small></li>'+
+      '<li class="now">Esperando repuesto<small>Compresor solicitado al proveedor · arribo estimado 24 de mayo</small></li>'+
+      '<li>Reparación<small>Pendiente</small></li>'+
+      '<li>Listo para retirar<small>Le avisaremos por teléfono</small></li></ul>'+
+      '<div style="border-top:1px solid var(--line);margin-top:13px;padding-top:11px;font-size:12px;color:var(--soft)">'+
+      'Su servicio está cubierto por <b style="color:var(--ink)">garantía de proveedor</b>. Costo para usted: <b style="color:var(--ink)">C$ 0.00</b>.</div>'+
+      '</div></div></div>';
+  }};
+
+  var GRP={w:['login','panel','clientes','ficha','articulo','nueva','ordenes','detalle','agenda','taller','inventario','coberturas','cobros','excepciones','indicadores'],
+           m:['ruta','diagnostico','evidencia','repuestos','cierre'],
+           p:['portal']};
+
+  function draw(){
+    var s=S[cur], mob=(s.k==='m');
+    var app='<div class="app'+(mob?' m':'')+'">';
+    if(s.plain){ app+=s.render(); }
+    else if(mob){
+      app+='<div class="main">'+'<div class="topbar"><span>☰</span><span class="t">'+s.title+'</span><span>⋯</span></div>'+
+        '<div class="crumb"><span class="code">'+s.code+'</span><span>'+s.crumb+'</span></div>'+
+        '<div class="body">'+s.render()+'</div></div>'+tabbar(s.nav);
+    } else {
+      app+=side(s.nav)+'<div class="main"><div class="crumb"><span class="code">'+s.code+'</span><span>'+s.crumb+'</span></div>'+
+        '<div class="body">'+s.render()+'</div></div>';
+    }
+    app+='</div>';
+
+    var u={login:'/acceso',panel:'/panel',clientes:'/clientes',ficha:'/clientes/4821',articulo:'/articulos/LG2403118742',coberturas:'/garantias/reglas',nueva:'/ordenes/nueva',ordenes:'/ordenes',detalle:'/ordenes/10482',agenda:'/visitas',
+           taller:'/taller',inventario:'/inventario',cobros:'/cobros',excepciones:'/excepciones',indicadores:'/indicadores'}[cur]||'/';
+    var html = mob
+      ? '<div class="frame-mob"><div class="statusbar"><span>10:47</span><span>◇ sin señal · ▮▮ 62%</span></div>'+app+'</div>'
+      : '<div class="frame-desk"><div class="chrome"><div class="dots"><i></i><i></i><i></i></div><div class="urlbar">🔒 '+
+        (s.k==='p'?'servitotal.com.ni/consulta':'gestion.servitotal.com.ni'+u)+'</div></div>'+app+'</div>';
+    document.getElementById('stage').innerHTML=html;
+
+    document.querySelectorAll('.screens button').forEach(function(b){ b.setAttribute('aria-pressed', b.dataset.go===cur?'true':'false'); });
+    document.getElementById('hint').textContent = mob
+      ? 'Aplicación móvil · 390 px · un paso por pantalla, acción fija al pie, indicador de sincronización permanente'
+      : (s.k==='p' ? 'Portal público · sin autenticación · nunca devuelve listados'
+                   : 'Panel web · 1180 px · barra lateral y densidad de escritorio');
+  }
+
+  ['w','m','p'].forEach(function(k){
+    document.getElementById({w:'pw',m:'pm',p:'pp'}[k]).innerHTML =
+      GRP[k].map(function(id){ return '<button data-go="'+id+'">'+S[id].code+' '+S[id].title+'</button>'; }).join('');
+  });
+
+  document.addEventListener('click',function(e){
+    var t=e.target.closest('[data-go]');
+    if(t && S[t.dataset.go]){ e.preventDefault(); cur=t.dataset.go; draw();
+      window.scrollTo({top:document.querySelector('.stage').offsetTop-80,behavior:'smooth'}); return; }
+    var tab=e.target.closest('.tabs span');
+    if(tab){ tab.parentNode.querySelectorAll('span').forEach(function(x){x.classList.remove('on')}); tab.classList.add('on'); }
+  });
+
+  draw();
+})();
+</script>
+</body>
+</html>

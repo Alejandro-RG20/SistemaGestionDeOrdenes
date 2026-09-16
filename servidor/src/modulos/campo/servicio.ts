@@ -6,7 +6,7 @@
  * reanudacion. Asi una foto de cuatro megas con mala senal no bloquea el
  * resto de la cola.
  */
-import type { EstadoDeCarga, PeticionIniciarCarga } from '@servitotal/compartido';
+import type { EstadoDeCarga, EvidenciaDeOrden, PeticionIniciarCarga } from '@servitotal/compartido';
 import { randomUUID } from 'node:crypto';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import { enTransaccion } from '../../comun/transacciones.js';
@@ -14,17 +14,8 @@ import { ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import * as almacen from '../../infraestructura/almacenamiento-objetos.js';
 import * as repositorio from './repositorio.js';
 
-export interface EvidenciaListada {
-  readonly id: string;
-  readonly clave: string;
-  readonly tipo: string;
-  readonly rutaArchivo: string | null;
-  readonly huellaDigital: string | null;
-  readonly autor: string | null;
-  readonly momentoDispositivo: string;
-  readonly bytes: number | null;
-  readonly sincronizada: boolean;
-}
+/** El contrato vive en `compartido`: lo consume tambien el panel. */
+export type EvidenciaListada = EvidenciaDeOrden;
 
 export async function listarDeOrden(idOrden: string): Promise<readonly EvidenciaListada[]> {
   if (!(await repositorio.ordenExiste(idOrden))) {

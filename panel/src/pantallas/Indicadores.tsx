@@ -9,7 +9,7 @@
 import type { IndicadoresDeCobro, IndicadoresDeOperacion } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
-import { Cargando, Fallo } from '../componentes/carga.js';
+import { Cargando, Fallo } from '../componentes/piezas.js';
 import { tienePermiso } from '../sesion/navegacion.js';
 
 function claseDePorcentaje(valor: number): string {
@@ -42,17 +42,17 @@ export function Indicadores(): JSX.Element {
 
   return (
     <>
-      <h1>Indicadores</h1>
-      <p className="subtitulo">
+      <h2 className="scr">Indicadores</h2>
+      <p className="sub">
         Calculados el {new Date(datos.calculadoEn).toLocaleString()}.
       </p>
 
-      <div className="rejilla">
-        <div className="tarjeta">
+      <div className="g g4">
+        <div className="card">
           <p className="etiqueta-cifra">Ordenes abiertas</p>
           <p className="cifra">{datos.ordenesVivas}</p>
         </div>
-        <div className="tarjeta">
+        <div className="card">
           <p className="etiqueta-cifra">Cumplimiento de plazo</p>
           <p className={claseDePorcentaje(datos.cumplimiento.porcentaje)}>
             {datos.cumplimiento.porcentaje}%
@@ -61,7 +61,7 @@ export function Indicadores(): JSX.Element {
             {datos.cumplimiento.aTiempo} de {datos.cumplimiento.cerradas} entregadas a tiempo
           </p>
         </div>
-        <div className="tarjeta">
+        <div className="card">
           <p className="etiqueta-cifra">Vencidas abiertas</p>
           <p className={datos.cumplimiento.vencidasAbiertas > 0 ? 'cifra cifra-critica' : 'cifra'}>
             {datos.cumplimiento.vencidasAbiertas}
@@ -81,7 +81,7 @@ export function Indicadores(): JSX.Element {
               <td className="numero">{fila.ordenes}</td>
               <td className="numero">
                 {fila.vencidas > 0
-                  ? <span className="estado estado-critico">{fila.vencidas}</span>
+                  ? <span className="tag t-r">{fila.vencidas}</span>
                   : <span className="tenue">0</span>}
               </td>
             </tr>
@@ -129,7 +129,7 @@ export function Indicadores(): JSX.Element {
               <td className="numero">{fila.enCurso}</td>
               <td className="numero">
                 {fila.vencidas > 0
-                  ? <span className="estado estado-critico">{fila.vencidas}</span>
+                  ? <span className="tag t-r">{fila.vencidas}</span>
                   : <span className="tenue">0</span>}
               </td>
               <td className="numero tenue">{fila.horasPromedioCierre ?? '—'}</td>
@@ -167,22 +167,22 @@ export function Indicadores(): JSX.Element {
       {puedeVerCobros && cobros.datos !== null && cobros.datos !== undefined ? (
         <>
           <h2>Recuperacion de garantias</h2>
-          <div className="rejilla">
-            <div className="tarjeta">
+          <div className="g g4">
+            <div className="card">
               <p className="etiqueta-cifra">Reclamado</p>
               <p className="cifra">C$ {cobros.datos.totalReclamado.toFixed(2)}</p>
             </div>
-            <div className="tarjeta">
+            <div className="card">
               <p className="etiqueta-cifra">Cobrado</p>
               <p className="cifra cifra-buena">C$ {cobros.datos.totalCobrado.toFixed(2)}</p>
             </div>
-            <div className="tarjeta">
+            <div className="card">
               <p className="etiqueta-cifra">Tasa de recuperacion</p>
               <p className={claseDePorcentaje(cobros.datos.tasaRecuperacion)}>
                 {cobros.datos.tasaRecuperacion}%
               </p>
             </div>
-            <div className="tarjeta">
+            <div className="card">
               <p className="etiqueta-cifra">Expuesto</p>
               <p className="cifra cifra-alerta">C$ {cobros.datos.expuesto.toFixed(2)}</p>
               <p className="tenue" style={{ margin: 0, fontSize: 13 }}>

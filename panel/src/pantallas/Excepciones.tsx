@@ -13,7 +13,7 @@ import { useState } from 'react';
 import type { ResumenExcepcion } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
-import { Cargando, Fallo, Vacio } from '../componentes/carga.js';
+import { Cargando, Fallo, Vacio } from '../componentes/piezas.js';
 import { ErrorDeApi, type PaginaDeDatos } from '../api/cliente.js';
 
 export function Excepciones(): JSX.Element {
@@ -51,19 +51,19 @@ export function Excepciones(): JSX.Element {
 
   return (
     <>
-      <h1>Trabajo de campo sin conciliar</h1>
-      <p className="subtitulo">
+      <h2 className="scr">Trabajo de campo sin conciliar</h2>
+      <p className="sub">
         Lo que un tecnico registro sin conexion y el servidor no pudo aplicar. Nada se
         perdio: la carga original esta completa mas abajo.
       </p>
 
-      {error === null ? null : <div className="aviso aviso-error"><p>{error}</p></div>}
+      {error === null ? null : <div className="alert"><p>{error}</p></div>}
 
       {datos === null || datos.datos.length === 0 ? (
         <Vacio>No hay excepciones pendientes. Todo lo de campo esta aplicado.</Vacio>
       ) : (
         datos.datos.map((excepcion) => (
-          <div key={excepcion.id} className="tarjeta">
+          <div key={excepcion.id} className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
               <strong>
                 {excepcion.numeroOrden === null
@@ -98,10 +98,10 @@ export function Excepciones(): JSX.Element {
                   onChange={(evento) => setResolucion(evento.target.value)}
                   placeholder="Se aplico el consumo a mano contra la bodega central."
                 />
-                <div className="acciones">
+                <div className="tools">
                   <button
                     type="button"
-                    className="boton"
+                    className="btn pri"
                     disabled={trabajando || resolucion.trim().length < 5}
                     onClick={() => void resolver(excepcion.id, 'resuelta')}
                   >
@@ -109,7 +109,7 @@ export function Excepciones(): JSX.Element {
                   </button>
                   <button
                     type="button"
-                    className="boton boton-peligro"
+                    className="btn peligro"
                     disabled={trabajando || resolucion.trim().length < 5}
                     onClick={() => void resolver(excepcion.id, 'descartada')}
                   >
@@ -117,7 +117,7 @@ export function Excepciones(): JSX.Element {
                   </button>
                   <button
                     type="button"
-                    className="boton boton-secundario"
+                    className="btn"
                     onClick={() => setAbierta(null)}
                   >
                     Cerrar
@@ -125,10 +125,10 @@ export function Excepciones(): JSX.Element {
                 </div>
               </>
             ) : (
-              <div className="acciones">
+              <div className="tools">
                 <button
                   type="button"
-                  className="boton boton-secundario"
+                  className="btn"
                   onClick={() => { setAbierta(excepcion.id); setResolucion(''); }}
                 >
                   Ver lo registrado y conciliar

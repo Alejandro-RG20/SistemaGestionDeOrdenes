@@ -7,8 +7,11 @@ Grupo Unicomer (La Curacao, Almacenes Tropigas, RadioShack).
 panel web, la aplicación móvil de los técnicos y el portal público del
 cliente— sobre una base de datos con doce meses de operación sembrados.
 
-**437 pruebas en verde:** 369 del servidor (unidad e integración contra
+**441 pruebas en verde:** 373 del servidor (unidad e integración contra
 PostgreSQL real), 46 de la aplicación móvil y 22 del panel.
+
+El panel implementa el **prototipo de presentación aprobado**: sus 21
+pantallas, su lenguaje visual y sus códigos (`W-03`, `P-01`…).
 
 | Módulo | Qué resuelve |
 |---|---|
@@ -145,6 +148,7 @@ identificador.
 | `GET /avisos` | sesión válida; el contenido lo deciden sus permisos |
 | `GET /indicadores/operacion` | `ordenes.consultar` |
 | `GET /portal/ordenes/:numero?telefono=` | **público**, con límite de peticiones |
+| `GET /catalogos` | `ordenes.consultar` |
 
 No hay ruta `DELETE` para ningún registro del negocio: nada se elimina, se
 desactiva con motivo escrito.
@@ -864,7 +868,66 @@ Es la etapa 9. React con Vite, una hoja de estilos y `react-router`; sin
 framework de componentes. El panel lo usan nueve roles en computadoras del
 centro, muchas veces viejas, y cargar 300 KB de CSS para dibujar tablas y
 formularios sería cobrarle al navegador un peaje por nada. Compilado pesa
-**216 KB de JavaScript y 5,4 KB de CSS**.
+**257 KB de JavaScript y 11 KB de CSS**.
+
+### Sigue el prototipo aprobado
+
+El panel implementa el **prototipo de presentación** con sus 21 pantallas y su
+lenguaje visual: Archivo e IBM Plex, barra lateral oscura con acento ámbar,
+etiquetas de formulario en monoespaciada y versalitas, tablas densas. Cada
+pantalla lleva en la miga de pan **su código del prototipo** — `W-03`, `W-05`,
+`P-01` — para poder señalarla en la defensa sin describirla.
+
+| Código | Pantalla | Qué demuestra |
+|---|---|---|
+| `W-01` | Acceso | |
+| `W-02` | Panel principal | Cifras del día y la bandeja de avisos |
+| `W-03` | **Nueva orden** | La garantía se evalúa **al crear la orden**, no al facturar |
+| `W-04` | Órdenes de servicio | Filtros en la URL, compartibles |
+| `W-05` | Detalle de la orden | El plazo comprometido, visible siempre (RN-16) |
+| `W-06` | Agenda y rutas | Sin dos visitas en la misma franja (RN-14) |
+| `W-07` | Cola de taller | Asignación con la carga de cada técnico delante |
+| `W-08` | Inventario y bodegas | |
+| `W-09` | Expedientes de cobro | El sistema **impide enviar** uno incompleto (RF-57) |
+| `W-10` | Excepciones | Nada de lo registrado en campo se descarta (RN-19) |
+| `W-11` | Indicadores | |
+| `W-12` | Clientes | Búsqueda incremental |
+| `W-13` | Ficha del cliente | **Datos vivos frente a datos congelados** |
+| `W-14` | Artículo | Los tres campos que cambian quién paga |
+| `W-15` | Reglas de cobertura | El motor es dirigido por datos, no por código |
+| `W-16` | Administración | No hay rol de administrador |
+| `P-01` | Consulta pública | El cliente ve el mismo estado que ve el técnico |
+
+Las cinco pantallas móviles del prototipo (`M-01` a `M-07`) son la aplicación
+de los técnicos, que es su propio proyecto y está descrita más arriba.
+
+### Crear una orden: los cuatro pasos
+
+Es la pantalla que el prototipo pone primero, y con razón. El paso 3 **no es
+un formulario**: es el veredicto del motor de garantías, consultado al
+servidor con el artículo real antes de guardar nada.
+
+1. **Cliente** — búsqueda incremental; al elegirlo, su teléfono se copia al
+   formulario y quedará congelado en la orden.
+2. **Artículo** — uno de los suyos, o registrar uno nuevo sin salir de la
+   pantalla. Al registrarlo, la tienda de origen y la fecha de compra llevan
+   el aviso de que son los campos que deciden quién paga.
+3. **Cobertura** — el servidor responde `proveedor`, `adicional` o
+   `particular`, **con el desglose de las siete condiciones evaluadas**: no
+   dice sólo el veredicto, dice qué condición falló. Ese desglose es lo que
+   hace auditable la decisión frente a un cliente que pregunta por qué le
+   cobran.
+4. **Falla y modalidad** — y, si es de ruta, la dirección y la zona, con el
+   aviso de que se congelan.
+
+El veredicto lo emite **el mismo motor que decidirá el expediente de cobro**.
+Calcularlo en el navegador habría sido más rápido y habría creado dos motores:
+el número que se le promete al cliente por teléfono y el que sale en el
+reclamo al proveedor tres semanas después dejarían de coincidir, y la
+diferencia aparecería cuando ya no se puede corregir.
+
+El número correlativo lo asigna el servidor al guardar. El panel no inventa
+ninguno.
 
 ### La bandeja: cómo se resolvió «se notifica al responsable»
 
@@ -997,6 +1060,12 @@ calendario laboral de cada uno, y eso es un informe, no una pantalla.
   servidor —que es el caso del centro— alcanza. Si algún día hay varios detrás
   de un balanceador hay que moverlo a un almacén compartido, y por eso está
   aparte y no incrustado en la ruta.
+- **Un solo endpoint de catálogos, `GET /catalogos`**, en vez de cinco. El
+  formulario de una orden nueva necesita marcas, categorías, tiendas, zonas y
+  técnicos a la vez; pedirlos por separado son cinco viajes para dibujar una
+  pantalla y cinco maneras de que se quede a medias. Cada técnico viene con la
+  **carga que ya lleva encima**: sin ese número, la asignación se hace por
+  costumbre y siempre recae en el mismo.
 - **Las pruebas del panel cubren el cliente de la API y las reglas del menú**,
   no los componentes. Lo que rompe el trabajo del centro es pedirle algo mal al
   servidor o enseñarle a alguien lo que no le toca, no un margen de diez
