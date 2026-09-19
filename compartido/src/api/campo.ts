@@ -26,6 +26,15 @@ export interface OrdenDeJornada {
   readonly referenciaUbicacion: string | null;
   readonly zona: string | null;
   readonly plazoVenceEn: string | null;
+  /**
+   * Claves de evidencia que el servidor YA tiene registradas para la orden.
+   *
+   * Baja con la jornada porque la lista de comprobacion del tecnico tiene
+   * que seguir siendo correcta despues de sincronizar: al confirmarse una
+   * evidencia, el dispositivo borra su copia local, y sin esto la pantalla
+   * volveria a pedir una fotografia que ya esta subida.
+   */
+  readonly evidenciasRegistradas: readonly string[];
 }
 
 export interface RepuestoDeJornada {

@@ -19,6 +19,9 @@ export function Administracion(): JSX.Element {
   const { api } = useSesion();
   const [error, setError] = useState<string | null>(null);
   const [trabajando, setTrabajando] = useState(false);
+  const [usuarioAVincular, setUsuarioAVincular] = useState('');
+  const [identificadorAVincular, setIdentificadorAVincular] = useState('');
+  const [modeloAVincular, setModeloAVincular] = useState('');
 
   const usuarios = useRecurso<PaginaDeDatos<ResumenUsuario>>(
     () => api.pedirPagina<ResumenUsuario>('/usuarios', { tamano: 100 }), [],
@@ -35,6 +38,38 @@ export function Administracion(): JSX.Element {
       usuarios.recargar();
     } catch (problema) {
       setError(problema instanceof ErrorDeApi ? problema.message : 'No se pudo desbloquear.');
+    } finally {
+      setTrabajando(false);
+    }
+  }
+
+  /**
+   * Autoriza un dispositivo. Desde que el sistema es web, «dispositivo» es
+   * el NAVEGADOR de un telefono o de una laptop, y el identificador es el
+   * que el tecnico lee en su propia pantalla cuando el envio le falla.
+   *
+   * Sigue siendo la jefatura quien autoriza, uno por uno. Es lo que hace
+   * que revocar sirva de algo: si un navegador se autorizara solo al
+   * entrar, revocarlo no pararia a nadie —volveria a autorizarse en el
+   * siguiente inicio de sesion— y el RF-05 seria decorativo.
+   */
+  async function vincular(): Promise<void> {
+    setTrabajando(true);
+    setError(null);
+    try {
+      await api.pedir('/dispositivos', {
+        metodo: 'POST',
+        cuerpo: {
+          idUsuario: usuarioAVincular,
+          identificador: identificadorAVincular.trim(),
+          ...(modeloAVincular.trim() === '' ? {} : { modelo: modeloAVincular.trim() }),
+        },
+      });
+      setIdentificadorAVincular('');
+      setModeloAVincular('');
+      dispositivos.recargar();
+    } catch (problema) {
+      setError(problema instanceof ErrorDeApi ? problema.message : 'No se pudo autorizar.');
     } finally {
       setTrabajando(false);
     }
@@ -105,11 +140,61 @@ export function Administracion(): JSX.Element {
         </table>
       ) : null}
 
-      <h2>Dispositivos moviles</h2>
+      <h2>Dispositivos de campo</h2>
       <p className="tenue" style={{ marginTop: -6, fontSize: 13 }}>
-        Revocar un dispositivo le impide sincronizar. La cola que tenga guardada NO se borra:
-        sigue en la tableta hasta que se vuelva a vincular.
+        Un dispositivo es el <b>navegador</b> del telefono o la laptop con que el tecnico
+        entra al sistema. Mientras no este autorizado, su trabajo se le guarda en el
+        aparato pero no sube. Revocarlo le impide enviar; la cola que tenga guardada
+        <b> no se borra</b>: sigue ahi por si se vuelve a autorizar.
       </p>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <h3>Autorizar un dispositivo</h3>
+        <div className="g g3">
+          <div>
+            <label htmlFor="usuario-dispositivo">Tecnico</label>
+            <select
+              id="usuario-dispositivo"
+              value={usuarioAVincular}
+              onChange={(evento) => setUsuarioAVincular(evento.target.value)}
+            >
+              <option value="">Elija a quien pertenece</option>
+              {(usuarios.datos?.datos ?? []).map((usuario) => (
+                <option key={usuario.id} value={usuario.id}>
+                  {usuario.nombres} · {usuario.nombreUsuario}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="identificador-dispositivo">Codigo que le dicto el tecnico</label>
+            <input
+              id="identificador-dispositivo"
+              value={identificadorAVincular}
+              onChange={(evento) => setIdentificadorAVincular(evento.target.value)}
+              placeholder="web-…"
+            />
+          </div>
+          <div>
+            <label htmlFor="modelo-dispositivo">De que aparato es (opcional)</label>
+            <input
+              id="modelo-dispositivo"
+              value={modeloAVincular}
+              onChange={(evento) => setModeloAVincular(evento.target.value)}
+              placeholder="Celular de D. Hernandez"
+            />
+          </div>
+        </div>
+        <button
+          type="button"
+          className="btn pri"
+          style={{ marginTop: 10 }}
+          disabled={trabajando || usuarioAVincular === '' || identificadorAVincular.trim().length < 3}
+          onClick={() => void vincular()}
+        >
+          Autorizar este dispositivo
+        </button>
+      </div>
       {dispositivos.cargando ? <Cargando que="los dispositivos" /> : null}
       {dispositivos.error !== null
         ? <Fallo error={dispositivos.error} alReintentar={dispositivos.recargar} />

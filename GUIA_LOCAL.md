@@ -18,8 +18,9 @@ para Windows y macOS.
 > con `process.loadEnvFile`, que apareció en esa versión. Con una anterior
 > arrancaría sin configuración y fallaría al conectarse a la base.
 
-Para la aplicación móvil, además: un teléfono o tableta Android con la app
-**Expo Go**, o el emulador de Android Studio. No hace falta para el resto.
+**No hace falta nada más.** No hay aplicación que instalar: el técnico usa el
+mismo sistema web desde el navegador de su celular. Si quiere probar esa parte,
+le basta el teléfono que ya tiene en la mano.
 
 ---
 
@@ -28,16 +29,16 @@ Para la aplicación móvil, además: un teléfono o tableta Android con la app
 ```bash
 git clone https://github.com/Alejandro-RG20/SistemaGestionDeOrdenes.git
 cd SistemaGestionDeOrdenes
-git checkout claude/hola-af79ns
+git checkout claude/sistema-web-responsive
 npm install
 ```
 
-`npm install` instala las cuatro partes de una sola vez: son un espacio de
-trabajo de npm (`compartido`, `servidor`, `movil`, `panel`). Tarda unos
-minutos la primera vez, sobre todo por las dependencias de Expo.
+`npm install` instala las tres partes de una sola vez: son un espacio de
+trabajo de npm (`compartido`, `servidor`, `panel`). Tarda un par de minutos la
+primera vez.
 
 También **compila `compartido`**, que es el paquete de contratos que los otros
-tres importan. Si no estuviera compilado, la siembra fallaría con
+dos importan. Si no estuviera compilado, la siembra fallaría con
 `Cannot find module '@servitotal/compartido'`; se hace solo para que no sea un
 paso que haya que recordar. Si alguna vez necesita rehacerlo a mano:
 
@@ -199,9 +200,10 @@ números se sabría qué órdenes existen.
 
 ---
 
-## 9. Arrancar la aplicación móvil (opcional)
+## 9. Abrir el sistema desde el celular del técnico
 
-La app de los técnicos corre con Expo. Necesita que su teléfono y su
+**No hay nada que instalar.** El técnico entra a la misma dirección del
+sistema desde el navegador de su teléfono. Sólo hace falta que el teléfono y su
 computadora estén **en la misma red WiFi**.
 
 Averigüe la IP de su computadora:
@@ -212,31 +214,52 @@ ipconfig getifaddr en0              # macOS
 ipconfig                            # Windows: la IPv4 del adaptador WiFi
 ```
 
-Y arranque la app apuntando a ella:
+Arranque el panel escuchando en toda la red, no sólo en su máquina:
 
 ```bash
-EXPO_PUBLIC_API=http://192.168.1.50:3000/api/v1 npm run iniciar --workspace movil
+npm run panel -- --host
 ```
 
-(sustituyendo `192.168.1.50` por su IP). Aparece un código QR: escanéelo con
-**Expo Go**.
+Y desde el teléfono, abra `http://192.168.1.50:5173` (con su IP). Entre con un
+técnico —`dhernandez`, `ccruz` o `emembreno`, misma contraseña— y toque **Mi
+ruta (celular)** en el menú.
 
-Entre con un técnico — `ccruz` o `emembreno`, misma contraseña. La app baja la
-jornada y a partir de ahí **funciona sin red**: apague el WiFi del teléfono,
-registre un diagnóstico o un consumo de repuesto, y vuelva a encenderlo. Lo
-que registró sube solo, sin duplicarse.
+### Autorizar el teléfono antes de que pueda enviar
 
-> En el **emulador de Android** no hace falta la IP: el valor por defecto
-> (`10.0.2.2`) ya apunta a la máquina que lo hospeda.
+La primera vez, el sistema le va a decir al técnico que **ese navegador todavía
+no está autorizado**, y le va a mostrar un código `web-…`. Eso es a propósito:
+es la misma regla que permitía revocar a distancia una tableta perdida
+(RF-05), aplicada al navegador.
+
+Entre con la jefatura de atención al cliente (`mmorales`), vaya a
+**Administración › Dispositivos de campo**, elija al técnico, pegue el código
+y pulse *Autorizar este dispositivo*. El técnico cierra sesión, vuelve a
+entrar, y ya sincroniza.
+
+Mientras no esté autorizado, **su trabajo no se pierde**: se guarda en el
+teléfono y sube en cuanto se autorice.
+
+### Probar que de verdad funciona sin señal
+
+1. Con señal, baje la ruta del día desde *Mi ruta*.
+2. Ponga el teléfono en **modo avión**.
+3. Registre un diagnóstico, tome una fotografía de evidencia y descargue un
+   repuesto. La barra de arriba pasa a `Sin señal · N sin enviar`.
+4. Quite el modo avión. **No toque nada**: la cola se vacía sola.
+
+> **Para la fotografía de evidencia hace falta HTTPS**, o `localhost`. La
+> huella SHA-256 se calcula con `crypto.subtle`, que el navegador sólo ofrece
+> en contexto seguro; por `http://192.168.1.50` el resto del sistema funciona
+> pero la captura de evidencia avisa de que no puede. En el centro, el panel
+> se sirve por HTTPS y el problema no existe.
 
 ---
 
 ## 10. Correr las pruebas
 
 ```bash
-npm run prueba          # 369 del servidor (necesita PostgreSQL andando)
-npm run prueba:movil    #  46 de la aplicación móvil
-npm run prueba:panel    #  22 del panel
+npm run prueba          # las del servidor (necesita PostgreSQL andando)
+npm run prueba:panel    # las de la web, incluida toda la capa sin conexión
 ```
 
 Las del servidor tardan unos cinco minutos: cada archivo crea su propia base
@@ -260,7 +283,9 @@ npm run prueba:unidad   # sólo las que no necesitan base
 | `permission denied to create extension` | El usuario de `BD_USUARIO` no es superusuario |
 | `JWT_SECRETO` rechazado | Tiene menos de 32 caracteres |
 | El panel carga pero todo da error de red | La API no está corriendo en el 3000 |
-| La app móvil no conecta | `EXPO_PUBLIC_API` apunta a `localhost`: desde el teléfono eso es el teléfono. Use la IP de su computadora |
+| Desde el teléfono no carga la web | Arranque el panel con `npm run panel -- --host` y use la IP de su computadora, no `localhost`: desde el teléfono, `localhost` es el teléfono |
+| El técnico registra trabajo y no sube nunca | Ese navegador no está autorizado. La pantalla le muestra el código `web-…`; autorícelo en Administración › Dispositivos de campo |
+| «No se puede calcular la huella… no es HTTPS» | Es correcto y es de seguridad del navegador. Pruebe la captura de evidencia desde `localhost`, o sirva el panel por HTTPS |
 | `Cannot find module '@servitotal/compartido'` | Faltó `npm install` en la raíz, o se instaló dentro de un subproyecto. Se arregla con `npm run construir` |
 
 Para empezar de cero sin reinstalar nada:
@@ -287,8 +312,8 @@ npm run sembrar    # vacía y regenera los datos
                      ▲
                      │  sincroniza al recuperar señal
             ┌────────┴────────┐
-            │  App móvil      │   ← tableta del técnico,
-            │  (Expo)         │      trabaja sin red
+            │  La misma web   │   ← celular del técnico,
+            │  en el celular  │      trabaja sin red
             └─────────────────┘
 ```
 
@@ -309,7 +334,7 @@ usarse como base de un despliegue real.
 
 - Para pasar una variable a un comando, use `$env:`:
   ```powershell
-  $env:EXPO_PUBLIC_API="http://192.168.1.50:3000/api/v1"; npm run iniciar --workspace movil
+  npm run panel -- --host
   ```
 - `openssl` puede no estar. Genere el secreto con Node, que ya tiene:
   ```powershell

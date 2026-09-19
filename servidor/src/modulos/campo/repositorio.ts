@@ -43,6 +43,34 @@ export async function insertarEvidencia(
   return rows[0]!.id;
 }
 
+/**
+ * La evidencia ya registrada para esa foto, si existe y aun no tiene archivo.
+ *
+ * EXISTE PORQUE UNA EVIDENCIA LLEGA POR DOS CAMINOS. El dispositivo manda
+ * la FICHA por la cola de operaciones —para que el taller sepa que la foto
+ * existe aunque el binario nunca suba— y el ARCHIVO por la cola de cargas.
+ * Si cada camino insertara lo suyo, cada fotografia dejaria dos filas: una
+ * huerfana sin archivo y otra completa. En un expediente de cobro eso se
+ * lee como «faltan evidencias» aunque esten todas.
+ *
+ * La identidad de una fotografia es su HUELLA, no su nombre: dos capturas
+ * distintas de la misma clave —una repetida porque salio movida— son dos
+ * evidencias, y tienen que seguir siendolo.
+ */
+export async function buscarFichaSinArchivo(
+  ejecutor: Ejecutor,
+  datos: { idOrden: string; clave: string; huellaDigital: string | null },
+): Promise<string | null> {
+  if (datos.huellaDigital === null) return null;
+  const { rows } = await ejecutor.query<{ id: string }>(
+    `SELECT id FROM evidencia
+      WHERE id_orden = $1 AND clave = $2 AND huella_digital = $3 AND NOT sincronizada
+      ORDER BY momento_dispositivo LIMIT 1`,
+    [datos.idOrden, datos.clave, datos.huellaDigital],
+  );
+  return rows[0]?.id ?? null;
+}
+
 export async function marcarEvidenciaSincronizada(
   ejecutor: Ejecutor,
   datos: { id: string; rutaArchivo: string; huellaDigital: string; bytes: number },

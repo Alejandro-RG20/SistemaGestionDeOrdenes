@@ -55,6 +55,7 @@ export async function descargar(actor: Actor): Promise<JornadaDelDispositivo> {
       referenciaUbicacion: fila.referencia_ubicacion,
       zona: fila.zona,
       plazoVenceEn: fila.plazo_vence_en?.toISOString() ?? null,
+      evidenciasRegistradas: fila.evidencias,
     })),
     repuestos: repuestos.map((fila) => ({
       id: fila.id,

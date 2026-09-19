@@ -1,0 +1,12 @@
+{
+  "name": "ServiTotal · Gestion de ordenes",
+  "short_name": "ServiTotal",
+  "description": "Ordenes de servicio del centro de servicio tecnico. Funciona sin señal.",
+  "start_url": "/campo",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EDF1F5",
+  "theme_color": "#14202B",
+  "lang": "es-NI"
+}

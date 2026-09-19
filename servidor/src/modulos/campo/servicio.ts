@@ -49,6 +49,16 @@ export async function iniciarCarga(
     if (!(await repositorio.ordenExiste(peticion.idOrden, cliente))) {
       throw new ErrorValidacion('La orden indicada no existe.', { idOrden: 'Orden no valida.' });
     }
+    // Si la ficha ya llego por la cola de operaciones, el archivo se cuelga
+    // de ella. Insertar otra dejaria la orden con dos evidencias donde el
+    // tecnico tomo una sola fotografia.
+    const yaRegistrada = await repositorio.buscarFichaSinArchivo(cliente, {
+      idOrden: peticion.idOrden,
+      clave: peticion.clave,
+      huellaDigital: peticion.huellaDigital,
+    });
+    if (yaRegistrada !== null) return yaRegistrada;
+
     return repositorio.insertarEvidencia(cliente, {
       idOrden: peticion.idOrden,
       tipo: peticion.tipo,

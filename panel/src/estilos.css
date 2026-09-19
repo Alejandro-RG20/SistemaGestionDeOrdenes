@@ -192,3 +192,25 @@ table.d td a:hover { text-decoration: underline; }
   .g2, .g3, .g4, .g5 { grid-template-columns: 1fr; }
   .body { padding: 14px; }
 }
+
+/*
+ * La aplicacion del tecnico ocupa la pantalla entera.
+ *
+ * En el prototipo el movil era un recuadro dentro de un documento; aqui es
+ * la pagina. Por eso la barra de pestañas va FIJA al borde inferior del
+ * visor y no al final del contenido: en un celular el pulgar llega ahi y no
+ * arriba, y una barra que se va con el desplazamiento obliga a subir hasta
+ * el principio para cambiar de pantalla.
+ *
+ * `env(safe-area-inset-bottom)` es por la barra de gestos de los telefonos
+ * modernos: sin eso, el ultimo boton queda debajo de ella y no se toca.
+ */
+.app.m.campo { min-height: 100dvh; padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px)); }
+.app.m.campo .tabbar {
+  position: fixed;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.app.m.campo .stickybar { bottom: calc(54px + env(safe-area-inset-bottom, 0px)); }
+.app.m .crumb { padding: 7px 13px; }
+/* Los enlaces que hacen de boton: el navegador no los centra como a <button>. */
+.app.m a.btn { display: flex; align-items: center; text-decoration: none; }

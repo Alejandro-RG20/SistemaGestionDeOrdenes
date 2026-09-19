@@ -32,6 +32,15 @@ import { Cobros, DetalleExpediente } from './pantallas/Cobros.js';
 import { Indicadores } from './pantallas/Indicadores.js';
 import { Administracion } from './pantallas/Administracion.js';
 import { ConsultaPublica } from './pantallas/ConsultaPublica.js';
+import { ProveedorDeCampo } from './campo/contexto.js';
+import { ArmazonCampo, type DatosDePantallaDeCampo } from './componentes/ArmazonCampo.js';
+import { MiRuta } from './pantallas/campo/MiRuta.js';
+import { OrdenDeCampo } from './pantallas/campo/OrdenDeCampo.js';
+import { Diagnostico } from './pantallas/campo/Diagnostico.js';
+import { Evidencia } from './pantallas/campo/Evidencia.js';
+import { MiBodega, Repuestos } from './pantallas/campo/Repuestos.js';
+import { Cierre, Envios } from './pantallas/campo/Cierre.js';
+import { tienePermiso } from './sesion/navegacion.js';
 
 /** Envuelve una pantalla en el armazon, con su codigo del prototipo. */
 function Pantalla(
@@ -40,12 +49,72 @@ function Pantalla(
   return <Armazon pantalla={{ codigo, miga }}>{children}</Armazon>;
 }
 
+/** Envuelve una pantalla del tecnico en el armazon movil. */
+function PantallaDeCampo(
+  { codigo, miga, children }: DatosDePantallaDeCampo & { children: JSX.Element },
+): JSX.Element {
+  return <ArmazonCampo pantalla={{ codigo, miga }}>{children}</ArmazonCampo>;
+}
+
+/**
+ * La aplicacion del tecnico: la misma web, sin instalar nada.
+ *
+ * Vive DENTRO del panel y no en otro despliegue. Eso no es comodidad de
+ * empaquetado: es que el tecnico y la jefatura comparten sesion, permisos y
+ * servidor, asi que un tecnico de planta que un dia atiende mostrador entra
+ * por la misma puerta y ve lo que su rol le permite, sin una segunda
+ * contraseña ni una segunda instalacion.
+ */
+function Campo(): JSX.Element {
+  return (
+    <ProveedorDeCampo>
+      <Routes>
+        <Route path="/" element={
+          <PantallaDeCampo codigo="M-01" miga="Mi ruta"><MiRuta /></PantallaDeCampo>
+        } />
+        <Route path="/bodega" element={
+          <PantallaDeCampo codigo="M-05" miga="Mi bodega movil"><MiBodega /></PantallaDeCampo>
+        } />
+        <Route path="/envios" element={
+          <PantallaDeCampo codigo="M-07" miga="Cola de envio"><Envios /></PantallaDeCampo>
+        } />
+        <Route path="/ordenes/:id" element={
+          <PantallaDeCampo codigo="M-02" miga="Ruta › Orden"><OrdenDeCampo /></PantallaDeCampo>
+        } />
+        <Route path="/ordenes/:id/diagnostico" element={
+          <PantallaDeCampo codigo="M-03" miga="Orden › paso 2 de 6"><Diagnostico /></PantallaDeCampo>
+        } />
+        <Route path="/ordenes/:id/evidencia" element={
+          <PantallaDeCampo codigo="M-04" miga="Orden › paso 3 de 6"><Evidencia /></PantallaDeCampo>
+        } />
+        <Route path="/ordenes/:id/repuestos" element={
+          <PantallaDeCampo codigo="M-05" miga="Orden › paso 4 de 6"><Repuestos /></PantallaDeCampo>
+        } />
+        <Route path="/ordenes/:id/cierre" element={
+          <PantallaDeCampo codigo="M-07" miga="Orden › paso 6 de 6"><Cierre /></PantallaDeCampo>
+        } />
+        <Route path="*" element={<Navigate to="/campo" replace />} />
+      </Routes>
+    </ProveedorDeCampo>
+  );
+}
+
 function Privado(): JSX.Element {
   const { usuario } = useSesion();
   if (usuario === null) return <Ingreso />;
 
+  // Quien sincroniza desde un dispositivo es quien trabaja en campo o en
+  // planta. Ocultar la ruta no protege nada —el servidor comprueba el
+  // permiso en cada peticion— pero evita que a un bodeguero le aparezca una
+  // pantalla que no le va a servir de nada.
+  const deCampo = tienePermiso(usuario, 'campo.sincronizar');
+
   return (
     <Routes>
+      {deCampo
+        ? <Route path="/campo/*" element={<Campo />} />
+        : null}
+
       <Route path="/" element={
         <Pantalla codigo="W-02" miga="Inicio"><PanelPrincipal /></Pantalla>
       } />

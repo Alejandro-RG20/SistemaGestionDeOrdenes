@@ -154,12 +154,26 @@ const EJECUTORES: Readonly<Record<TipoOperacion, Ejecutador>> = {
   },
 
   [TIPO_OPERACION.EVIDENCIA_REGISTRAR]: async ({ actor, carga, momentoDispositivo, ejecutor }) => {
+    const idOrden = exigir<string>(carga, 'idOrden', 'string');
+    const clave = exigir<string>(carga, 'clave', 'string');
+    const huellaDigital = opcional<string>(carga, 'huellaDigital', 'string') ?? null;
+
+    // La otra mitad de la misma regla que en `campo/servicio.ts`: las dos
+    // colas describen UNA fotografia. La que llegue segunda se reconoce por
+    // la huella y no vuelve a insertar.
+    const yaRegistrada = await repositorioCampo.buscarFichaSinArchivo(ejecutor, {
+      idOrden, clave, huellaDigital,
+    });
+    if (yaRegistrada !== null) {
+      return { idEntidad: yaRegistrada, mensaje: 'La evidencia ya estaba registrada.' };
+    }
+
     const id = await repositorioCampo.insertarEvidencia(ejecutor, {
-      idOrden: exigir<string>(carga, 'idOrden', 'string'),
+      idOrden,
       tipo: exigir<string>(carga, 'tipo', 'string'),
-      clave: exigir<string>(carga, 'clave', 'string'),
+      clave,
       rutaArchivo: opcional<string>(carga, 'rutaArchivo', 'string') ?? null,
-      huellaDigital: opcional<string>(carga, 'huellaDigital', 'string') ?? null,
+      huellaDigital,
       idAutor: actor.id,
       momentoDispositivo,
       latitud: opcional<number>(carga, 'latitud', 'number') ?? null,

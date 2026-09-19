@@ -48,19 +48,40 @@ npm run sembrar               # genera el juego de datos de prueba
 | `npm run migrar:estado` | Muestra qué migraciones están aplicadas, pendientes o alteradas |
 | `npm run sembrar` | Vacía y regenera los datos de prueba |
 | `npm run prueba` | Pruebas del servidor (las de integración necesitan PostgreSQL) |
-| `npm run prueba:movil` | Pruebas de la aplicación móvil |
-| `npm run prueba:panel` | Pruebas del panel web |
+| `npm run prueba:panel` | Pruebas del panel web, incluida la capa sin conexión |
 | `npm run panel` | Arranca el panel en `localhost:5173`, con proxy a la API |
 | `npm run construir` | Recompila `compartido/` y `servidor/` (`npm install` ya lo hace) |
-| `npm run verificar-tipos` | Compila `compartido/` y `servidor/` |
+| `npm run verificar-tipos` | Compila `compartido/` y `servidor/`, y comprueba tipos de pruebas y panel |
 
 Las pruebas de integración crean y destruyen la base `servitotal_pruebas`
 (configurable con `BD_NOMBRE_PRUEBAS`). Nunca tocan la base de desarrollo.
 
-El sistema son cuatro piezas: la **API**, el **panel web** (`npm run panel`),
-la **aplicación móvil** (`npm run iniciar --workspace movil`, con Expo) y el
-**portal público del cliente**, que vive dentro del panel en `/consulta` y no
-pide cuenta.
+El sistema son **tres piezas**: la **API**, la **web** (`npm run panel`) y el
+**portal público del cliente**, que vive dentro de la misma web en `/consulta`
+y no pide cuenta.
+
+### No hay aplicación que instalar
+
+El técnico **no descarga nada**. Abre la misma dirección del sistema desde el
+navegador del celular que ya carga —o desde una laptop, si ese día anda con
+ella— e inicia sesión con su usuario de siempre. Si tiene permiso de campo, el
+menú le ofrece **Mi ruta (celular)** y entra a una interfaz pensada para el
+pulgar: lo tocable mide 46 px, la navegación va abajo y el estado del envío
+está siempre a la vista.
+
+Eso no debilita nada de lo que el pliego pedía:
+
+- **Sigue funcionando sin señal.** La jornada se baja entera antes de salir y
+  vive en IndexedDB; el trabajo se encola en el dispositivo y sube solo cuando
+  vuelve la cobertura. Un *service worker* guarda el armazón de la página, de
+  modo que la aplicación **abre** aunque no haya red.
+- **Sigue habiendo dispositivos que se revocan** (RF-05). El «dispositivo» pasa
+  a ser el navegador: se identifica con un código estable que la jefatura
+  autoriza una sola vez desde Administración. Sin autorizar, el trabajo se
+  guarda pero no sube, y la pantalla del técnico se lo dice con el código que
+  tiene que dictar.
+- **Sigue exigiendo HTTPS** para cargar evidencia: la huella SHA-256 se calcula
+  con `crypto.subtle`, que el navegador solo ofrece en contexto seguro.
 
 ## Estructura
 
@@ -79,16 +100,17 @@ servidor/src/dominio/plazos/     cálculo en horas laborables
 servidor/src/dominio/inventario/ reglas de los movimientos
 servidor/src/dominio/sincronizacion/ resolución de conflictos
 servidor/src/dominio/cobros/     expediente, destinatario y monto reclamable
-movil/src/datos/              base local (SQLite), espejo de trabajo y puertos
-movil/src/sincronizacion/     las dos colas, el motor y la captura de evidencia
-movil/src/dominio/            constructores de acciones y flujo de campo
-movil/src/app/                coordinador y armado de la aplicación
-movil/src/pantallas/          siete pantallas
-panel/src/api/                cliente de la API del panel
-panel/src/sesion/             tokens, contexto y que ve cada rol en el menu
+panel/src/api/                cliente de la API
+panel/src/sesion/             tokens, contexto, identidad del navegador como
+                              dispositivo, y que ve cada rol en el menu
+panel/src/campo/              la capa sin conexion: puertos, las dos colas, el
+                              motor, el espejo, los adaptadores de IndexedDB,
+                              la captura de evidencia y el coordinador
 panel/src/pantallas/          bandeja, ordenes, clientes, inventario,
                               excepciones, cobros, indicadores, administracion
                               y el portal publico del cliente
+panel/src/pantallas/campo/    las pantallas del tecnico (M-01 a M-07)
+panel/public/sw.js            service worker: la web abre sin red
 ```
 
 ## La API
@@ -627,7 +649,7 @@ cambios— y el técnico vería retroceder órdenes que él mismo movió.
 
 ### Los botones que la app se atreve a ofrecer
 
-`movil/src/dominio/flujo-campo.ts` **no es una segunda máquina de estados**. La
+`panel/src/campo/flujo-campo.ts` **no es una segunda máquina de estados**. La
 máquina vive en el servidor y es la única que decide; esto es el subconjunto
 que la aplicación ofrece, y existe porque un botón que el servidor va a
 rechazar no se convierte en un mensaje de error: se convierte en una excepción
@@ -681,7 +703,7 @@ hasta que esa persona vuelva a entrar y sincronice.
 
 ### Qué se prueba y qué no
 
-Las 46 pruebas de `movil/pruebas/` corren sobre la capa sin conexión, que es
+Las pruebas de `panel/pruebas/` corren sobre la capa sin conexión, que es
 código puro: las colas, el motor, los constructores de acciones, el flujo de
 campo y el coordinador. **Las pantallas no se prueban aquí**: lo que puede
 perder el trabajo del técnico es la cola, no un botón mal alineado.

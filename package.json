@@ -6,7 +6,6 @@
   "workspaces": [
     "compartido",
     "servidor",
-    "movil",
     "panel"
   ],
   "engines": {
@@ -18,10 +17,9 @@
     "sembrar": "npm run sembrar --workspace servidor",
     "prueba": "npm run prueba --workspace servidor",
     "prueba:unidad": "npm run prueba:unidad --workspace servidor",
-    "verificar-tipos": "tsc -b compartido servidor",
+    "verificar-tipos": "tsc -b compartido servidor && tsc -p servidor/tsconfig.pruebas.json && tsc -p panel/tsconfig.json",
     "iniciar": "npm run iniciar --workspace servidor",
     "desarrollo": "npm run desarrollo --workspace servidor",
-    "prueba:movil": "npm run prueba --workspace movil",
     "prueba:panel": "npm run prueba --workspace panel",
     "panel": "npm run iniciar --workspace panel",
     "construir": "npm run construir --workspace compartido && npm run construir --workspace servidor"

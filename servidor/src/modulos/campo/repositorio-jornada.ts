@@ -50,6 +50,7 @@ export interface FilaOrdenDeJornada {
   readonly referencia_ubicacion: string | null;
   readonly zona: string | null;
   readonly plazo_vence_en: Date | null;
+  readonly evidencias: readonly string[];
 }
 
 /** Las ordenes vivas del tecnico. Las cerradas no se bajan: no hay nada que hacerles. */
@@ -62,7 +63,11 @@ export async function ordenesDelTecnico(
             o.id_cliente, trim(c.nombres || ' ' || coalesce(c.apellidos, '')) AS cliente,
             o.id_articulo, trim(m.nombre || ' ' || coalesce(a.modelo, '')) AS articulo,
             o.falla_reportada, o.telefono_contacto, o.direccion_servicio,
-            o.referencia_ubicacion, z.nombre AS zona, o.plazo_vence_en
+            o.referencia_ubicacion, z.nombre AS zona, o.plazo_vence_en,
+            coalesce(
+              (SELECT array_agg(DISTINCT e.clave) FROM evidencia e WHERE e.id_orden = o.id),
+              '{}'
+            ) AS evidencias
        FROM orden_servicio o
        JOIN cliente c  ON c.id = o.id_cliente
        JOIN articulo a ON a.id = o.id_articulo

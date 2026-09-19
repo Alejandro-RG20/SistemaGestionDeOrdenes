@@ -6,8 +6,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import peticion from 'supertest';
-import { createHash, randomBytes } from 'node:crypto';
-import { CODIGO_ROL, MODALIDAD_SERVICIO } from '@servitotal/compartido';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { CODIGO_ROL, MODALIDAD_SERVICIO, TIPO_OPERACION } from '@servitotal/compartido';
 import { CONTRASENA_DE_PRUEBA, montarApi, usuarioConRol, type EntornoApi } from '../apoyo/entorno-api.js';
 
 const RAIZ = '/api/v1';
@@ -35,6 +35,31 @@ async function ordenNueva(): Promise<string> {
       modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Para probar la carga de evidencias',
     }).expect(201);
   return creada.body.datos.id;
+}
+
+/**
+ * Sesion atada a un dispositivo, que es lo que el servidor exige para
+ * aceptar la cola de operaciones (RF-05: revocacion remota).
+ */
+async function sesionDeDispositivo(): Promise<{ Authorization: string }> {
+  const { rows } = await entorno.piscina.query<{
+    nombre_usuario: string; identificador: string;
+  }>(
+    `SELECT u.nombre_usuario, d.identificador
+       FROM dispositivo d
+       JOIN usuario u ON u.id = d.id_usuario
+       JOIN tecnico t ON t.id_usuario = u.id
+      WHERE d.revocado_en IS NULL AND t.tipo = 'ruta'
+      ORDER BY d.identificador LIMIT 1`,
+  );
+  const sesion = await peticion(entorno.aplicacion)
+    .post(`${RAIZ}/autenticacion/sesion`)
+    .send({
+      nombreUsuario: rows[0]!.nombre_usuario,
+      contrasena: CONTRASENA_DE_PRUEBA,
+      identificadorDispositivo: rows[0]!.identificador,
+    }).expect(201);
+  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
 }
 
 /** Sube el archivo por trozos, como haria el movil con mala senal. */
@@ -101,6 +126,88 @@ describe('carga por partes con reanudacion', () => {
     expect(cerrada.body.datos.bytes).toBe(contenido.length);
     // La base guarda la RUTA, no el binario.
     expect(cerrada.body.datos.rutaArchivo).toMatch(/^ordenes\//);
+  });
+
+  /**
+   * Una fotografia llega por DOS colas: la ficha por la de operaciones, el
+   * archivo por la de cargas. El servidor tiene que reconocerla como una
+   * sola, o cada foto dejaria dos filas —una huerfana sin archivo y otra
+   * completa— y el expediente de cobro se leeria como incompleto teniendo
+   * todo. La identidad es la huella, que el dispositivo calcula una vez.
+   */
+  it('la ficha y el archivo de una misma foto no crean dos evidencias', async () => {
+    const idOrden = await ordenNueva();
+    const contenido = randomBytes(3_000);
+    const huella = createHash('sha256').update(contenido).digest('hex');
+    const momento = new Date().toISOString();
+
+    // Primero la ficha, por la cola de operaciones: es el orden en que lo
+    // manda el dispositivo.
+    const movil = await sesionDeDispositivo();
+    const cola = await peticion(entorno.aplicacion).post(`${RAIZ}/sincronizacion/cola`)
+      .set(movil)
+      .send({
+        operaciones: [{
+          idOperacion: randomUUID(),
+          tipoOperacion: TIPO_OPERACION.EVIDENCIA_REGISTRAR,
+          momentoDispositivo: momento,
+          carga: {
+            idOrden, clave: 'foto_falla', tipo: 'foto',
+            bytes: contenido.length, huellaDigital: huella,
+          },
+        }],
+      }).expect(200);
+    expect(cola.body.datos.aplicadas).toBe(1);
+
+    // Y despues el archivo. Se tiene que colgar de la ficha que ya existe.
+    const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`).set(tecnico)
+      .send({
+        idOrden, clave: 'foto_falla', tipo: 'foto',
+        bytes: contenido.length, huellaDigital: huella, momentoDispositivo: momento,
+      }).expect(201);
+
+    await subirPorPartes(carga.body.datos.idCarga, contenido, 1_024);
+    await peticion(entorno.aplicacion)
+      .post(`${RAIZ}/evidencias/cargas/${carga.body.datos.idCarga}/cerrar`).set(tecnico)
+      .send({ idEvidencia: carga.body.datos.idEvidencia }).expect(200);
+
+    const listadas = await peticion(entorno.aplicacion)
+      .get(`${RAIZ}/ordenes/${idOrden}/evidencias`).set(tecnico).expect(200);
+    const deEsaFoto = listadas.body.datos
+      .filter((e: { clave: string }) => e.clave === 'foto_falla');
+
+    expect(deEsaFoto).toHaveLength(1);
+    expect(deEsaFoto[0].sincronizada).toBe(true);
+    expect(deEsaFoto[0].huellaDigital).toBe(huella);
+  });
+
+  /**
+   * Y al reves: una segunda toma de la MISMA clave —porque la primera salio
+   * movida— es otra evidencia. La huella es distinta, asi que no se
+   * confunden. Perder la repetida seria perder la buena.
+   */
+  it('dos tomas distintas de la misma clave siguen siendo dos evidencias', async () => {
+    const idOrden = await ordenNueva();
+
+    for (const contenido of [randomBytes(1_500), randomBytes(1_700)]) {
+      const huella = createHash('sha256').update(contenido).digest('hex');
+      const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`)
+        .set(tecnico)
+        .send({
+          idOrden, clave: 'foto_articulo', tipo: 'foto',
+          bytes: contenido.length, huellaDigital: huella,
+          momentoDispositivo: new Date().toISOString(),
+        }).expect(201);
+      await subirPorPartes(carga.body.datos.idCarga, contenido, 1_024);
+      await peticion(entorno.aplicacion)
+        .post(`${RAIZ}/evidencias/cargas/${carga.body.datos.idCarga}/cerrar`).set(tecnico)
+        .send({ idEvidencia: carga.body.datos.idEvidencia }).expect(200);
+    }
+
+    const listadas = await peticion(entorno.aplicacion)
+      .get(`${RAIZ}/ordenes/${idOrden}/evidencias`).set(tecnico).expect(200);
+    expect(listadas.body.datos
+      .filter((e: { clave: string }) => e.clave === 'foto_articulo')).toHaveLength(2);
   });
 
   it('el dispositivo puede preguntar desde que byte reanudar', async () => {

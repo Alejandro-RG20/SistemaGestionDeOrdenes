@@ -21,6 +21,10 @@ export interface SeccionDelPanel {
 export const SECCIONES: readonly SeccionDelPanel[] = [
   { ruta: '/', etiqueta: 'Panel principal', permisos: [], grupo: 'inicio' },
 
+  // La aplicacion del tecnico es la misma web: se entra por aqui, no por
+  // una instalacion aparte. Va primero en su grupo porque para un tecnico
+  // de ruta es LA pantalla, no una mas.
+  { ruta: '/campo', etiqueta: 'Mi ruta (celular)', permisos: ['campo.sincronizar'], grupo: 'operacion' },
   { ruta: '/clientes', etiqueta: 'Clientes y articulos', permisos: ['clientes.consultar'], grupo: 'operacion' },
   { ruta: '/ordenes', etiqueta: 'Ordenes de servicio', permisos: ['ordenes.consultar'], grupo: 'operacion' },
   { ruta: '/agenda', etiqueta: 'Agenda y rutas', permisos: ['agenda.consultar'], grupo: 'operacion' },
