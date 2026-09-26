@@ -57,10 +57,14 @@ export interface FilaPago {
   readonly id: string;
   readonly id_orden: string;
   readonly numero_orden: string;
+  readonly codigo_orden: string;
   readonly cliente: string;
   readonly monto: string;
   readonly forma_pago: string;
   readonly referencia: string | null;
+  readonly estado: string;
+  readonly motivo_anulacion: string | null;
+  readonly confirmado_por: string | null;
   readonly registrado_por: string | null;
   readonly creado_en: Date;
 }
@@ -125,10 +129,14 @@ export function comoResumenPago(fila: FilaPago): ResumenPago {
     id: fila.id,
     idOrden: fila.id_orden,
     numeroOrden: Number(fila.numero_orden),
+    codigoOrden: fila.codigo_orden,
     cliente: fila.cliente,
     monto: Number(fila.monto),
     formaPago: fila.forma_pago,
     referencia: fila.referencia,
+    estado: fila.estado as ResumenPago['estado'],
+    motivoAnulacion: fila.motivo_anulacion,
+    confirmadoPor: fila.confirmado_por,
     registradoPor: fila.registrado_por,
     creadoEn: fila.creado_en.toISOString(),
   };

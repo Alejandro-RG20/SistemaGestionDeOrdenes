@@ -48,9 +48,15 @@ export async function sembrarCobros(
     const momentoCierre = orden.momentos.at(-1)!;
 
     if (entregada && orden.tipoGarantia === TIPO_GARANTIA.PARTICULAR) {
+      // Si el articulo ya se entrego, el dinero entro: la entrega exige
+      // pago confirmado. Sembrarlo como «registrado» describiria un centro
+      // que regala reparaciones.
+      const forma = azar.elegir(FORMAS_PAGO);
+      const confirmador = azar.elegir(gestores);
       filasPago.push([
-        azar.uuid(), orden.id, azar.decimal(400, 12_000), azar.elegir(FORMAS_PAGO),
-        `REC-${azar.entero(100_000, 999_999)}`, null, azar.elegir(gestores).id, momentoCierre,
+        azar.uuid(), orden.id, azar.decimal(400, 12_000), forma,
+        `REC-${azar.entero(100_000, 999_999)}`, null, confirmador.id, momentoCierre,
+        'confirmado', null, confirmador.id, momentoCierre,
       ]);
     }
 
@@ -116,7 +122,8 @@ export async function sembrarCobros(
   }
 
   await copiarFilas(cliente, 'pago',
-    ['id', 'id_orden', 'monto', 'forma_pago', 'referencia', 'id_evidencia', 'creado_por', 'creado_en'],
+    ['id', 'id_orden', 'monto', 'forma_pago', 'referencia', 'id_evidencia', 'creado_por', 'creado_en',
+      'estado', 'motivo_anulacion', 'confirmado_por', 'confirmado_en'],
     filasPago as never);
   await copiarFilas(cliente, 'expediente_cobro',
     ['id', 'id_orden', 'destinatario', 'id_marca', 'monto_reclamado', 'monto_cobrado', 'estado',

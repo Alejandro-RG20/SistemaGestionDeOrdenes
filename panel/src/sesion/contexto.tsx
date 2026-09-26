@@ -5,10 +5,11 @@
 import {
   createContext, useCallback, useContext, useMemo, useState, type ReactNode,
 } from 'react';
-import type { CodigoPermiso, UsuarioAutenticado } from '@servitotal/compartido';
+import type { UsuarioAutenticado } from '@servitotal/compartido';
 import { ClienteApi, ErrorDeApi } from '../api/cliente.js';
 import { TokensEnNavegador } from './almacen.js';
 import { identificadorDeEsteDispositivo } from './dispositivo.js';
+import { trabajaEnCampo } from './navegacion.js';
 
 interface ValorDeSesion {
   readonly usuario: UsuarioAutenticado | null;
@@ -57,8 +58,7 @@ export function ProveedorDeSesion({ children }: { children: ReactNode }): JSX.El
     const sesion = await api.iniciarSesion(nombreUsuario, contrasena);
     setUsuario(sesion.usuario);
 
-    const esDeCampo = (sesion.usuario.permisos as readonly CodigoPermiso[])
-      .includes('campo.sincronizar' as CodigoPermiso);
+    const esDeCampo = trabajaEnCampo(sesion.usuario);
     if (!esDeCampo || identificadorDispositivo === null) {
       setDispositivoVinculado(esDeCampo ? false : null);
       return;

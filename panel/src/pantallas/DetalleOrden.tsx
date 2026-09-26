@@ -23,13 +23,14 @@ import {
   cordobas, fechaHora, plazoEnPalabras,
 } from '../componentes/piezas.js';
 import { ErrorDeApi, type PaginaDeDatos } from '../api/cliente.js';
+import { tienePermiso } from '../sesion/navegacion.js';
 
 const PESTANAS = ['Resumen', 'Evidencia', 'Repuestos', 'Visitas', 'Bitacora'] as const;
 type Pestana = (typeof PESTANAS)[number];
 
 export function DetalleOrden(): JSX.Element {
   const { id = '' } = useParams();
-  const { api } = useSesion();
+  const { api, usuario } = useSesion();
   const [pestana, setPestana] = useState<Pestana>('Resumen');
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -89,11 +90,26 @@ export function DetalleOrden(): JSX.Element {
 
   return (
     <>
-      <h2 className="scr">Orden {orden.numero}</h2>
+      <h2 className="scr">Orden {orden.codigo}</h2>
       <p className="sub">
         {orden.cliente} · {orden.articulo} · <Garantia tipo={orden.tipoGarantia} /> ·{' '}
         {orden.modalidad === 'ruta' ? `ruta · ${orden.zona ?? 'sin zona'}` : 'taller'}
+        {orden.tienda === null ? '' : ` · entro por ${orden.tienda}`}
       </p>
+
+      {/*
+        La entrega y la revision tecnica cuelgan de la orden, no del menu:
+        son el ultimo tramo de ESTA orden. Se ofrecen segun el permiso de
+        quien mira, que es lo unico que decide si el enlace le sirve.
+      */}
+      <div className="tools" style={{ marginBottom: 12 }}>
+        {tienePermiso(usuario, 'taller.validacion.registrar') ? (
+          <Link className="btn" to={`/validaciones/${orden.id}`}>Revisar el trabajo</Link>
+        ) : null}
+        {tienePermiso(usuario, 'ordenes.entregar') ? (
+          <Link className="btn" to={`/ordenes/${orden.id}/entrega`}>Entregar el articulo</Link>
+        ) : null}
+      </div>
 
       {/* La cabecera del prototipo: estado, responsable, plazo y costo. */}
       <div className="g g4" style={{ marginBottom: 12 }}>

@@ -149,31 +149,58 @@ describe('bandeja de avisos', () => {
 });
 
 describe('portal publico', () => {
-  async function ordenConsultable(): Promise<{ numero: number; telefono: string }> {
-    const { rows } = await entorno.piscina.query<{ numero: string; telefono_contacto: string }>(
-      "SELECT numero, telefono_contacto FROM orden_servicio WHERE estado <> 'anulada' LIMIT 1",
+  async function ordenConsultable(): Promise<{
+    numero: number; codigo: string; telefono: string;
+  }> {
+    const { rows } = await entorno.piscina.query<{
+      numero: string; codigo: string; telefono_contacto: string;
+    }>(
+      `SELECT numero, codigo, telefono_contacto FROM orden_servicio
+        WHERE estado <> 'anulada' LIMIT 1`,
     );
-    return { numero: Number(rows[0]!.numero), telefono: rows[0]!.telefono_contacto };
+    return {
+      numero: Number(rows[0]!.numero),
+      codigo: rows[0]!.codigo,
+      telefono: rows[0]!.telefono_contacto,
+    };
   }
 
   it('devuelve el estado con el numero de orden y el telefono, sin sesion', async () => {
-    const { numero, telefono } = await ordenConsultable();
+    const { codigo, telefono } = await ordenConsultable();
     const respuesta = await peticion(entorno.aplicacion)
-      .get(`${RAIZ}/portal/ordenes/${numero}?telefono=${encodeURIComponent(telefono)}`)
+      .get(`${RAIZ}/portal/ordenes/${codigo}?telefono=${encodeURIComponent(telefono)}`)
       .expect(200);
 
     const estado = respuesta.body.datos;
-    expect(estado.numeroOrden).toBe(numero);
+    expect(estado.numeroOrden).toBe(codigo);
     expect(estado.situacion).toBeTruthy();
     expect(estado.explicacion).toBeTruthy();
     expect(estado.recorrido).toHaveLength(5);
   });
 
+  /**
+   * El cliente lee su comprobante y dicta lo que ve: unos leen el codigo
+   * completo y otros el numero suelto. Rechazarle la consulta por la forma
+   * en que lo escribio lo manda al telefono, que es lo que el portal
+   * existe para evitar.
+   */
+  it('acepta tanto el codigo completo como el numero suelto', async () => {
+    const { numero, codigo, telefono } = await ordenConsultable();
+
+    for (const comoLoEscribe of [codigo, codigo.toLowerCase(), String(numero)]) {
+      const respuesta = await peticion(entorno.aplicacion)
+        .get(`${RAIZ}/portal/ordenes/${comoLoEscribe}?telefono=${encodeURIComponent(telefono)}`)
+        .expect(200);
+      // Y siempre contesta con el codigo, que es como la orden se identifica.
+      expect(respuesta.body.datos.numeroOrden).toBe(codigo);
+    }
+  });
+
   it('NO devuelve datos personales ni internos', async () => {
     // Es la prueba que de verdad importa de este endpoint.
-    const { numero, telefono } = await ordenConsultable();
+    const { codigo, telefono } = await ordenConsultable();
     const respuesta = await peticion(entorno.aplicacion)
-      .get(`${RAIZ}/portal/ordenes/${numero}?telefono=${encodeURIComponent(telefono)}`)
+      .get(`${RAIZ}/portal/ordenes/${codigo}?telefono=${encodeURIComponent(telefono)}`)
       .expect(200);
 
     const texto = JSON.stringify(respuesta.body);

@@ -5,6 +5,12 @@ import type {
 
 export interface ResumenOrden {
   readonly id: string;
+  /**
+   * El numero que ve la gente: `OS-2026-000001`. Es el que va en el
+   * comprobante y el que el cliente dicta por telefono.
+   */
+  readonly codigo: string;
+  /** La secuencia interna. Sirve para ordenar y para los filtros rapidos. */
   readonly numero: number;
   readonly estado: EstadoOrden;
   readonly modalidad: ModalidadServicio;
@@ -53,6 +59,9 @@ export interface FichaOrden extends ResumenOrden {
   readonly referenciaUbicacion: string | null;
   readonly idZona: string | null;
   readonly zona: string | null;
+  /** La sucursal desde la que entro la solicitud (no donde se compro). */
+  readonly idTienda: string | null;
+  readonly tienda: string | null;
   readonly cargoVisita: number;
   readonly idReglaCobertura: string | null;
   readonly levantadaEnCampo: boolean;
@@ -77,6 +86,14 @@ export interface PeticionCrearOrden {
   readonly referenciaUbicacion?: string | null;
   readonly idZona?: string | null;
   readonly levantadaEnCampo?: boolean;
+  /**
+   * Sucursal desde la que entra la solicitud.
+   *
+   * El usuario de tienda no la manda: es la suya y el servidor la impone.
+   * El agente telefonico SI, porque atiende a clientes de cualquier
+   * sucursal y tiene que decir de cual habla (§8 del pliego).
+   */
+  readonly idTienda?: string | null;
 }
 
 export interface PeticionAsignarTecnico {

@@ -6,6 +6,7 @@ import type {
 
 export interface FilaOrden {
   readonly id: string;
+  readonly codigo: string;
   readonly numero: number;
   readonly estado: EstadoOrden;
   readonly modalidad: ModalidadServicio;
@@ -31,6 +32,8 @@ export interface FilaOrdenCompleta extends FilaOrden {
   readonly referencia_ubicacion: string | null;
   readonly id_zona: string | null;
   readonly zona: string | null;
+  readonly id_tienda?: string | null;
+  readonly tienda?: string | null;
   readonly cargo_visita: number;
   readonly id_regla_cobertura: string | null;
   readonly levantada_en_campo: boolean;
@@ -68,6 +71,7 @@ export function aResumenOrden(
 ): ResumenOrden {
   return {
     id: fila.id,
+    codigo: fila.codigo,
     numero: fila.numero,
     estado: fila.estado,
     modalidad: fila.modalidad,

@@ -221,8 +221,13 @@ export interface FilaRepuestoBajoMinimo {
 export async function repuestosBajoMinimo(
   ejecutor: Ejecutor = ejecutorPorDefecto(),
 ): Promise<{ total: number; muestra: FilaRepuestoBajoMinimo[] }> {
-  // Solo la bodega central: el minimo de una bodega movil lo repone el
-  // despacho diario y avisar por cada una seria ruido constante.
+  /*
+   * La vista ya filtra a las bodegas que surten (migracion 0020): la de
+   * piezas sustituidas guarda lo que se RETIRA de los aparatos y avisar de
+   * que le faltan piezas dañadas era ruido que hacia que se dejara de leer
+   * el panel. Aqui solo se acota a las centrales, porque el minimo de una
+   * movil lo repone el despacho diario.
+   */
   const donde = `FROM v_repuesto_bajo_minimo v
        JOIN bodega b ON b.id = v.id_bodega
       WHERE b.tipo = 'central' AND b.activa`;

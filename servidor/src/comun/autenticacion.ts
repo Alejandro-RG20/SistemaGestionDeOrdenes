@@ -71,6 +71,7 @@ export function actorDe(peticion: Request): Actor {
     rol: usuario.rol,
     permisos: usuario.permisos,
     idDispositivo: peticion.contexto?.idDispositivo,
+    idTienda: usuario.idTienda,
   };
 }
 

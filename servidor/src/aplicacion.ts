@@ -22,8 +22,25 @@ import { rutasDeAvisos } from './modulos/avisos/rutas.js';
 import { rutasDeIndicadores } from './modulos/indicadores/rutas.js';
 import { rutasDelPortal } from './modulos/portal/rutas.js';
 import { rutasDeCatalogos } from './modulos/catalogos/rutas.js';
+import { rutasDeValidaciones } from './modulos/validaciones/rutas.js';
+import { rutasDeEntregas } from './modulos/entregas/rutas.js';
+import { rutasDeCompras } from './modulos/compras/rutas.js';
+import { rutasDeTiendas } from './modulos/tiendas/rutas.js';
+import { rutasDeReportes } from './modulos/reportes/rutas.js';
 
 export const RAIZ_API = '/api/v1';
+
+/**
+ * El pliego escribe las rutas como `/api/...` y el sistema las sirve en
+ * `/api/v1/...`. Se atienden LAS DOS, montando el mismo router en ambas
+ * raices.
+ *
+ * No es indecision: la version en la ruta es lo que permite cambiar un
+ * contrato sin romper a quien ya lo usa, y quitarla para parecerse al
+ * ejemplo del pliego seria perder algo real a cambio de nada. `/api` queda
+ * como alias permanente y apunta siempre a la version vigente.
+ */
+export const RAICES_API = ['/api/v1', '/api'] as const;
 
 /** Tamano maximo del cuerpo JSON. Las evidencias no viajan por aqui (AD-09). */
 const LIMITE_CUERPO = '256kb';
@@ -35,31 +52,38 @@ export function construirAplicacion(): Express {
   aplicacion.use(express.json({ limit: LIMITE_CUERPO }));
   aplicacion.use(asignarCorrelacion);
 
-  aplicacion.get(`${RAIZ_API}/salud`, (_peticion, respuesta) => {
-    respuesta.json({ datos: { estado: 'disponible' } });
-  });
+  for (const raiz of RAICES_API) {
+    aplicacion.get(`${raiz}/salud`, (_peticion, respuesta) => {
+      respuesta.json({ datos: { estado: 'disponible' } });
+    });
 
-  aplicacion.use(RAIZ_API, rutasPublicasDeSeguridad());
-  // El portal de consulta del cliente es publico a proposito: pedirle cuenta
-  // a quien solo quiere saber si su articulo esta listo es la forma mas
-  // segura de que llame por telefono en vez de consultar.
-  aplicacion.use(RAIZ_API, rutasDelPortal());
+    aplicacion.use(raiz, rutasPublicasDeSeguridad());
+    // El portal de consulta del cliente es publico a proposito: pedirle
+    // cuenta a quien solo quiere saber si su articulo esta listo es la
+    // forma mas segura de que llame por telefono en vez de consultar.
+    aplicacion.use(raiz, rutasDelPortal());
 
-  // A partir de aqui, toda ruta exige sesion valida.
-  const exigirSesion = crearExigirSesion(cargarUsuarioAutenticado);
-  aplicacion.use(RAIZ_API, exigirSesion, rutasPrivadasDeSeguridad());
-  aplicacion.use(RAIZ_API, exigirSesion, rutasDeClientes());
-  aplicacion.use(RAIZ_API, exigirSesion, rutasDeArticulos());
-  aplicacion.use(RAIZ_API, exigirSesion, rutasDeGarantias());
-  aplicacion.use(RAIZ_API, exigirSesion, rutasDeOrdenes());
-  aplicacion.use(RAIZ_API, exigirSesion, rutasDeAgenda());
-  aplicacion.use(RAIZ_API, exigirSesion, rutasDeInventario());
-  aplicacion.use(RAIZ_API, exigirSesion, rutasDeSincronizacion());
-  aplicacion.use(RAIZ_API, exigirSesion, rutasDeCampo());
-  aplicacion.use(RAIZ_API, exigirSesion, rutasDeCobros());
-  aplicacion.use(RAIZ_API, exigirSesion, rutasDeAvisos());
-  aplicacion.use(RAIZ_API, exigirSesion, rutasDeIndicadores());
-  aplicacion.use(RAIZ_API, exigirSesion, rutasDeCatalogos());
+    // A partir de aqui, toda ruta exige sesion valida.
+    const exigirSesion = crearExigirSesion(cargarUsuarioAutenticado);
+    aplicacion.use(raiz, exigirSesion, rutasPrivadasDeSeguridad());
+    aplicacion.use(raiz, exigirSesion, rutasDeClientes());
+    aplicacion.use(raiz, exigirSesion, rutasDeArticulos());
+    aplicacion.use(raiz, exigirSesion, rutasDeGarantias());
+    aplicacion.use(raiz, exigirSesion, rutasDeOrdenes());
+    aplicacion.use(raiz, exigirSesion, rutasDeAgenda());
+    aplicacion.use(raiz, exigirSesion, rutasDeInventario());
+    aplicacion.use(raiz, exigirSesion, rutasDeSincronizacion());
+    aplicacion.use(raiz, exigirSesion, rutasDeCampo());
+    aplicacion.use(raiz, exigirSesion, rutasDeCobros());
+    aplicacion.use(raiz, exigirSesion, rutasDeAvisos());
+    aplicacion.use(raiz, exigirSesion, rutasDeIndicadores());
+    aplicacion.use(raiz, exigirSesion, rutasDeCatalogos());
+    aplicacion.use(raiz, exigirSesion, rutasDeValidaciones());
+    aplicacion.use(raiz, exigirSesion, rutasDeEntregas());
+    aplicacion.use(raiz, exigirSesion, rutasDeCompras());
+    aplicacion.use(raiz, exigirSesion, rutasDeTiendas());
+    aplicacion.use(raiz, exigirSesion, rutasDeReportes());
+  }
 
   aplicacion.use(manejarRutaDesconocida);
   aplicacion.use(manejarErrores);

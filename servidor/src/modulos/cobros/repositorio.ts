@@ -224,6 +224,42 @@ export async function contarPagos(
   return Number(rows[0]?.total ?? 0);
 }
 
+/** Confirma o anula un pago. Nunca se borra: se anula con motivo. */
+export async function cambiarEstadoPago(
+  ejecutor: Ejecutor,
+  datos: { id: string; estado: string; motivo: string | null; idUsuario: string },
+): Promise<void> {
+  await ejecutor.query(
+    `UPDATE pago
+        SET estado = $2::estado_pago,
+            motivo_anulacion = coalesce($3, motivo_anulacion),
+            confirmado_por = CASE WHEN $2 = 'confirmado' THEN $4 ELSE confirmado_por END,
+            confirmado_en = CASE WHEN $2 = 'confirmado' THEN now() ELSE confirmado_en END
+      WHERE id = $1`,
+    [datos.id, datos.estado, datos.motivo, datos.idUsuario],
+  );
+}
+
+export async function buscarPago(
+  id: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<FilaPago | null> {
+  const { rows } = await ejecutor.query<FilaPago>(
+    `SELECT p.id, p.id_orden, o.numero AS numero_orden, o.codigo AS codigo_orden,
+            trim(c.nombres || ' ' || coalesce(c.apellidos, '')) AS cliente,
+            p.monto, p.forma_pago, p.referencia, p.estado::text AS estado,
+            p.motivo_anulacion, uc.nombres AS confirmado_por,
+            u.nombres AS registrado_por, p.creado_en
+       FROM pago p
+       JOIN orden_servicio o ON o.id = p.id_orden
+       JOIN cliente c ON c.id = o.id_cliente
+       LEFT JOIN usuario u ON u.id = p.creado_por
+       LEFT JOIN usuario uc ON uc.id = p.confirmado_por
+      WHERE p.id = $1`,
+    [id],
+  );
+  return rows[0] ?? null;
+}
+
 export async function listarPagos(
   idOrden: string | undefined, limite: number, desplazamiento: number,
   ejecutor: Ejecutor = ejecutorPorDefecto(),
@@ -231,13 +267,16 @@ export async function listarPagos(
   const valores: unknown[] = idOrden === undefined ? [] : [idOrden];
   const donde = idOrden === undefined ? '' : 'WHERE p.id_orden = $1';
   const { rows } = await ejecutor.query<FilaPago>(
-    `SELECT p.id, p.id_orden, o.numero AS numero_orden,
+    `SELECT p.id, p.id_orden, o.numero AS numero_orden, o.codigo AS codigo_orden,
             trim(c.nombres || ' ' || coalesce(c.apellidos, '')) AS cliente,
-            p.monto, p.forma_pago, p.referencia, u.nombres AS registrado_por, p.creado_en
+            p.monto, p.forma_pago, p.referencia, p.estado::text AS estado,
+            p.motivo_anulacion, uc.nombres AS confirmado_por,
+            u.nombres AS registrado_por, p.creado_en
        FROM pago p
        JOIN orden_servicio o ON o.id = p.id_orden
        JOIN cliente c ON c.id = o.id_cliente
        LEFT JOIN usuario u ON u.id = p.creado_por
+       LEFT JOIN usuario uc ON uc.id = p.confirmado_por
        ${donde}
       ORDER BY p.creado_en DESC
       LIMIT $${valores.length + 1} OFFSET $${valores.length + 2}`,
@@ -250,14 +289,19 @@ export async function insertarPago(
   ejecutor: Ejecutor,
   datos: {
     idOrden: string; monto: number; formaPago: string; referencia: string | null;
-    idEvidencia: string | null; idUsuario: string;
+    idEvidencia: string | null; idUsuario: string; estado: string;
+    confirmadoPor: string | null;
   },
 ): Promise<string> {
   const { rows } = await ejecutor.query<{ id: string }>(
-    `INSERT INTO pago (id_orden, monto, forma_pago, referencia, id_evidencia, creado_por)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    `INSERT INTO pago
+       (id_orden, monto, forma_pago, referencia, id_evidencia, creado_por,
+        estado, confirmado_por, confirmado_en)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::estado_pago, $8,
+             CASE WHEN $8::uuid IS NULL THEN NULL ELSE now() END)
+     RETURNING id`,
     [datos.idOrden, datos.monto, datos.formaPago, datos.referencia,
-      datos.idEvidencia, datos.idUsuario],
+      datos.idEvidencia, datos.idUsuario, datos.estado, datos.confirmadoPor],
   );
   return rows[0]!.id;
 }

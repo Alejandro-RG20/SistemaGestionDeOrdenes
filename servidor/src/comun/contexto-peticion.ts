@@ -28,6 +28,14 @@ export interface Actor {
   readonly permisos: readonly CodigoPermiso[];
   /** Dispositivo movil desde el que actua, si la sesion nacio en la app. */
   readonly idDispositivo?: string | undefined;
+  /**
+   * Sucursal a la que pertenece. NULL para el personal del centro de
+   * servicio, que no es de ninguna tienda.
+   *
+   * Decide dos cosas: de que tienda sale la orden que levante, y —para el
+   * usuario de tienda— que ordenes puede ver.
+   */
+  readonly idTienda?: string | null | undefined;
 }
 
 declare global {

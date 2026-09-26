@@ -12,13 +12,15 @@ import type { FilaUsuario, FilaUsuarioAutenticado, FilaUsuarioConCredencial } fr
  */
 const SQL_AUTENTICADO = `
   SELECT u.id, u.nombre_usuario, u.nombres, u.correo, u.id_centro, r.codigo AS rol,
+         u.id_tienda, t.nombre AS tienda,
          coalesce(array_agg(p.codigo) FILTER (WHERE p.codigo IS NOT NULL), '{}') AS permisos
     FROM usuario u
     JOIN rol r ON r.id = u.id_rol
+    LEFT JOIN tienda_origen t ON t.id = u.id_tienda
     LEFT JOIN rol_permiso rp ON rp.id_rol = r.id
     LEFT JOIN permiso p ON p.id = rp.id_permiso
    WHERE u.id = $1 AND u.activo AND NOT u.bloqueado AND r.activo
-   GROUP BY u.id, r.codigo`;
+   GROUP BY u.id, r.codigo, t.nombre`;
 
 const SQL_CREDENCIAL = `
   SELECT u.id, u.nombre_usuario, u.contrasena_hash, u.intentos_fallidos,

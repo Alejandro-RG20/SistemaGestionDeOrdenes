@@ -1,8 +1,8 @@
 /** Validacion de lo que entra al modulo de cobros. */
 import { z } from 'zod';
 import {
-  DESTINATARIO_EXPEDIENTE, ESTADO_EXPEDIENTE,
-  type DestinatarioExpediente, type EstadoExpediente,
+  DESTINATARIO_EXPEDIENTE, ESTADO_EXPEDIENTE, ESTADO_PAGO, FORMA_PAGO,
+  type DestinatarioExpediente, type EstadoExpediente, type EstadoPago, type FormaPago,
 } from '@servitotal/compartido';
 
 const estados = Object.values(ESTADO_EXPEDIENTE) as [EstadoExpediente, ...EstadoExpediente[]];
@@ -20,9 +20,27 @@ export const esquemaMoverExpediente = z.object({
   montoCobrado: monto.optional(),
 });
 
+const estadosPago = Object.values(ESTADO_PAGO) as [EstadoPago, ...EstadoPago[]];
+
+export const esquemaCambiarEstadoPago = z.object({
+  estado: z.enum(estadosPago, {
+    errorMap: () => ({ message: 'Ese estado de pago no existe.' }),
+  }),
+  motivo: z.string().trim().min(5, 'Explique por que se anula el pago.').max(500).optional(),
+});
+
 export const esquemaRegistrarPago = z.object({
   monto: monto.refine((valor) => valor > 0, 'El pago tiene que ser mayor que cero.'),
-  formaPago: z.string().trim().min(3, 'Indique la forma de pago.').max(40),
+  /**
+   * Cerrada a las formas del pliego (RF-40). Antes era texto libre y eso
+   * hacia imposible el reporte por forma de pago: «tarjeta», «Tarjeta» y
+   * «tarj.» salian como tres columnas distintas. Ademas es lo que decide
+   * si el pago nace confirmado.
+   */
+  formaPago: z.enum(
+    Object.values(FORMA_PAGO) as [FormaPago, ...FormaPago[]],
+    { errorMap: () => ({ message: 'Esa forma de pago no existe.' }) },
+  ),
   referencia: z.string().trim().max(60).nullish(),
   idEvidencia: z.string().uuid('El comprobante indicado no es valido.').nullish(),
 });

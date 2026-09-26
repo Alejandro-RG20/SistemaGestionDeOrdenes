@@ -22,10 +22,12 @@ import { sembrarEvidencias } from './paso-evidencias.js';
 import { sembrarMovimientos } from './paso-inventario-movimientos.js';
 import { sembrarCobros } from './paso-cobros.js';
 import { sembrarSincronizacion } from './paso-sincronizacion.js';
+import { sembrarComprasYEntregas } from './paso-compras-entregas.js';
 
 /** Orden inverso al de las dependencias: se vacia de las hojas a la raiz. */
 const TABLAS_A_VACIAR = [
   'excepcion_sincronizacion', 'operacion_sincronizada', 'bitacora', 'nota_correccion',
+  'entrega', 'validacion_tecnica', 'compra_detalle', 'compra', 'proveedor',
   'expediente_cobro', 'pago', 'solicitud_repuesto', 'existencia', 'movimiento_repuesto',
   'evidencia', 'cotizacion', 'diagnostico_item', 'diagnostico', 'visita', 'evento_orden',
   'orden_servicio', 'cobertura', 'articulo', 'cliente_direccion', 'cliente_telefono', 'cliente',
@@ -99,6 +101,8 @@ export async function sembrar(opciones: OpcionesSiembra = {}): Promise<void> {
       ['evidencias', () => sembrarEvidencias(cliente, contexto, ordenes)],
       ['movimientos de inventario', () => sembrarMovimientos(cliente, contexto, ordenes)],
       ['pagos, expedientes y bitacora', () => sembrarCobros(cliente, contexto, ordenes)],
+      ['proveedores, compras, validaciones y entregas',
+        () => sembrarComprasYEntregas(cliente, contexto, ordenes)],
       ['rastro de sincronizacion', () => sembrarSincronizacion(cliente, contexto, ordenes)],
     ];
 

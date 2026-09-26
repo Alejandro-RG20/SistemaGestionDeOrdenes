@@ -8,6 +8,10 @@ const SECRETO = 'clave-de-pruebas-suficientemente-larga-para-hs256';
 const ID_USUARIO = '11111111-1111-4111-8111-111111111111';
 
 beforeAll(() => {
+  // El nombre del pliego: es el que manda si el `.env` lo trae, y fijar
+  // solo el alterno dejaria la prueba firmando con una clave y verificando
+  // con otra.
+  process.env['JWT_SECRET'] = SECRETO;
   process.env['JWT_SECRETO'] = SECRETO;
   process.env['JWT_EMISOR'] = 'servitotal';
   process.env['JWT_AUDIENCIA'] = 'servitotal-api';

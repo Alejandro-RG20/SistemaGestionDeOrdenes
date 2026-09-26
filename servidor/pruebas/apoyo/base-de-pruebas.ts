@@ -41,5 +41,29 @@ export async function prepararBaseDePruebas(): Promise<string> {
   }
 
   process.env['BD_NOMBRE'] = NOMBRE_BASE_DE_PRUEBAS;
+
+  /*
+   * RED DE SEGURIDAD, Y NO ES PARANOIA: ESTO YA FALLO UNA VEZ.
+   *
+   * Apuntar el proceso a la base de pruebas es un efecto secundario sobre
+   * `process.env`, y basta un cambio en como se lee la configuracion para
+   * que deje de surtir efecto **en silencio**. Cuando eso paso, las
+   * pruebas de integracion —que crean ordenes, mueven inventario y borran
+   * tablas— corrieron contra la base de DESARROLLO sin que nada avisara.
+   *
+   * Se relee la configuracion y se comprueba. Si no apunta a donde debe,
+   * las pruebas no arrancan: perder una corrida es barato, perder la base
+   * de alguien no.
+   */
+  const efectiva = leerConfiguracionBaseDatos().nombre;
+  if (efectiva !== NOMBRE_BASE_DE_PRUEBAS) {
+    throw new Error(
+      `Las pruebas iban a correr contra «${efectiva}» y no contra `
+      + `«${NOMBRE_BASE_DE_PRUEBAS}». Se detienen antes de tocar nada. `
+      + 'Causa probable: la configuracion esta leyendo otro nombre de variable '
+      + '(DATABASE_NAME frente a BD_NOMBRE) y el apunte de las pruebas se ignora.',
+    );
+  }
+
   return NOMBRE_BASE_DE_PRUEBAS;
 }

@@ -76,10 +76,15 @@ export function Ordenes(): JSX.Element {
           <div className="g g4">
             <div>
               <label>N.º de orden</label>
+              {/*
+                Acepta las dos formas en que la gente nombra una orden: el
+                codigo del comprobante o el numero interno. Quien atiende
+                teclea lo que el cliente le dicta y no tiene por que saber
+                cual de los dos es.
+              */}
               <input
                 defaultValue={numero}
-                inputMode="numeric"
-                placeholder="10482"
+                placeholder="OS-2026-000123"
                 onKeyDown={(evento) => {
                   if (evento.key === 'Enter') cambiar('numero', evento.currentTarget.value.trim());
                 }}
@@ -139,7 +144,7 @@ export function Ordenes(): JSX.Element {
                   return (
                     <tr key={orden.id}>
                       <td style={{ fontFamily: 'IBM Plex Mono, monospace' }}>
-                        <Link to={`/ordenes/${orden.id}`}>{orden.numero}</Link>
+                        <Link to={`/ordenes/${orden.id}`}>{orden.codigo}</Link>
                       </td>
                       <td>{orden.cliente}</td>
                       <td>{orden.articulo}</td>

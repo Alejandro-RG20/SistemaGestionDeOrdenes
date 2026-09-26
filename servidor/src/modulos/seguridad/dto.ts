@@ -18,6 +18,8 @@ export interface FilaUsuarioAutenticado {
   readonly id_centro: string;
   readonly rol: string;
   readonly permisos: string[];
+  readonly id_tienda: string | null;
+  readonly tienda: string | null;
 }
 
 export interface FilaUsuarioConCredencial {
@@ -91,6 +93,8 @@ export function aUsuarioAutenticado(fila: FilaUsuarioAutenticado): UsuarioAutent
     idCentro: fila.id_centro,
     rol: fila.rol as CodigoRol,
     permisos: fila.permisos as CodigoPermiso[],
+    idTienda: fila.id_tienda,
+    tienda: fila.tienda,
   };
 }
 

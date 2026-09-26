@@ -21,11 +21,30 @@ const MARCAS: readonly (readonly [string, string])[] = [
   ['Indurama', 'garantias@indurama-ejemplo.com'],
 ];
 
-const TIENDAS: readonly (readonly [string, boolean])[] = [
-  ['La Curacao', true],
-  ['Almacenes Tropigas', true],
-  ['RadioShack', true],
-  ['Externa', false],
+/**
+ * Las sucursales del grupo.
+ *
+ * `pertenece_al_grupo` es lo que decide si la garantia del proveedor
+ * aplica, asi que «Externa» tiene que seguir existiendo: es donde cae todo
+ * lo comprado fuera de Unicomer, y es la que hace que una evaluacion de
+ * cobertura pueda decir que no.
+ *
+ * Las cuatro primeras conservan su nombre exacto porque son las que usan
+ * las reglas de cobertura sembradas y las pruebas de garantia; las de
+ * abajo son sucursales concretas, para que la pantalla de tiendas muestre
+ * algo parecido a lo real y no cuatro filas de catalogo.
+ */
+const TIENDAS: readonly (readonly [
+  codigo: string, nombre: string, perteneceAlGrupo: boolean,
+  direccion: string, telefono: string,
+])[] = [
+  ['CUR-001', 'La Curacao', true, 'Centro comercial Metrocentro, modulo 12, Managua', '2278-1100'],
+  ['TRO-001', 'Almacenes Tropigas', true, 'Carretera Masaya km 4, Managua', '2278-2200'],
+  ['RSH-001', 'RadioShack', true, 'Plaza Inter, local 34, Managua', '2222-3300'],
+  ['EXT-000', 'Externa', false, 'Compra fuera del grupo', ''],
+  ['CUR-002', 'La Curacao Ciudad Jardin', true, 'Pista Buenos Aires, Ciudad Jardin, Managua', '2249-1150'],
+  ['CUR-003', 'La Curacao Bello Horizonte', true, 'Rotonda Bello Horizonte 1c al sur, Managua', '2244-1180'],
+  ['TRO-002', 'Almacenes Tropigas Mercado Oriental', true, 'Mercado Oriental, modulo central, Managua', '2248-2240'],
 ];
 
 const CATEGORIAS: readonly (readonly [string, string])[] = [
@@ -63,16 +82,22 @@ export async function sembrarCatalogos(cliente: PoolClient, contexto: ContextoSi
     contexto.marcas.map((marca, indice) => [marca.id, marca.nombre, MARCAS[indice]![1], true]),
   );
 
-  contexto.tiendas = TIENDAS.map(([nombre, perteneceAlGrupo]) => ({
+  contexto.tiendas = TIENDAS.map(([codigo, nombre, perteneceAlGrupo, direccion, telefono]) => ({
     id: contexto.azar.uuid(),
+    codigo,
     nombre,
     perteneceAlGrupo,
+    direccion,
+    telefono,
   }));
   await copiarFilas(
     cliente,
     'tienda_origen',
-    ['id', 'nombre', 'pertenece_al_grupo', 'activa'],
-    contexto.tiendas.map((tienda) => [tienda.id, tienda.nombre, tienda.perteneceAlGrupo, true]),
+    ['id', 'codigo', 'nombre', 'pertenece_al_grupo', 'direccion', 'telefono', 'activa'],
+    contexto.tiendas.map((tienda) => [
+      tienda.id, tienda.codigo, tienda.nombre, tienda.perteneceAlGrupo,
+      tienda.direccion, tienda.telefono === '' ? null : tienda.telefono, true,
+    ]),
   );
 
   contexto.categorias = CATEGORIAS.map(([nombre, linea]) => ({ id: contexto.azar.uuid(), nombre, linea }));

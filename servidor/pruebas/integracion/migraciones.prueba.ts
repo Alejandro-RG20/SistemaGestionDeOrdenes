@@ -35,8 +35,16 @@ describe('ejecutor de migraciones', () => {
       `SELECT count(*)::text AS total FROM information_schema.tables
         WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
     );
-    // 41 tablas del esquema mas la tabla de control de migraciones.
-    expect(Number(tablas[0]!.total)).toBe(42);
+    /*
+     * 41 tablas del esquema entregado, mas la de control de migraciones,
+     * mas las cinco que agregan las migraciones 0016-0018 para cubrir lo
+     * que el pliego pide y el esquema no traia: `validacion_tecnica`,
+     * `proveedor`, `compra`, `compra_detalle` y `entrega`.
+     *
+     * Es un numero fijo a proposito: si aparece una tabla que nadie
+     * declaro, esta prueba lo dice.
+     */
+    expect(Number(tablas[0]!.total)).toBe(47);
 
     const { rows: estados } = await obtenerPiscina().query<{ etiqueta: string }>(
       `SELECT e.enumlabel AS etiqueta FROM pg_enum e
@@ -65,9 +73,13 @@ describe('ejecutor de migraciones', () => {
       `INSERT INTO cliente (id_centro, nombres, apellidos)
        VALUES ('11111111-1111-4111-8111-111111111111', 'José', 'Martínez Ñurinda')`,
     );
+    // Por su centro y no con LIMIT 1: si algun dia esta prueba corriera
+    // sobre una base con clientes, «el primero que salga» seria cualquiera.
     const { rows } = await piscina.query<{ nombre_busqueda: string }>(
-      'SELECT nombre_busqueda FROM cliente LIMIT 1',
+      `SELECT nombre_busqueda FROM cliente
+        WHERE id_centro = '11111111-1111-4111-8111-111111111111'`,
     );
+    expect(rows).toHaveLength(1);
     expect(rows[0]!.nombre_busqueda).toBe('jose martinez nurinda');
     await piscina.query('DELETE FROM cliente');
     await piscina.query('DELETE FROM centro');

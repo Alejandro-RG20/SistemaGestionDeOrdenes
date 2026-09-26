@@ -42,9 +42,14 @@ export async function sembrarInventarioBase(cliente: PoolClient, contexto: Conte
   await copiarFilas(
     cliente,
     'bodega',
-    ['id', 'id_centro', 'tipo', 'nombre', 'id_tecnico', 'activa'],
+    ['id', 'id_centro', 'tipo', 'nombre', 'id_tecnico', 'activa', 'surte_repuestos'],
     bodegas.map((bodega, indice) => [
-      bodega.id, contexto.idCentro, bodega.tipo, nombreDeBodega(bodega, indice), bodega.idTecnico, true,
+      bodega.id, contexto.idCentro, bodega.tipo, nombreDeBodega(bodega, indice),
+      bodega.idTecnico, true,
+      // La de piezas sustituidas guarda lo que se RETIRA de los aparatos:
+      // no surte nada, y avisar de que «le faltan» piezas dañadas es ruido
+      // que hace que se deje de leer el panel entero.
+      bodega.id !== contexto.idBodegaPiezasSustituidas,
     ]),
   );
   contexto.bodegas = bodegas;

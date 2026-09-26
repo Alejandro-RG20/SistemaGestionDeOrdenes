@@ -20,7 +20,8 @@ export interface EntornoApi {
  * es cara; las pruebas la comparten y evitan modificarse datos entre si.
  */
 export async function montarApi(): Promise<EntornoApi> {
-  process.env['JWT_SECRETO'] ??= 'clave-de-pruebas-suficientemente-larga-para-hs256';
+  process.env['JWT_SECRET'] ??= 'clave-de-pruebas-suficientemente-larga-para-hs256';
+  process.env['JWT_SECRETO'] ??= process.env['JWT_SECRET'];
   process.env['SEGURIDAD_INTENTOS_PARA_BLOQUEO'] ??= '5';
   await prepararBaseDePruebas();
 

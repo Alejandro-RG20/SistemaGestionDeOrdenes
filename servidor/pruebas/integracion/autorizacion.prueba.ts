@@ -107,8 +107,18 @@ describe('forma uniforme de la respuesta', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/usuarios?tamano=10`).set(cabecera).expect(200);
     expect(respuesta.body.datos).toHaveLength(10);
-    expect(respuesta.body.paginacion).toMatchObject({ pagina: 1, tamano: 10, total: 37 });
-    expect(respuesta.body.paginacion.totalPaginas).toBe(4);
+    // El total sale de la plantilla sembrada; se compara contra la base
+    // para que agregar una cuenta no rompa una prueba que no habla de eso.
+    const enLaBase = await entorno.piscina.query<{ total: string }>(
+      'SELECT count(*)::text AS total FROM usuario',
+    );
+    expect(respuesta.body.paginacion).toMatchObject({
+      pagina: 1, tamano: 10, total: Number(enLaBase.rows[0]!.total),
+    });
+    // Derivado, no escrito a mano: lo que se comprueba es que el conteo
+    // cuadre con el total, no cuanta gente hay sembrada.
+    expect(respuesta.body.paginacion.totalPaginas)
+      .toBe(Math.ceil(Number(enLaBase.rows[0]!.total) / 10));
 
     const excesiva = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/usuarios?tamano=5000`).set(cabecera);
@@ -135,7 +145,10 @@ describe('forma uniforme de la respuesta', () => {
     // modo, un desconocido podria mapear la API a base de 404 contra 401.
     const anonima = await peticion(entorno.aplicacion).get(`${RAIZ}/inventado`);
     expect(anonima.status).toBe(401);
-    expect(anonima.body.error.idCorrelacion).toBeTypeOf('string');
+    // `correlationId`, en ingles, porque asi lo fija el contrato de la API
+    // en el pliego (§64). Es la unica clave del sistema que no esta en
+    // español, y se mantiene a proposito.
+    expect(anonima.body.error.correlationId).toBeTypeOf('string');
 
     const token = await tokenDe(CODIGO_ROL.JEFE_ATENCION_CLIENTE);
     const conSesion = await peticion(entorno.aplicacion)

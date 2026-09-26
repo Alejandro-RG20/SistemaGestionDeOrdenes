@@ -25,12 +25,44 @@ describe('matriz de roles', () => {
     expect(Object.keys(MATRIZ_ROL_PERMISO).sort()).toEqual(Object.values(CODIGO_ROL).sort());
   });
 
-  it('no hay rol de administrador: administra la jefatura de atencion al cliente', () => {
-    expect(Object.values(CODIGO_ROL)).not.toContain('administrador');
+  /**
+   * El pliego exige el rol de administrador como rol propio (§6 y §7), y
+   * asi esta. Pero la jefatura de atencion al cliente CONSERVA sus permisos
+   * administrativos, que es lo que refleja como trabaja el centro: no hay
+   * una persona dedicada a administrar el sistema, lo administra quien
+   * atiende al cliente.
+   */
+  it('el administrador existe y la jefatura conserva lo suyo', () => {
+    expect(Object.values(CODIGO_ROL)).toContain('administrador');
+
     const jefatura = MATRIZ_ROL_PERMISO[CODIGO_ROL.JEFE_ATENCION_CLIENTE];
     expect(jefatura).toContain('seguridad.usuario.gestionar');
     expect(jefatura).toContain('seguridad.rol.gestionar');
     expect(jefatura).toContain('seguridad.dispositivo.revocar');
+  });
+
+  /**
+   * El administrador se construye DESDE el catalogo, no con una lista
+   * escrita a mano. Una lista a mano se queda corta el dia que alguien
+   * agrega un permiso, y un administrador al que le falta un permiso nuevo
+   * es un administrador que no puede administrar.
+   */
+  it('el administrador tiene absolutamente todos los permisos', () => {
+    const suyos = new Set(MATRIZ_ROL_PERMISO[CODIGO_ROL.ADMINISTRADOR]);
+    for (const permiso of CODIGOS_CONOCIDOS) {
+      expect(suyos.has(permiso as never), `al administrador le falta ${permiso}`).toBe(true);
+    }
+  });
+
+  /**
+   * Y el de consulta, ninguno que escriba. Su valor esta en lo que NO
+   * tiene: es el rol que se le da a quien supervisa sin operar.
+   */
+  it('el usuario de consulta no lleva ni un permiso que escriba', () => {
+    const escriben = /\.(crear|editar|asignar|anular|cerrar|gestionar|registrar|cargar|programar|evaluar|reclasificar|conformar|enviar|autorizar|vincular|revocar|resolver|sincronizar|entregar|confirmar|recibir|fusionar|nota_correccion|configurar|editar_datos_sensibles)$/;
+    for (const permiso of MATRIZ_ROL_PERMISO[CODIGO_ROL.USUARIO_CONSULTA]) {
+      expect(escriben.test(permiso), `«${permiso}» escribe y no deberia estar`).toBe(false);
+    }
   });
 
   it('solo asigna permisos que existen en el catalogo', () => {

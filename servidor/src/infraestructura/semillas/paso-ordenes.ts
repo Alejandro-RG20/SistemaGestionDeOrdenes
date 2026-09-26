@@ -96,6 +96,9 @@ export async function sembrarOrdenes(
 ): Promise<ResumenOrden[]> {
   const { azar } = contexto;
   const agentes = usuariosDe(contexto, CODIGO_ROL.AGENTE_TELEFONIA);
+  // «Externa» no atiende a nadie: es la marca de lo comprado fuera del
+  // grupo, no una sucursal donde alguien pueda presentarse.
+  const sucursalesDelGrupo = contexto.tiendas.filter((tienda) => tienda.perteneceAlGrupo);
   const tecnicosRuta = contexto.tecnicos.filter((t) => t.tipo === 'ruta');
   const tecnicosPlanta = contexto.tecnicos.filter((t) => t.tipo === 'planta');
   const articuloPorId = new Map(contexto.articulos.map((a) => [a.id, a]));
@@ -190,6 +193,14 @@ export async function sembrarOrdenes(
       : 0;
 
     const idOrden = azar.uuid();
+    // La tienda desde la que ENTRO la solicitud. Casi siempre es la misma
+    // donde el cliente compro —vuelve donde lo conocen— pero no siempre:
+    // uno de cada cinco reclama en otra sucursal del grupo, y el sistema
+    // tiene que poder distinguirlo del lugar de compra.
+    const idTiendaSolicitud = azar.decimal(0, 1) < 0.8
+      ? articulo.idTienda
+      : azar.elegir(sucursalesDelGrupo).id;
+
     filasOrden.push([
       idOrden, contexto.idCentro, articulo.idCliente, articulo.id, tecnico?.id ?? null,
       modalidad, estadoFinal, tipoGarantia,
@@ -202,7 +213,7 @@ export async function sembrarOrdenes(
       azar.elegir(FALLAS_REPORTADAS), fechaRecepcion, fechaEstadoDesde,
       plazoVigenteAlCerrar(cadena.estados, momentos, esFinal),
       estadoFinal === ESTADO_ORDEN.ENTREGADA ? fechaEstadoDesde : null,
-      total, levantadaEnCampo,
+      total, levantadaEnCampo, idTiendaSolicitud,
       estadoFinal === ESTADO_ORDEN.ANULADA ? azar.elegir(MOTIVOS_ANULACION) : null,
       fechaRecepcion, agenteRegistro.id,
     ]);
@@ -238,7 +249,7 @@ export async function sembrarOrdenes(
       'tipo_garantia', 'id_responsable_actual', 'telefono_contacto', 'direccion_servicio',
       'referencia_ubicacion', 'id_zona', 'cargo_visita', 'id_regla_cobertura', 'falla_reportada',
       'fecha_recepcion', 'fecha_estado_desde', 'plazo_vence_en', 'fecha_entrega', 'total',
-      'levantada_en_campo', 'motivo_anulacion', 'creado_en', 'creado_por'],
+      'levantada_en_campo', 'id_tienda', 'motivo_anulacion', 'creado_en', 'creado_por'],
     filasOrden as never,
   );
   await copiarFilas(

@@ -5,7 +5,8 @@ import { actorDe } from '../../comun/autenticacion.js';
 import { leerParametrosPagina } from '../../comun/paginacion.js';
 import { esquemaIdentificador, validar } from '../seguridad/esquemas.js';
 import {
-  esquemaFiltroExpedientes, esquemaMoverExpediente, esquemaRegistrarPago,
+  esquemaCambiarEstadoPago, esquemaFiltroExpedientes, esquemaMoverExpediente,
+  esquemaRegistrarPago,
 } from './esquemas.js';
 import * as servicio from './servicio.js';
 
@@ -54,4 +55,13 @@ export async function registrarPago(peticion: Request, respuesta: Response): Pro
 
 export async function indicadores(_peticion: Request, respuesta: Response): Promise<void> {
   responderDatos(respuesta, await servicio.indicadores());
+}
+
+export async function cambiarEstadoPago(
+  peticion: Request, respuesta: Response,
+): Promise<void> {
+  const datos = validar(esquemaCambiarEstadoPago, peticion.body);
+  responderDatos(respuesta, await servicio.cambiarEstadoPago(
+    actorDe(peticion), identificador(peticion), datos.estado, datos.motivo,
+  ));
 }

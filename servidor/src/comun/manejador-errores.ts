@@ -57,7 +57,7 @@ export function manejarErrores(
   const detalle: DetalleError = {
     codigo: error instanceof ErrorAplicacion ? error.codigo : 'ERROR_INTERNO',
     mensaje: esEsperado && error instanceof ErrorAplicacion ? error.message : MENSAJE_GENERICO,
-    idCorrelacion,
+    correlationId: idCorrelacion,
     ...(error instanceof ErrorValidacion && Object.keys(error.campos).length > 0
       ? { campos: error.campos }
       : {}),
@@ -72,7 +72,7 @@ export function manejarRutaDesconocida(peticion: Request, respuesta: Response): 
     error: {
       codigo: 'RUTA_DESCONOCIDA',
       mensaje: `La direccion ${peticion.method} ${peticion.originalUrl} no existe en este sistema.`,
-      idCorrelacion: peticion.contexto?.idCorrelacion ?? 'sin-correlacion',
+      correlationId: peticion.contexto?.idCorrelacion ?? 'sin-correlacion',
     },
   });
 }

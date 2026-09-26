@@ -198,12 +198,17 @@ export async function bandejaDe(actor: Actor): Promise<BandejaDeAvisos> {
         tipo: TIPO_AVISO.REPUESTO_BAJO_MINIMO,
         gravedad: GRAVEDAD_AVISO.INFORMATIVO,
         titulo: 'Repuestos en el punto de reorden',
-        porQue: 'En la bodega central. Las moviles se reponen con el despacho diario.',
+        porQue: 'En las bodegas que surten. Las moviles se reponen con el despacho diario.',
         total: bajoMinimo.total,
         muestra: bajoMinimo.muestra.map((fila): RenglonDeAviso => ({
-          id: fila.id,
+          // La clave lleva la bodega: un mismo repuesto puede estar bajo
+          // minimo en mas de una, y son avisos distintos que se reponen
+          // por separado.
+          id: `${fila.id}:${fila.bodega}`,
           titulo: `${fila.codigo} · ${fila.descripcion}`,
-          detalle: `Quedan ${fila.cantidad}; el minimo es ${fila.stock_minimo}`,
+          // Y el texto tambien dice cual: «quedan 6» sin decir donde no le
+          // sirve a quien tiene que ir a reponerlos.
+          detalle: `Quedan ${fila.cantidad} en ${fila.bodega}; el minimo es ${fila.stock_minimo}`,
           enlace: `/inventario?repuesto=${fila.id}`,
           magnitud: fila.cantidad - fila.stock_minimo,
         })),

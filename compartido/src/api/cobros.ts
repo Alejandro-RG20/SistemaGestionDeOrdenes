@@ -8,6 +8,7 @@
  */
 import type { DestinatarioExpediente, EstadoExpediente } from '../dominio/cobro.js';
 import type { ModalidadServicio, TipoGarantia } from '../dominio/orden.js';
+import type { EstadoPago } from '../dominio/proceso-final.js';
 
 export interface ResumenExpediente {
   readonly id: string;
@@ -80,10 +81,21 @@ export interface ResumenPago {
   readonly id: string;
   readonly idOrden: string;
   readonly numeroOrden: number;
+  readonly codigoOrden: string;
   readonly cliente: string;
   readonly monto: number;
   readonly formaPago: string;
   readonly referencia: string | null;
+  /**
+   * Registrado no es cobrado (RF-40).
+   *
+   * Solo lo CONFIRMADO habilita la entrega del articulo. Un deposito que
+   * el cliente dice haber hecho se anota, pero el equipo no sale hasta que
+   * alguien de cobros lo vea en la cuenta.
+   */
+  readonly estado: EstadoPago;
+  readonly motivoAnulacion: string | null;
+  readonly confirmadoPor: string | null;
   readonly registradoPor: string | null;
   readonly creadoEn: string;
 }

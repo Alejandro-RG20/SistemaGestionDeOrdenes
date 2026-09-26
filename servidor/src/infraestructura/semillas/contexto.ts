@@ -7,7 +7,14 @@ import type { Aleatorio } from './aleatorio.js';
 export interface ReferenciaZona { readonly id: string; readonly nombre: string; readonly cargoVisita: number }
 export interface ReferenciaCategoria { readonly id: string; readonly nombre: string; readonly linea: string }
 export interface ReferenciaMarca { readonly id: string; readonly nombre: string }
-export interface ReferenciaTienda { readonly id: string; readonly nombre: string; readonly perteneceAlGrupo: boolean }
+export interface ReferenciaTienda {
+  readonly id: string;
+  readonly codigo: string;
+  readonly nombre: string;
+  readonly perteneceAlGrupo: boolean;
+  readonly direccion: string;
+  readonly telefono: string;
+}
 
 export interface ReferenciaUsuario {
   readonly id: string;

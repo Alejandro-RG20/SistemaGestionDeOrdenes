@@ -23,10 +23,13 @@
  * tarifa, y eso ultimo es una decision del negocio.
  */
 import {
-  ESTADO_EXPEDIENTE, ESTADO_ORDEN, type EstadoExpediente, type Paginacion,
+  ESTADO_EXPEDIENTE, ESTADO_ORDEN, ESTADO_PAGO, FORMAS_COBRADAS_AL_INSTANTE,
+  type EstadoExpediente, type EstadoPago, type FormaPago, type Paginacion,
 } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
-import { ErrorConflicto, ErrorDominio, ErrorNoEncontrado } from '../../comun/errores.js';
+import {
+  ErrorConflicto, ErrorDominio, ErrorNoEncontrado, ErrorValidacion,
+} from '../../comun/errores.js';
 import { bitacora } from '../../comun/bitacora.js';
 import { construirPaginacion, type ParametrosPagina } from '../../comun/paginacion.js';
 import { enTransaccion } from '../../comun/transacciones.js';
@@ -271,6 +274,20 @@ export async function registrarPago(
   const orden = await repositorio.desgloseDeOrden(idOrden);
   if (orden === null) throw new ErrorNoEncontrado('No existe esa orden de servicio.');
 
+  /*
+   * EL EFECTIVO Y LA TARJETA NACEN CONFIRMADOS; LO DEMAS, NO.
+   *
+   * El billete se cuenta en la mano y el datafono aprueba en el momento:
+   * exigirle a alguien que vuelva despues a confirmar un pago que ya vio
+   * entrar es un tramite vacio, y los tramites vacios se llenan a ciegas.
+   *
+   * Un deposito o una transferencia son una promesa hasta que aparecen en
+   * la cuenta, y de eso depende si el articulo puede salir. Por eso quedan
+   * registrados y esperan a que alguien de cobros los confirme.
+   */
+  const alInstante = FORMAS_COBRADAS_AL_INSTANTE
+    .includes(peticion.formaPago as FormaPago);
+
   const id = await enTransaccion(async (cliente) => repositorio.insertarPago(cliente, {
     idOrden,
     monto: peticion.monto,
@@ -278,6 +295,8 @@ export async function registrarPago(
     referencia: peticion.referencia ?? null,
     idEvidencia: peticion.idEvidencia ?? null,
     idUsuario: actor.id,
+    estado: alInstante ? ESTADO_PAGO.CONFIRMADO : ESTADO_PAGO.REGISTRADO,
+    confirmadoPor: alInstante ? actor.id : null,
   }));
 
   const pagina = await listarPagos(idOrden, { pagina: 1, tamano: 50, desplazamiento: 0 });
@@ -286,6 +305,49 @@ export async function registrarPago(
     throw new ErrorNoEncontrado('El pago se registro pero no se pudo releer.');
   }
   return registrado;
+}
+
+/**
+ * Confirma que el dinero entro, o anula el pago.
+ *
+ * Es un permiso aparte de registrarlo (`cobros.pago.confirmar`) porque
+ * quien anota el pago en el mostrador no deberia ser quien declara que el
+ * banco lo acredito. Es el mismo criterio que separa pedir una compra de
+ * recibirla.
+ *
+ * Un pago NO se borra jamas: se anula, con motivo escrito. Borrarlo
+ * dejaria una orden entregada sin rastro de por que se dio por pagada.
+ */
+export async function cambiarEstadoPago(
+  actor: Actor, idPago: string, estado: EstadoPago, motivo: string | undefined,
+): Promise<ResumenPago> {
+  const pago = await repositorio.buscarPago(idPago);
+  if (pago === null) throw new ErrorNoEncontrado('No existe un pago con ese identificador.');
+
+  if (pago.estado === ESTADO_PAGO.ANULADO) {
+    throw new ErrorDominio(
+      'PAGO_ANULADO',
+      'Ese pago ya esta anulado. Si el cliente volvio a pagar, registre un pago nuevo.',
+    );
+  }
+  if (estado === ESTADO_PAGO.ANULADO && (motivo ?? '').trim().length < 5) {
+    throw new ErrorValidacion('Explique por que se anula el pago.', {
+      motivo: 'Indique el motivo.',
+    });
+  }
+
+  await enTransaccion((cliente) => repositorio.cambiarEstadoPago(cliente, {
+    id: idPago,
+    estado,
+    motivo: estado === ESTADO_PAGO.ANULADO ? motivo ?? null : null,
+    idUsuario: actor.id,
+  }));
+
+  const actualizado = await repositorio.buscarPago(idPago);
+  if (actualizado === null) {
+    throw new ErrorNoEncontrado('El pago se actualizo pero no se pudo releer.');
+  }
+  return dto.comoResumenPago(actualizado);
 }
 
 // ── indicadores ─────────────────────────────────────────────────────────

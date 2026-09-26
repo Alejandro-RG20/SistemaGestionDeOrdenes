@@ -17,6 +17,20 @@ export const CODIGO_ROL = {
   BODEGUERO: 'bodeguero',
   JEFE_COMPRAS: 'jefe_compras',
   GESTOR_COBROS: 'gestor_cobros',
+  JEFE_COBROS: 'jefe_cobros',
+  /**
+   * El personal de mostrador de una sucursal. Levanta ordenes de los
+   * clientes que llegan a su tienda y ve las de su tienda; nada mas.
+   */
+  USUARIO_TIENDA: 'usuario_tienda',
+  /**
+   * Acceso global de administracion. Existe porque el pliego lo exige
+   * como rol propio; en la practica del centro lo lleva la misma jefatura
+   * de atencion al cliente, que conserva sus permisos administrativos.
+   */
+  ADMINISTRADOR: 'administrador',
+  /** Solo lee. Para auditoria interna y para quien supervisa sin operar. */
+  USUARIO_CONSULTA: 'usuario_consulta',
 } as const;
 export type CodigoRol = (typeof CODIGO_ROL)[keyof typeof CODIGO_ROL];
 
@@ -31,6 +45,8 @@ export const MODULO = {
   GARANTIAS: 'garantias',
   INVENTARIO: 'inventario',
   COBROS: 'cobros',
+  COMPRAS: 'compras',
+  REPORTES: 'reportes',
   PORTAL: 'portal',
 } as const;
 export type Modulo = (typeof MODULO)[keyof typeof MODULO];
@@ -101,6 +117,21 @@ export const CATALOGO_PERMISOS = [
   { codigo: 'cobros.indicadores.consultar', modulo: MODULO.COBROS, descripcion: 'Ver los indicadores de recuperacion' },
 
   { codigo: 'portal.configurar', modulo: MODULO.PORTAL, descripcion: 'Configurar los mensajes del portal publico' },
+
+  { codigo: 'taller.validacion.registrar', modulo: MODULO.TALLER, descripcion: 'Aprobar o rechazar el trabajo del tecnico' },
+
+  { codigo: 'ordenes.entregar', modulo: MODULO.ORDENES, descripcion: 'Registrar la entrega del articulo al cliente' },
+
+  { codigo: 'cobros.pago.confirmar', modulo: MODULO.COBROS, descripcion: 'Confirmar que el dinero entro, y anular pagos' },
+
+  { codigo: 'compras.consultar', modulo: MODULO.COMPRAS, descripcion: 'Ver compras y proveedores' },
+  { codigo: 'compras.gestionar', modulo: MODULO.COMPRAS, descripcion: 'Crear y enviar pedidos al proveedor' },
+  { codigo: 'compras.recibir', modulo: MODULO.COMPRAS, descripcion: 'Registrar la recepcion fisica de una compra' },
+  { codigo: 'compras.proveedor.gestionar', modulo: MODULO.COMPRAS, descripcion: 'Administrar el catalogo de proveedores' },
+
+  { codigo: 'tiendas.gestionar', modulo: MODULO.SEGURIDAD, descripcion: 'Administrar las sucursales del grupo' },
+
+  { codigo: 'reportes.consultar', modulo: MODULO.REPORTES, descripcion: 'Consultar los reportes de operacion' },
 ] as const satisfies readonly DefinicionPermiso[];
 
 export type CodigoPermiso = (typeof CATALOGO_PERMISOS)[number]['codigo'];

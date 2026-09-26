@@ -5,6 +5,14 @@ import { ESTADO_ORDEN, MODALIDAD_SERVICIO, type EstadoOrden } from '@servitotal/
 const estados = Object.values(ESTADO_ORDEN) as [EstadoOrden, ...EstadoOrden[]];
 
 export const esquemaCrearOrden = z.object({
+  /**
+   * Sucursal desde la que entra la solicitud.
+   *
+   * Opcional aqui porque al usuario de tienda se la impone el servidor con
+   * la suya. El agente telefonico si la manda, porque atiende a clientes de
+   * cualquier sucursal.
+   */
+  idTienda: z.string().uuid('La tienda indicada no es valida.').nullish(),
   // El dispositivo movil puede traer su propio UUID (AD-03). El numero
   // correlativo lo asigna siempre el servidor.
   id: z.string().uuid('El identificador de orden no es valido.').optional(),

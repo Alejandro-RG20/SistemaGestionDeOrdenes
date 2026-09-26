@@ -24,6 +24,15 @@ export interface UsuarioAutenticado {
   readonly idCentro: string;
   readonly rol: CodigoRol;
   readonly permisos: readonly CodigoPermiso[];
+  /**
+   * Sucursal a la que pertenece, si es personal de tienda.
+   *
+   * NULL para quien trabaja en el centro de servicio. No es solo
+   * informativo: define el alcance de lo que ve y de donde salen las
+   * ordenes que levanta (§8 del pliego).
+   */
+  readonly idTienda: string | null;
+  readonly tienda: string | null;
 }
 
 export interface Sesion {

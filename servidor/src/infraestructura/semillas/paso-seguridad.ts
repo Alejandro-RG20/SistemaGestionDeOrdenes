@@ -22,12 +22,18 @@ const NOMBRE_ROL: Readonly<Record<string, string>> = {
   [CODIGO_ROL.BODEGUERO]: 'Bodeguero',
   [CODIGO_ROL.JEFE_COMPRAS]: 'Jefatura de compras',
   [CODIGO_ROL.GESTOR_COBROS]: 'Gestor de cobros',
+  [CODIGO_ROL.JEFE_COBROS]: 'Jefatura de cobros',
+  [CODIGO_ROL.USUARIO_TIENDA]: 'Usuario de tienda',
+  [CODIGO_ROL.ADMINISTRADOR]: 'Administrador del sistema',
+  [CODIGO_ROL.USUARIO_CONSULTA]: 'Usuario de consulta',
 };
 
 /**
- * Plantilla real del centro: 37 personas, ni una mas.
- * La jefatura de atencion al cliente administra el sistema; no hay cuenta
- * de administrador sin dueno.
+ * La plantilla del centro de servicio, tal como la declara el pliego.
+ *
+ * La jefatura de atencion al cliente conserva sus permisos administrativos
+ * —es quien de verdad administra el sistema dia a dia— y ademas existe la
+ * cuenta de administrador que el pliego exige como rol propio.
  */
 const PLANTILLA: readonly (readonly [string, number])[] = [
   [CODIGO_ROL.TECNICO_RUTA, 8],
@@ -37,8 +43,15 @@ const PLANTILLA: readonly (readonly [string, number])[] = [
   [CODIGO_ROL.AGENTE_TELEFONIA, 7],
   [CODIGO_ROL.JEFE_ATENCION_CLIENTE, 1],
   [CODIGO_ROL.GESTOR_COBROS, 4],
+  [CODIGO_ROL.JEFE_COBROS, 1],
   [CODIGO_ROL.BODEGUERO, 2],
   [CODIGO_ROL.JEFE_COMPRAS, 1],
+  [CODIGO_ROL.ADMINISTRADOR, 1],
+  [CODIGO_ROL.USUARIO_CONSULTA, 1],
+  // Uno por sucursal del grupo. No son del centro de servicio: son el
+  // mostrador de la tienda, y por eso son los unicos que llevan
+  // `id_tienda`.
+  [CODIGO_ROL.USUARIO_TIENDA, 3],
 ];
 
 const ESPECIALIDADES = ['refrigeracion', 'lavado', 'aire_acondicionado', 'audio_video'] as const;
@@ -76,6 +89,12 @@ export async function sembrarSeguridad(cliente: PoolClient, contexto: ContextoSi
   const filasUsuario: unknown[][] = [];
   const nombresUsados = new Set<string>();
 
+  // Las sucursales del grupo, para repartir entre ellas al personal de
+  // mostrador. «Externa» queda fuera: nadie trabaja ahi, es donde se
+  // compro lo que no es del grupo.
+  const sucursales = contexto.tiendas.filter((tienda) => tienda.perteneceAlGrupo);
+  let siguienteSucursal = 0;
+
   const registrar = (codigoRol: string): ReferenciaUsuario => {
     const nombres = `${azar.elegir(NOMBRES_PILA)} ${azar.elegir(APELLIDOS)} ${azar.elegir(APELLIDOS)}`;
     const partes = nombres.toLowerCase().split(' ');
@@ -87,10 +106,18 @@ export async function sembrarSeguridad(cliente: PoolClient, contexto: ContextoSi
     }
     nombresUsados.add(nombreUsuario);
 
+    // Solo el usuario de tienda pertenece a una sucursal. Al resto se le
+    // deja en NULL a proposito: trabajan en el centro de servicio, y
+    // asignarles una tienda para «rellenar» haria creer que el dato
+    // significa algo cuando no significa nada.
+    const idTienda = codigoRol === CODIGO_ROL.USUARIO_TIENDA && sucursales.length > 0
+      ? sucursales[siguienteSucursal++ % sucursales.length]!.id
+      : null;
+
     const usuario: ReferenciaUsuario = { id: azar.uuid(), nombreUsuario, rol: codigoRol };
     filasUsuario.push([
       usuario.id, contexto.idCentro, idsRol.get(codigoRol)!, nombreUsuario, nombres,
-      contrasenaHash, `${nombreUsuario}@servitotal-ejemplo.com`, 0, false, true,
+      contrasenaHash, `${nombreUsuario}@servitotal-ejemplo.com`, 0, false, true, idTienda,
     ]);
     const lista = usuariosPorRol.get(codigoRol) ?? [];
     lista.push(usuario);
@@ -106,7 +133,7 @@ export async function sembrarSeguridad(cliente: PoolClient, contexto: ContextoSi
     cliente,
     'usuario',
     ['id', 'id_centro', 'id_rol', 'nombre_usuario', 'nombres', 'contrasena_hash', 'correo',
-      'intentos_fallidos', 'bloqueado', 'activo'],
+      'intentos_fallidos', 'bloqueado', 'activo', 'id_tienda'],
     filasUsuario as never,
   );
   contexto.usuariosPorRol = usuariosPorRol;

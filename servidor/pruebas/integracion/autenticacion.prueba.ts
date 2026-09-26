@@ -105,7 +105,7 @@ describe('uso del token de acceso', () => {
   it('sin token, cualquier ruta privada responde 401', async () => {
     const respuesta = await peticion(entorno.aplicacion).get(`${RAIZ}/autenticacion/yo`);
     expect(respuesta.status).toBe(401);
-    expect(respuesta.body.error.idCorrelacion).toBeTypeOf('string');
+    expect(respuesta.body.error.correlationId).toBeTypeOf('string');
   });
 
   it('con un token manipulado responde 401 y no filtra el detalle tecnico', async () => {
@@ -140,7 +140,7 @@ describe('uso del token de acceso', () => {
   it('conserva el identificador de correlacion que envia el cliente', async () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/autenticacion/yo`).set('X-Id-Correlacion', 'traza-de-prueba-1');
-    expect(respuesta.body.error.idCorrelacion).toBe('traza-de-prueba-1');
+    expect(respuesta.body.error.correlationId).toBe('traza-de-prueba-1');
   });
 });
 

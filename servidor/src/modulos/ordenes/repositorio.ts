@@ -18,7 +18,7 @@ const PLAZO_LATERAL = `
   ) plazo ON true`;
 
 const CAMPOS = `
-  o.id, o.numero, o.estado, o.modalidad, o.tipo_garantia,
+  o.id, o.codigo, o.numero, o.estado, o.modalidad, o.tipo_garantia,
   o.id_cliente, trim(cli.nombres || ' ' || coalesce(cli.apellidos, '')) AS cliente,
   o.id_articulo, trim(m.nombre || ' ' || coalesce(a.modelo, '')) AS articulo,
   o.id_tecnico, ut.nombres AS tecnico,
@@ -41,8 +41,17 @@ export interface FiltroOrdenes {
   readonly idTecnico?: string | undefined;
   readonly idCliente?: string | undefined;
   readonly numero?: number | undefined;
+  /** El codigo completo, tal como lo dicta el cliente: OS-2026-000123. */
+  readonly codigo?: string | undefined;
   readonly soloActivas: boolean;
   readonly soloVencidas: boolean;
+  /**
+   * Alcance por sucursal. NO es un filtro que elija quien consulta: lo
+   * impone el servicio para el usuario de tienda, que solo ve lo suyo.
+   * Por eso va en el mismo WHERE y no como una condicion opcional que
+   * alguien pueda olvidar poner.
+   */
+  readonly idTienda?: string | undefined;
 }
 
 const DONDE = `
@@ -52,14 +61,30 @@ const DONDE = `
     AND ($4::bigint IS NULL OR o.numero = $4)
     AND ($5::boolean IS FALSE OR o.estado NOT IN ('entregada','cerrada_sin_reparar','anulada'))
     AND ($6::boolean IS FALSE OR (o.plazo_vence_en < now()
-         AND o.estado NOT IN ('entregada','cerrada_sin_reparar','anulada')))`;
+         AND o.estado NOT IN ('entregada','cerrada_sin_reparar','anulada')))
+    AND ($7::uuid IS NULL OR o.id_tienda = $7)
+    AND ($8::text IS NULL OR o.codigo = $8)`;
 
+/**
+ * Los parametros del filtro, en el orden del WHERE.
+ *
+ * `LIMITE` y `DESPLAZAMIENTO` se nombran a partir de esta longitud y no
+ * con un numero escrito a mano: agregar una condicion al filtro y olvidar
+ * correr el `$7` de abajo es un error que compila, pasa el arranque y solo
+ * aparece cuando alguien lista ordenes.
+ */
 function parametros(filtro: FiltroOrdenes): unknown[] {
   return [
     filtro.estado ?? null, filtro.idTecnico ?? null, filtro.idCliente ?? null,
     filtro.numero ?? null, filtro.soloActivas, filtro.soloVencidas,
+    filtro.idTienda ?? null, filtro.codigo ?? null,
   ];
 }
+
+/** Cuantos parametros ocupa el filtro. La paginacion va despues de estos. */
+const PARAMETROS_DEL_FILTRO = 8;
+const LIMITE = `$${PARAMETROS_DEL_FILTRO + 1}`;
+const DESPLAZAMIENTO = `$${PARAMETROS_DEL_FILTRO + 2}`;
 
 export async function contar(filtro: FiltroOrdenes, ejecutor: Ejecutor = ejecutorPorDefecto()): Promise<number> {
   const { rows } = await ejecutor.query<{ total: string }>(
@@ -74,7 +99,8 @@ export async function listar(
 ): Promise<FilaOrden[]> {
   const { rows } = await ejecutor.query<FilaOrden>(
     `SELECT ${CAMPOS} ${DESDE} ${DONDE}
-      ORDER BY o.plazo_vence_en NULLS LAST, o.numero LIMIT $7 OFFSET $8`,
+      ORDER BY o.plazo_vence_en NULLS LAST, o.numero
+      LIMIT ${LIMITE} OFFSET ${DESPLAZAMIENTO}`,
     [...parametros(filtro), limite, desplazamiento],
   );
   return rows;
@@ -85,9 +111,11 @@ export async function buscarPorId(
 ): Promise<FilaOrdenCompleta | null> {
   const { rows } = await ejecutor.query<FilaOrdenCompleta>(
     `SELECT ${CAMPOS}, o.telefono_contacto, o.direccion_servicio, o.referencia_ubicacion,
-            o.id_zona, z.nombre AS zona, o.cargo_visita, o.id_regla_cobertura,
+            o.id_zona, z.nombre AS zona, o.id_tienda, ti.nombre AS tienda,
+            o.cargo_visita, o.id_regla_cobertura,
             o.levantada_en_campo, o.motivo_anulacion, o.fecha_entrega
        ${DESDE} LEFT JOIN zona z ON z.id = o.id_zona
+                LEFT JOIN tienda_origen ti ON ti.id = o.id_tienda
       WHERE o.id = $1`,
     [id],
   );
@@ -140,7 +168,7 @@ export async function buscarContextoTransicion(
   idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
 ): Promise<FilaContextoTransicion | null> {
   const { rows } = await ejecutor.query<FilaContextoTransicion>(
-    `SELECT o.id, o.numero, o.estado, o.modalidad::text AS modalidad,
+    `SELECT o.id, o.codigo, o.numero, o.estado, o.modalidad::text AS modalidad,
             o.tipo_garantia::text AS tipo_garantia, o.id_tecnico,
             o.id_responsable_actual, o.id_centro,
             EXISTS (SELECT 1 FROM visita v WHERE v.id_orden = o.id AND v.vigente) AS tiene_visita,
@@ -220,26 +248,39 @@ export async function insertarOrden(
      * y ese desfase se arrastraria a cada informe de cumplimiento.
      */
     momentoRecepcion: Date;
+    /** Sucursal desde la que entra la solicitud. Puede no haberla. */
+    idTienda: string | null;
   },
-): Promise<{ id: string; numero: number }> {
+): Promise<{ id: string; numero: number; codigo: string }> {
   // El numero NO se envia: lo asigna la secuencia del servidor.
-  const { rows } = await ejecutor.query<{ id: string; numero: number }>(
+  const { rows } = await ejecutor.query<{ id: string; numero: number; codigo: string }>(
     `INSERT INTO orden_servicio
        (id, id_centro, id_cliente, id_articulo, modalidad, estado, tipo_garantia,
         id_regla_cobertura, id_responsable_actual, telefono_contacto, direccion_servicio,
-        referencia_ubicacion, id_zona, cargo_visita, falla_reportada, plazo_vence_en,
+        referencia_ubicacion, id_zona, id_tienda, cargo_visita, falla_reportada, plazo_vence_en,
         levantada_en_campo, creado_por, fecha_recepcion, fecha_estado_desde)
      VALUES (coalesce($1::uuid, uuid_generate_v4()), $2, $3, $4, $5::modalidad_servicio,
-             'registrada', $6::tipo_garantia, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-             $18, $18)
-     RETURNING id, numero`,
+             'registrada', $6::tipo_garantia, $7, $8, $9, $10, $11, $12, $19, $13, $14, $15, $16,
+             $17, $18, $18)
+     RETURNING id, numero, codigo`,
     [datos.id, datos.idCentro, datos.idCliente, datos.idArticulo, datos.modalidad,
       datos.tipoGarantia, datos.idReglaCobertura, datos.idResponsableActual,
       datos.telefonoContacto, datos.direccionServicio, datos.referenciaUbicacion,
       datos.idZona, datos.cargoVisita, datos.fallaReportada, datos.plazoVenceEn,
-      datos.levantadaEnCampo, datos.creadoPor, datos.momentoRecepcion],
+      datos.levantadaEnCampo, datos.creadoPor, datos.momentoRecepcion, datos.idTienda],
   );
   return rows[0]!;
+}
+
+/** Una tienda desactivada no recibe ordenes nuevas, pero conserva las viejas. */
+export async function tiendaActiva(
+  idTienda: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<boolean> {
+  const { rows } = await ejecutor.query<{ activa: boolean }>(
+    'SELECT activa FROM tienda_origen WHERE id = $1',
+    [idTienda],
+  );
+  return rows[0]?.activa === true;
 }
 
 export async function asignarTecnico(

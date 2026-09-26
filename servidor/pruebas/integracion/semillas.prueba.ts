@@ -34,11 +34,48 @@ beforeAll(async () => {
 afterAll(async () => { await cerrarPiscina(); });
 
 describe('volumenes sembrados', () => {
-  it('siembra las 37 personas del centro, sin cuentas sin dueno', async () => {
-    expect(await escalar('SELECT count(*) FROM usuario')).toBe(37);
-    expect(await escalar("SELECT count(*) FROM rol WHERE codigo = 'administrador'")).toBe(0);
+  /**
+   * Las 37 personas del centro de servicio que declara el pliego, mas las
+   * seis cuentas que exige su lista de roles (§5 y §6): el administrador,
+   * la jefatura de cobros, el usuario de consulta y el mostrador de las
+   * tres sucursales del grupo.
+   */
+  it('siembra la plantilla completa, sin cuentas sin dueno', async () => {
+    expect(await escalar('SELECT count(*) FROM usuario')).toBe(43);
     expect(await escalar("SELECT count(*) FROM tecnico WHERE tipo = 'ruta'")).toBe(8);
     expect(await escalar("SELECT count(*) FROM tecnico WHERE tipo = 'planta'")).toBe(8);
+
+    // Los 13 roles del pliego, cada uno con alguien dentro: un rol vacio
+    // es un permiso que nadie ejerce y que nadie nota si se rompe.
+    expect(await escalar('SELECT count(*) FROM rol')).toBe(13);
+    expect(await escalar(
+      'SELECT count(*) FROM rol r WHERE NOT EXISTS (SELECT 1 FROM usuario u WHERE u.id_rol = r.id)',
+    )).toBe(0);
+  });
+
+  /**
+   * El usuario de tienda es el unico que pertenece a una sucursal. Al resto
+   * se le deja en NULL a proposito: trabajan en el centro de servicio, y
+   * asignarles una tienda para «rellenar» haria creer que el dato significa
+   * algo cuando no significa nada.
+   */
+  it('solo el personal de mostrador lleva tienda asignada', async () => {
+    expect(await escalar(
+      `SELECT count(*) FROM usuario u JOIN rol r ON r.id = u.id_rol
+        WHERE u.id_tienda IS NOT NULL AND r.codigo <> 'usuario_tienda'`,
+    )).toBe(0);
+    expect(await escalar(
+      `SELECT count(*) FROM usuario u JOIN rol r ON r.id = u.id_rol
+        WHERE u.id_tienda IS NULL AND r.codigo = 'usuario_tienda'`,
+    )).toBe(0);
+  });
+
+  it('toda orden nace con su codigo OS-AAAA-NNNNNN y sin repetirse', async () => {
+    expect(await escalar(
+      String.raw`SELECT count(*) FROM orden_servicio WHERE codigo !~ '^OS-[0-9]{4}-[0-9]{6}$'`,
+    )).toBe(0);
+    expect(await escalar('SELECT count(DISTINCT codigo) FROM orden_servicio'))
+      .toBe(await escalar('SELECT count(*) FROM orden_servicio'));
   });
 
   it('siembra 3 000 clientes, 5 000 articulos y 30 000 ordenes', async () => {

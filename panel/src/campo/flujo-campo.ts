@@ -21,7 +21,7 @@
  *    tecnico registra el resultado de la visita y la jefatura cierra.
  */
 import {
-  ESTADO_ORDEN, MOMENTO_EVIDENCIA,
+  ESTADO_ORDEN, momentosExigiblesEn,
   type EstadoOrden, type MomentoEvidencia,
 } from '@servitotal/compartido';
 
@@ -97,52 +97,15 @@ export function porQueNoSePuedeMover(estado: EstadoOrden): string | null {
 }
 
 /**
- * Que evidencia le toca al tecnico SEGUN DONDE ESTA LA ORDEN.
+ * Que evidencia le toca al tecnico segun donde esta la orden.
  *
- * Sin esto la lista de comprobacion le pide las nueve capturas del proceso
- * completo de golpe —incluida la firma de entrega, que se recoge en el
- * mostrador semanas despues— y el efecto practico es que la deja de leer:
- * una lista que siempre esta en rojo no informa de nada.
- *
- * Es ACUMULATIVA a proposito. La evidencia de recepcion sigue debiendose
- * cuando la orden ya esta en diagnostico, y si nadie la tomo, alguien
- * tiene que hacerlo. Lo que no se le adelanta es lo de mas alla del punto
- * al que la orden ha llegado.
- *
- * Los momentos son los de `regla_evidencia`; el corte por tipo de garantia
- * lo hace el espejo. La comprobacion que BLOQUEA de verdad la hace el
- * servidor con `v_evidencia_faltante`, que si conoce categoria y marca.
+ * Delega en `compartido`: el servidor aplica exactamente el mismo criterio
+ * al validar y al bloquear. Tener dos copias es como se llega a que la
+ * tableta le diga al tecnico que esta completo y el servidor le responda
+ * que no.
  */
 export function momentosVigentes(estado: EstadoOrden): readonly MomentoEvidencia[] {
-  const hasta = (...momentos: MomentoEvidencia[]): readonly MomentoEvidencia[] => momentos;
-
-  switch (estado) {
-    case ESTADO_ORDEN.REGISTRADA:
-    case ESTADO_ORDEN.ASIGNADA:
-    case ESTADO_ORDEN.EN_RUTA:
-    case ESTADO_ORDEN.EN_COLA_TALLER:
-      return hasta(MOMENTO_EVIDENCIA.RECEPCION, MOMENTO_EVIDENCIA.VALIDACION_GARANTIA);
-    case ESTADO_ORDEN.EN_DIAGNOSTICO:
-    case ESTADO_ORDEN.COTIZADA:
-    case ESTADO_ORDEN.ESPERANDO_AUTORIZACION:
-    case ESTADO_ORDEN.ESPERANDO_REPUESTO:
-      return hasta(
-        MOMENTO_EVIDENCIA.RECEPCION, MOMENTO_EVIDENCIA.VALIDACION_GARANTIA,
-        MOMENTO_EVIDENCIA.DIAGNOSTICO,
-      );
-    case ESTADO_ORDEN.EN_REPARACION:
-      return hasta(
-        MOMENTO_EVIDENCIA.RECEPCION, MOMENTO_EVIDENCIA.VALIDACION_GARANTIA,
-        MOMENTO_EVIDENCIA.DIAGNOSTICO, MOMENTO_EVIDENCIA.REPARACION,
-      );
-    default:
-      // Finalizada y los estados finales: ya esta todo el proceso a la
-      // vista, y la entrega la registra el mostrador, no la tableta.
-      return hasta(
-        MOMENTO_EVIDENCIA.RECEPCION, MOMENTO_EVIDENCIA.VALIDACION_GARANTIA,
-        MOMENTO_EVIDENCIA.DIAGNOSTICO, MOMENTO_EVIDENCIA.REPARACION,
-      );
-  }
+  return momentosExigiblesEn(estado);
 }
 
 /** Estados en los que tiene sentido consumir un repuesto contra la orden. */

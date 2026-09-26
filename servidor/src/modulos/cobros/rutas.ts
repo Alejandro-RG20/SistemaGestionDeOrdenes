@@ -32,6 +32,12 @@ export function rutasDeCobros(): Router {
   router.post('/ordenes/:id/pagos',
     exigirPermiso('cobros.pago.registrar'), asincrono(controlador.registrarPago));
 
+  // Confirmar que el dinero entro es un permiso APARTE de registrarlo:
+  // quien anota el pago en el mostrador no deberia ser quien declara que
+  // el banco lo acredito.
+  router.post('/pagos/:id/estado',
+    exigirPermiso('cobros.pago.confirmar'), asincrono(controlador.cambiarEstadoPago));
+
   router.get('/cobros/indicadores', consultarIndicadores, asincrono(controlador.indicadores));
 
   return router;

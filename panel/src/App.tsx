@@ -32,6 +32,12 @@ import { Cobros, DetalleExpediente } from './pantallas/Cobros.js';
 import { Indicadores } from './pantallas/Indicadores.js';
 import { Administracion } from './pantallas/Administracion.js';
 import { ConsultaPublica } from './pantallas/ConsultaPublica.js';
+import { RevisarOrden, Validaciones } from './pantallas/Validaciones.js';
+import { Compras, DetalleCompra, NuevaCompra, Proveedores } from './pantallas/Compras.js';
+import { Tiendas } from './pantallas/Tiendas.js';
+import { Entrega } from './pantallas/Entrega.js';
+import { Pagos } from './pantallas/Pagos.js';
+import { Reportes } from './pantallas/Reportes.js';
 import { ProveedorDeCampo } from './campo/contexto.js';
 import { ArmazonCampo, type DatosDePantallaDeCampo } from './componentes/ArmazonCampo.js';
 import { MiRuta } from './pantallas/campo/MiRuta.js';
@@ -40,7 +46,7 @@ import { Diagnostico } from './pantallas/campo/Diagnostico.js';
 import { Evidencia } from './pantallas/campo/Evidencia.js';
 import { MiBodega, Repuestos } from './pantallas/campo/Repuestos.js';
 import { Cierre, Envios } from './pantallas/campo/Cierre.js';
-import { tienePermiso } from './sesion/navegacion.js';
+import { trabajaEnCampo } from './sesion/navegacion.js';
 
 /** Envuelve una pantalla en el armazon, con su codigo del prototipo. */
 function Pantalla(
@@ -103,11 +109,12 @@ function Privado(): JSX.Element {
   const { usuario } = useSesion();
   if (usuario === null) return <Ingreso />;
 
-  // Quien sincroniza desde un dispositivo es quien trabaja en campo o en
-  // planta. Ocultar la ruta no protege nada —el servidor comprueba el
-  // permiso en cada peticion— pero evita que a un bodeguero le aparezca una
-  // pantalla que no le va a servir de nada.
-  const deCampo = tienePermiso(usuario, 'campo.sincronizar');
+  // Quien sale a campo es el tecnico de ruta y el de planta. Ocultar la
+  // ruta no protege nada —el servidor comprueba el permiso en cada
+  // peticion— pero evita ofrecerle la aplicacion del tecnico a quien no
+  // la va a usar, y evita atarle un dispositivo al administrador, que
+  // tiene el permiso por tenerlos todos y no sale a ninguna casa.
+  const deCampo = trabajaEnCampo(usuario);
 
   return (
     <Routes>
@@ -141,6 +148,19 @@ function Privado(): JSX.Element {
         <Pantalla codigo="W-05" miga="Ordenes › Detalle"><DetalleOrden /></Pantalla>
       } />
 
+      {/* La ruta de entrega va colgada de la orden: es el ultimo paso de
+          esa orden concreta, no una seccion del menu. */}
+      <Route path="/ordenes/:id/entrega" element={
+        <Pantalla codigo="W-25" miga="Ordenes › Entrega"><Entrega /></Pantalla>
+      } />
+
+      <Route path="/validaciones" element={
+        <Pantalla codigo="W-17" miga="Validacion tecnica"><Validaciones /></Pantalla>
+      } />
+      <Route path="/validaciones/:id" element={
+        <Pantalla codigo="W-17" miga="Validacion › Revision"><RevisarOrden /></Pantalla>
+      } />
+
       <Route path="/agenda" element={
         <Pantalla codigo="W-06" miga="Agenda y rutas"><Agenda /></Pantalla>
       } />
@@ -154,6 +174,29 @@ function Privado(): JSX.Element {
       <Route path="/inventario/solicitudes" element={
         <Pantalla codigo="W-08" miga="Inventario › Solicitudes"><SolicitudesDeRepuesto /></Pantalla>
       } />
+      {/* «nueva» antes que «:id»: si no, se leeria como identificador. */}
+      <Route path="/compras/nueva" element={
+        <Pantalla codigo="W-21" miga="Compras › Nuevo pedido"><NuevaCompra /></Pantalla>
+      } />
+      <Route path="/compras" element={
+        <Pantalla codigo="W-21" miga="Compras al proveedor"><Compras /></Pantalla>
+      } />
+      <Route path="/compras/:id" element={
+        <Pantalla codigo="W-21" miga="Compras › Detalle"><DetalleCompra /></Pantalla>
+      } />
+      <Route path="/proveedores" element={
+        <Pantalla codigo="W-22" miga="Proveedores"><Proveedores /></Pantalla>
+      } />
+      <Route path="/pagos" element={
+        <Pantalla codigo="W-24" miga="Pagos de clientes"><Pagos /></Pantalla>
+      } />
+      <Route path="/reportes" element={
+        <Pantalla codigo="W-26" miga="Reportes"><Reportes /></Pantalla>
+      } />
+      <Route path="/tiendas" element={
+        <Pantalla codigo="W-05" miga="Tiendas"><Tiendas /></Pantalla>
+      } />
+
       <Route path="/coberturas" element={
         <Pantalla codigo="W-15" miga="Garantias › Reglas de cobertura"><Coberturas /></Pantalla>
       } />

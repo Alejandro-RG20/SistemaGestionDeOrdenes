@@ -11,7 +11,14 @@
  */
 
 export interface PeticionConsultaPublica {
-  readonly numeroOrden: number;
+  /**
+   * Lo que el cliente tiene a mano. Se acepta tanto el codigo completo
+   * (`OS-2026-000123`) como el numero suelto: quien lee su comprobante por
+   * telefono dice una cosa o la otra segun donde ponga el dedo, y
+   * rechazarle la consulta por la forma en que lo escribio es empujarlo a
+   * llamar al centro, que es justo lo que el portal viene a evitar.
+   */
+  readonly numeroOrden: string;
   /**
    * RF-66: se acepta el telefono vigente del cliente o el que quedo
    * congelado en la orden. La gente cambia de numero y no tiene por que
@@ -30,7 +37,8 @@ export interface PasoPublico {
 }
 
 export interface EstadoPublicoOrden {
-  readonly numeroOrden: number;
+  /** Siempre el codigo completo, que es como la orden se identifica. */
+  readonly numeroOrden: string;
   /** Iniciales del cliente, para que sepa que es la suya sin exponer el nombre. */
   readonly cliente: string;
   readonly articulo: string;

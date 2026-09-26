@@ -29,7 +29,7 @@ function iniciales(nombres: string, apellidos: string | null): string {
 }
 
 export async function consultar(
-  numeroOrden: number, telefono: string,
+  numeroOrden: string, telefono: string,
 ): Promise<EstadoPublicoOrden> {
   const fila = await repositorio.buscarPorNumeroYTelefono(numeroOrden, telefono);
   if (fila === null) {
@@ -68,7 +68,7 @@ export async function consultar(
   }));
 
   return {
-    numeroOrden: Number(fila.numero),
+    numeroOrden: fila.codigo,
     cliente: iniciales(fila.cliente_nombres, fila.cliente_apellidos),
     articulo: fila.articulo,
     recibidoEn: fila.fecha_recepcion.toISOString(),

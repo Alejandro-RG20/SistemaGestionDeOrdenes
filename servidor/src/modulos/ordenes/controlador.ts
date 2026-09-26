@@ -19,15 +19,25 @@ function textoDeConsulta(peticion: Request, clave: string): string | undefined {
 
 export async function listar(peticion: Request, respuesta: Response): Promise<void> {
   const pagina = leerParametrosPagina(peticion.query as Record<string, unknown>);
-  const numero = textoDeConsulta(peticion, 'numero');
+  const buscado = textoDeConsulta(peticion, 'numero');
   const idTecnico = textoDeConsulta(peticion, 'idTecnico');
   const idCliente = textoDeConsulta(peticion, 'idCliente');
+
+  /*
+   * `numero` acepta las dos formas en que la gente nombra una orden: el
+   * codigo del comprobante (OS-2026-000123) o la secuencia interna. Quien
+   * atiende el telefono teclea lo que el cliente le dicta y no deberia
+   * tener que saber cual de las dos es.
+   */
+  const esCodigo = buscado !== undefined && /^OS-\d{4}-\d{6}$/i.test(buscado);
+  const esNumero = buscado !== undefined && /^\d{1,12}$/.test(buscado);
 
   const resultado = await servicio.listar(actorDe(peticion), {
     estado: textoDeConsulta(peticion, 'estado'),
     idTecnico: idTecnico === undefined ? undefined : validar(esquemaIdentificador, idTecnico),
     idCliente: idCliente === undefined ? undefined : validar(esquemaIdentificador, idCliente),
-    numero: numero === undefined ? undefined : Number(numero),
+    numero: esNumero ? Number(buscado) : undefined,
+    codigo: esCodigo ? buscado.toUpperCase() : undefined,
     soloActivas: peticion.query['soloActivas'] === 'true',
     soloVencidas: peticion.query['soloVencidas'] === 'true',
   }, pagina);

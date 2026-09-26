@@ -30,9 +30,28 @@ function conPlazo(fila: FilaOrden, ahora: Date, calendario: CalendarioLaboral): 
   return aResumenOrden(fila, restantes);
 }
 
+/**
+ * El alcance del usuario de tienda: solo las ordenes de SU sucursal.
+ *
+ * Se aplica aqui, en el servicio, y no en el panel. Ocultar filas en la
+ * pantalla no es control de acceso —cualquiera puede pedirle la lista a la
+ * API directamente—; sacarlas de la consulta si lo es.
+ *
+ * El personal del centro de servicio no tiene tienda y ve todo, que es lo
+ * correcto: el taller repara lo que entra por cualquier sucursal.
+ */
+function conAlcanceDelActor(
+  actor: Actor, filtro: repositorio.FiltroOrdenes,
+): repositorio.FiltroOrdenes {
+  const suya = actor.idTienda;
+  if (suya === null || suya === undefined) return filtro;
+  return { ...filtro, idTienda: suya };
+}
+
 export async function listar(
-  actor: Actor, filtro: repositorio.FiltroOrdenes, pagina: ParametrosPagina,
+  actor: Actor, filtroPedido: repositorio.FiltroOrdenes, pagina: ParametrosPagina,
 ): Promise<{ datos: readonly ResumenOrden[]; paginacion: Paginacion }> {
+  const filtro = conAlcanceDelActor(actor, filtroPedido);
   const [total, filas, calendario] = await Promise.all([
     repositorio.contar(filtro),
     repositorio.listar(filtro, pagina.tamano, pagina.desplazamiento),
@@ -77,6 +96,21 @@ export async function obtenerFicha(actor: Actor, idOrden: string): Promise<Ficha
   const fila = await repositorio.buscarPorId(idOrden);
   if (fila === null) throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
 
+  /*
+   * El usuario de tienda solo abre las ordenes de su sucursal.
+   *
+   * Se responde «no existe» y no «no es suya», que es la misma regla del
+   * portal publico: decir «existe pero no le toca» le confirma a quien
+   * prueba identificadores que acerto, y eso es informacion regalada.
+   *
+   * Filtrar la LISTA no basta: sin esto, cualquiera puede pedir la ficha
+   * por su identificador y saltarse el alcance entero.
+   */
+  const suya = actor.idTienda;
+  if (suya !== null && suya !== undefined && fila.id_tienda !== suya) {
+    throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
+  }
+
   const [eventos, notas, calendario] = await Promise.all([
     repositorio.listarEventos(idOrden),
     repositorio.listarNotas(idOrden),
@@ -90,6 +124,8 @@ export async function obtenerFicha(actor: Actor, idOrden: string): Promise<Ficha
     referenciaUbicacion: fila.referencia_ubicacion,
     idZona: fila.id_zona,
     zona: fila.zona,
+    idTienda: fila.id_tienda ?? null,
+    tienda: fila.tienda ?? null,
     cargoVisita: Number(fila.cargo_visita),
     idReglaCobertura: fila.id_regla_cobertura,
     levantadaEnCampo: fila.levantada_en_campo,
@@ -143,6 +179,25 @@ export async function crear(actor: Actor, peticion: PeticionCrearOrden): Promise
       peticion.idArticulo, peticion.idCliente, undefined, cliente,
     );
 
+    /*
+     * DE QUE TIENDA SALE LA ORDEN.
+     *
+     * Si el usuario pertenece a una sucursal, es esa y no se discute:
+     * dejar que el mostrador de Ciudad Jardin levante ordenes a nombre de
+     * Metrocentro seria romper el reporte por tienda y, peor, la
+     * responsabilidad de quien atendio.
+     *
+     * El agente telefonico no pertenece a ninguna —atiende a todo el
+     * pais— asi que el si elige, y el pliego (§8) se lo pide expresamente.
+     */
+    const idTienda = actor.idTienda ?? peticion.idTienda ?? null;
+    if (idTienda !== null && !(await repositorio.tiendaActiva(idTienda, cliente))) {
+      throw new ErrorValidacion(
+        'Esa tienda no existe o esta desactivada, asi que no puede recibir ordenes nuevas.',
+        { idTienda: 'Tienda no valida.' },
+      );
+    }
+
     const esRuta = peticion.modalidad === MODALIDAD_SERVICIO.RUTA;
     const idZona = esRuta ? peticion.idZona ?? congelables.id_zona : null;
     const cargoVisita = esRuta ? Number(congelables.cargo_visita ?? 0) : 0;
@@ -175,6 +230,7 @@ export async function crear(actor: Actor, peticion: PeticionCrearOrden): Promise
       levantadaEnCampo: peticion.levantadaEnCampo ?? false,
       creadoPor: actor.id,
       momentoRecepcion,
+      idTienda,
     });
 
     await repositorio.insertarEvento(cliente, {

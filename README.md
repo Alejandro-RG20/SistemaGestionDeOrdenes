@@ -48,7 +48,7 @@ npm run sembrar               # genera el juego de datos de prueba
 | `npm run migrar:estado` | Muestra qué migraciones están aplicadas, pendientes o alteradas |
 | `npm run sembrar` | Vacía y regenera los datos de prueba |
 | `npm run prueba` | Pruebas del servidor (las de integración necesitan PostgreSQL) |
-| `npm run prueba:panel` | Pruebas del panel web, incluida la capa sin conexión |
+| `npm run prueba:panel` | Pruebas de la web, incluida la capa sin conexión |
 | `npm run panel` | Arranca el panel en `localhost:5173`, con proxy a la API |
 | `npm run construir` | Recompila `compartido/` y `servidor/` (`npm install` ya lo hace) |
 | `npm run verificar-tipos` | Compila `compartido/` y `servidor/`, y comprueba tipos de pruebas y panel |
@@ -59,6 +59,29 @@ Las pruebas de integración crean y destruyen la base `servitotal_pruebas`
 El sistema son **tres piezas**: la **API**, la **web** (`npm run panel`) y el
 **portal público del cliente**, que vive dentro de la misma web en `/consulta`
 y no pide cuenta.
+
+### Una excepción deliberada al pliego, y por qué
+
+El pliego maestro de SERVITOTAL prohíbe explícitamente el modo sin conexión,
+las colas de sincronización y los dispositivos. **Este sistema los conserva**, y
+conviene decir por qué antes de que alguien lo lea como un descuido.
+
+Los técnicos de ruta atienden en casas del Distrito VI **donde no hay cobertura
+de datos**. Quitar el trabajo sin conexión no elimina ese hecho: lo traslada al
+papel. El técnico anotaría el diagnóstico en una libreta y lo transcribiría al
+volver al taller, que es exactamente el proceso que el sistema viene a
+reemplazar —con su pérdida de información, su doble digitación y su día de
+atraso—.
+
+Lo que **sí** se cumple del pliego es lo esencial de esa regla: no hay
+aplicación móvil, no hay React Native y no hay nada que instalar. El técnico
+entra por el navegador, como todos los demás. La arquitectura es la que el
+pliego fija: React → Node/Express/TypeScript → PostgreSQL.
+
+Esta decisión se consultó y se tomó explícitamente. Si el centro confirma que
+hay cobertura en toda la zona, quitar `panel/src/campo/`, el *service worker* y
+las tablas `dispositivo`, `operacion_sincronizada` y `excepcion_sincronizacion`
+deja el sistema conforme al pliego al pie de la letra.
 
 ### No hay aplicación que instalar
 
@@ -93,6 +116,7 @@ servidor/src/comun/           errores, transacciones, autorización, bitácora,
 servidor/src/infraestructura/ conexión, ejecutor de migraciones, siembra
 servidor/src/modulos/         seguridad · clientes · articulos · garantias · ordenes
                               agenda · inventario · sincronizacion · campo · cobros
+                              validaciones · entregas · compras · tiendas · reportes
                               cada uno: controlador · servicio · repositorio · dto · esquemas
 servidor/src/dominio/garantias/  motor de garantías (Especificación y Estrategia)
 servidor/src/dominio/ordenes/    máquina de estados (patrón Estado)
@@ -100,6 +124,7 @@ servidor/src/dominio/plazos/     cálculo en horas laborables
 servidor/src/dominio/inventario/ reglas de los movimientos
 servidor/src/dominio/sincronizacion/ resolución de conflictos
 servidor/src/dominio/cobros/     expediente, destinatario y monto reclamable
+servidor/src/modulos/reportes/catalogo.ts  los 17 reportes, cada uno con su consulta
 panel/src/api/                cliente de la API
 panel/src/sesion/             tokens, contexto, identidad del navegador como
                               dispositivo, y que ve cada rol en el menu
@@ -115,11 +140,21 @@ panel/public/sw.js            service worker: la web abre sin red
 
 ## La API
 
-Raíz `/api/v1`. Toda respuesta tiene la misma forma: `datos` y, en los
-listados, `paginacion`; en caso de fallo, `error` con código, mensaje
-legible e identificador de correlación. El detalle técnico nunca sale hacia
-el cliente: se queda en la bitácora del servidor, localizable por ese
-identificador.
+Raíz `/api/v1`, y **`/api` responde igual** como alias permanente hacia la
+versión vigente. El pliego escribe las rutas sin versión; la versión se
+conserva porque es lo que permite cambiar un contrato sin romper a quien ya lo
+usa, y quitarla para parecerse al ejemplo sería perder algo real a cambio de
+nada.
+
+Toda respuesta tiene la misma forma: `datos` y, en los listados, `paginacion`;
+en caso de fallo, `error` con `codigo`, `mensaje` legible y `correlationId`. El
+detalle técnico nunca sale hacia el cliente: se queda en la bitácora del
+servidor, localizable por ese identificador.
+
+> `correlationId` es la única clave del sistema que no está en español, y es
+> deliberado: la fija el contrato de la API en el pliego. El nombre de una clave
+> de protocolo no es una decisión de estilo. Dentro del código se sigue
+> llamando `idCorrelacion`; la traducción ocurre al serializar.
 
 | Método y ruta | Permiso que exige |
 |---|---|
@@ -171,9 +206,47 @@ identificador.
 | `GET /indicadores/operacion` | `ordenes.consultar` |
 | `GET /portal/ordenes/:numero?telefono=` | **público**, con límite de peticiones |
 | `GET /catalogos` | `ordenes.consultar` |
+| `GET /validaciones/pendientes`, `/ordenes/:id/revision` | `taller.validacion.registrar` |
+| `POST /ordenes/:id/validaciones` | `taller.validacion.registrar` |
+| `GET /ordenes/:id/validaciones` | `ordenes.consultar` |
+| `GET POST /ordenes/:id/entrega` | `ordenes.entregar` |
+| `POST /pagos/:id/estado` | `cobros.pago.confirmar` |
+| `GET /compras`, `/compras/:id`, `/proveedores` | `compras.consultar` |
+| `POST /compras`, `POST /compras/:id/estado` | `compras.gestionar` |
+| `POST /compras/:id/recepcion` | `compras.recibir` |
+| `POST PUT /proveedores`, `/proveedores/:id/activar`, `/desactivar` | `compras.proveedor.gestionar` |
+| `GET /tiendas`, `/tiendas/:id` | sesión válida |
+| `POST PUT /tiendas`, `/tiendas/:id/activar`, `/desactivar` | `tiendas.gestionar` |
+| `GET /reportes`, `/reportes/:clave` | `reportes.consultar` |
 
 No hay ruta `DELETE` para ningún registro del negocio: nada se elimina, se
 desactiva con motivo escrito.
+
+### Quien hace una cosa no hace la contraria
+
+Tres separaciones de permiso que son el control interno del sistema, no
+burocracia:
+
+- **Pedir** una compra (`compras.gestionar`) y **recibirla**
+  (`compras.recibir`) son permisos distintos. El jefe de compras arma el
+  pedido; bodega cuenta lo que llegó. Una sola persona haciendo las dos cosas
+  es como se pierde inventario sin que nadie lo note.
+- **Registrar** un pago (`cobros.pago.registrar`) y **confirmarlo**
+  (`cobros.pago.confirmar`) también. Quien anota el pago en el mostrador no
+  debería ser quien declara que el banco lo acreditó.
+- **Nadie valida su propio trabajo.** Lo impide el servicio, con un mensaje
+  que lo explica, y además un disparador en la base por si alguien llega por
+  otra vía.
+
+### El número de orden
+
+`OS-2026-000123`. Lo asigna la base con un disparador, un correlativo por año,
+y no cambia nunca. La columna `numero` sigue existiendo como secuencia interna
+—la usan los índices y el orden de la bandeja— pero el número que ve la gente
+es el código.
+
+La bandeja y el portal público aceptan **las dos formas**: quien atiende teclea
+lo que el cliente le dicta y no tiene por qué saber cuál de los dos es.
 
 ## El motor de garantías
 
@@ -416,6 +489,122 @@ El estado de cada carga vive **junto al archivo, no en memoria**, para que
 sobreviva a un reinicio del servidor. Si viviera en memoria, «reanudable»
 sería mentira en cuanto el proceso reiniciara.
 
+## El tramo final: validar, cobrar, entregar
+
+Las tres cosas que el pliego pide antes de que un artículo salga del centro, y
+que estaban implícitas en el estado de la orden.
+
+### Validación técnica
+
+Una jefatura revisa el trabajo antes de que el centro responda por él. No es
+una lista con un botón de aprobar: el expediente de revisión pone delante el
+diagnóstico, qué evidencia hay y cuál falta, y qué repuestos se declararon.
+
+**Dos reglas que se aplican en el servidor, no en la pantalla:**
+
+- Nadie aprueba su propio trabajo.
+- No se aprueba con evidencia obligatoria faltante — pero **solo la que ya se
+  podía haber tomado**.
+
+Ese «solo la que ya se podía» arregla un bloqueo circular que dejaba el módulo
+inservible. `firma_cliente` se recoge en la **entrega**. Si se exigiera siempre,
+una orden terminada nunca podría aprobarse (falta la firma), sin aprobación no
+se puede entregar, y sin entregar no hay firma: **ninguna orden pasaba jamás**.
+El criterio de qué momentos son exigibles según el estado vive en
+`compartido/src/dominio/evidencia.ts` (`momentosExigiblesEn`) y lo usan los dos
+lados —el servidor al bloquear y la web del técnico al pintar su lista—, porque
+dos copias del mismo criterio es como se llega a que el celular diga que está
+completo y el servidor responda que no.
+
+### Entrega
+
+`entrega` es un acto, no un estado. «Entregada» decía que alguien movió la
+orden; la tabla dice **a quién se le puso el equipo en las manos** y quién se lo
+dio. Uno de cada cuatro equipos lo retira alguien que no es el titular, y es
+justo lo que después se reclama.
+
+Los requisitos se **calculan** contra los datos y cada uno dice *qué hacer* si
+no se cumple: quien atiende el mostrador tiene al cliente delante y necesita
+saber a dónde mandarlo, no que se le niegue la entrega sin explicación. Y
+dependen de la orden: una garantía de proveedor no necesita cotización ni pago,
+y pedírselos sería inventar un trámite que el negocio no tiene.
+
+El registro de la entrega y el movimiento de la orden a «entregada» van en
+**una sola transacción**. Separadas, una podría quedar sin la otra: un acta de
+entrega de una orden que sigue apareciendo como terminada, o una orden
+entregada sin constancia de a quién.
+
+### Pagos
+
+Registrado no es cobrado. Un depósito que el cliente dice haber hecho se anota,
+pero el artículo no sale hasta que alguien de cobros lo vea en la cuenta. El
+efectivo y la tarjeta nacen confirmados —el billete se cuenta en la mano y el
+datáfono aprueba en el momento—; exigir que alguien vuelva después a confirmar
+un pago que ya vio entrar es un trámite vacío, y los trámites vacíos se llenan
+a ciegas.
+
+Un pago no se borra: se anula, con motivo escrito. Borrarlo dejaría una orden
+entregada sin rastro de por qué se dio por pagada.
+
+## Compras: un pedido no es mercadería
+
+Crear una compra **no suma ni una pieza** a la existencia. La existencia la
+mueve bodega cuando abre las cajas y cuenta, y ese movimiento pasa por el mismo
+`registrarMovimiento` que cualquier otro ingreso — no por una vía paralela.
+
+Si la compra sumara al crearse, el sistema diría que hay compresores
+disponibles mientras siguen en un camión, y un técnico saldría a una casa
+confiando en una pieza que no existe.
+
+La recepción es **todo o nada**: si la tercera línea trae más de lo pedido, las
+dos primeras tampoco ingresan. Recibir a medias y dejar la compra en un estado
+que nadie sabe interpretar es peor que rechazar la operación completa y que
+bodega vuelva a contar.
+
+Y el estado final lo decide el sistema comparando lo contado con lo pedido, **no
+la persona**: una compra que alguien marca «recibida» teniendo la mitad en el
+camión es un agujero de inventario.
+
+## Reportes: un endpoint, diecisiete consultas
+
+Todos devuelven lo mismo —columnas tipadas y filas— así que el panel tiene UNA
+pantalla que los dibuja todos y agregar un reporte es agregar una entrada a
+`servidor/src/modulos/reportes/catalogo.ts`. Diecisiete endpoints y diecisiete
+pantallas para diecisiete `SELECT` es trabajo que nadie mantiene.
+
+Las columnas viajan **con su tipo** porque el panel no puede adivinar si 4850
+son córdobas, días u órdenes, y formatear mal un número en un reporte que
+alguien va a defender ante la jefatura es peor que no mostrarlo.
+
+Varios llevan `advertencia`: dicen cómo leer el resultado. Un promedio calculado
+sobre cuatro órdenes no significa lo mismo que sobre cuatrocientas, y callarlo
+produce decisiones equivocadas con cara de dato duro. El de revisiones técnicas
+avisa de que un cero por ciento de rechazos casi siempre significa que nadie
+está revisando de verdad.
+
+La prueba que importa de este módulo **ejecuta los diecisiete contra la base**.
+Un reporte es SQL escrita a mano: no hay tipos que la protejan, y un nombre de
+columna mal escrito no se ve hasta que alguien abre esa pantalla. Así apareció
+el desajuste de parámetros en `inventario_critico`, que no declara `$1` ni `$2`
+y recibía dos.
+
+## Tiendas y el alcance del usuario de tienda
+
+`tienda_origen` contesta dos preguntas que en Unicomer son la misma: dónde se
+compró el artículo —lo que decide si la garantía del proveedor aplica— y desde
+qué sucursal entró la solicitud. Partirlas en dos tablas obligaría a mantener
+dos catálogos de lo mismo y a decidir cuál manda cuando el motor de garantías
+pregunte.
+
+El **usuario de tienda** sólo ve las órdenes de su sucursal, y el filtro se
+aplica en el servicio, no en la pantalla: ocultar filas no es control de acceso
+—cualquiera puede pedirle la lista a la API— pero sacarlas de la consulta sí lo
+es. Y una orden de otra tienda responde **«no existe»**, no «no es suya»: decir
+que existe le confirma a quien prueba identificadores que acertó.
+
+El personal del centro de servicio no tiene tienda y ve todo, que es lo
+correcto: el taller repara lo que entra por cualquier sucursal.
+
 ## Sesiones y permisos
 
 Dos tokens JWT firmados con HS256:
@@ -482,8 +671,39 @@ propio archivo. **Consecuencia a tener presente:** si algún día se altera el
 diccionario `public.unaccent`, hay que reconstruir el índice trigram de
 `repuesto` y la columna generada de `cliente`.
 
-Fuera de eso, las migraciones reproducen el esquema entregado sin cambios:
-mismas tablas, mismos tipos, mismos índices, mismas restricciones.
+Fuera de eso, las migraciones `0001`–`0014` reproducen el esquema entregado sin
+cambios: mismas tablas, mismos tipos, mismos índices, mismas restricciones.
+
+### Lo que se agregó después, y por qué
+
+Las migraciones `0015`–`0020` **añaden**; ninguna altera ni borra lo entregado.
+Cada una responde a un requisito del pliego que el esquema original no cubría:
+
+| Migración | Qué agrega | Por qué |
+|---|---|---|
+| `0015` | `tienda_origen` con código, dirección y teléfono; `usuario.id_tienda`; `orden_servicio.id_tienda` | §8, §11 y §17: los usuarios pertenecen a una tienda y la orden guarda de cuál entró |
+| `0016` | `validacion_tecnica` + disparador «nadie valida lo suyo» | §30, §41, §42 |
+| `0017` | `proveedor`, `compra`, `compra_detalle` | §36 y §37 |
+| `0018` | `entrega`; estado y anulación en `pago` | §40 y §41 |
+| `0019` | `orden_servicio.codigo` (`OS-2026-000123`) con su disparador | §17 |
+| `0020` | `bodega.surte_repuestos` | corrige un aviso falso, abajo |
+
+**El caso de `0020` merece explicación.** «Bodega de piezas sustituidas» es de
+tipo `central` —no pertenece a ningún técnico— pero no surte nada: ahí van las
+piezas que se **retiran** de los aparatos, guardadas como respaldo del reclamo
+al proveedor. El aviso de «repuesto bajo el mínimo» miraba todas las centrales y
+por eso alertaba de que faltaban piezas dañadas. Dos consecuencias:
+
+1. Avisos sin sentido: nadie repone un compresor quemado.
+2. El mismo repuesto aparecía **dos veces** en el panel, una por bodega, sin
+   decir de cuál hablaba.
+
+Un panel de avisos con ruido se deja de leer, y entonces tampoco se ven los
+avisos que sí importan. Eran 93 alertas; quedaron **68 reales**, cada una
+diciendo en qué bodega.
+
+Se corrigió en el modelo y no filtrando por el nombre de la bodega, que se rompe
+el día que alguien la renombra.
 
 ## Sobre el número de estados
 
@@ -615,13 +835,17 @@ el sistema**. Son 37 personas y ninguna cuenta sin dueño.
   el índice `ux_visita_tecnico_franja` y aquí sólo se traduce el choque a un
   mensaje legible.
 
-## La aplicación móvil
+## La aplicación del técnico
 
-Es la etapa 7. Sirve a los **16 técnicos**, de ruta y de planta: los de planta
-usan la misma tableta, sólo que no salen del taller. Corre sobre React Native
-con Expo y su premisa es la del pliego — *el técnico trabaja en casas sin
-cobertura* —, de modo que **todo funciona sin red y la red es el caso
-excepcional**, no al revés.
+Sirve a los **16 técnicos**, de ruta y de planta: los de planta usan lo mismo,
+sólo que no salen del taller. **No es una aplicación móvil**: es la misma web,
+abierta desde el navegador del celular, sin instalar nada (ver *No hay
+aplicación que instalar*, arriba).
+
+Su premisa es que *el técnico trabaja en casas sin cobertura*, de modo que
+**todo funciona sin red y la red es el caso excepcional**, no al revés. Las
+pantallas están en `panel/src/pantallas/campo/` y la capa sin conexión en
+`panel/src/campo/`.
 
 ### Lo que se baja antes de salir
 
@@ -638,7 +862,7 @@ el diseño. En el coordinador se traduce en una regla de orden:
 
 > **Primero la cola, después el espejo.**
 
-Si se escribiera el espejo primero y la aplicación muriera en medio, la tableta
+Si se escribiera el espejo primero y se cerrara la pestaña en medio, el celular
 mostraría una orden «en reparación» que el servidor nunca va a conocer: trabajo
 perdido que además parece hecho. Al revés, lo peor que pasa es que la lista
 muestre el estado viejo un rato.
@@ -647,7 +871,7 @@ Por lo mismo, al volver al taller se **sube antes de bajar**: descargar primero
 pisaría el espejo con estados viejos —el servidor todavía no sabría de los
 cambios— y el técnico vería retroceder órdenes que él mismo movió.
 
-### Los botones que la app se atreve a ofrecer
+### Los botones que la aplicación se atreve a ofrecer
 
 `panel/src/campo/flujo-campo.ts` **no es una segunda máquina de estados**. La
 máquina vive en el servidor y es la única que decide; esto es el subconjunto
@@ -660,7 +884,7 @@ El criterio es el del servidor: sólo se ofrecen transiciones cuyo estado de
 origen tiene al técnico asignado como responsable — `en_ruta`,
 `en_diagnostico`, `en_reparacion`. Quedan fuera a propósito la cola del taller
 (la reparte la jefatura), el paso a autorización (exige una cotización que no
-se levanta desde la tableta) y **anular y cerrar sin reparar**: son decisiones
+se levanta desde el celular) y **anular y cerrar sin reparar**: son decisiones
 de cierre, y tomarlas solo, sin señal y en el domicilio es justo lo que no debe
 pasar. El técnico registra el resultado de la visita; la jefatura cierra.
 
@@ -693,12 +917,12 @@ evidencia no sube jamás.
 Dice cuántas operaciones y cuántas evidencias quedan sin subir, qué contestó el
 servidor y cuándo se bajó la jornada. **No ofrece ningún botón para borrar la
 cola.** Es la pantalla que le da al técnico una razón para confiar en la
-tableta: sin ella, «guardado» es una promesa que nadie puede verificar, y el
+pantalla: sin ella, «guardado» es una promesa que nadie puede verificar, y el
 primer día que algo se pierda —o que alguien *crea* que se perdió— la gente
 vuelve a la libreta de papel.
 
 Cerrar sesión tampoco toca la cola. Si queda trabajo sin subir, la app lo avisa
-con todas las letras: sigue en la tableta, pero nadie en el taller lo verá
+con todas las letras: sigue en el dispositivo, pero nadie en el taller lo verá
 hasta que esa persona vuelva a entrar y sincronice.
 
 ### Qué se prueba y qué no
@@ -710,7 +934,7 @@ perder el trabajo del técnico es la cola, no un botón mal alineado.
 
 ## Decisiones de la etapa 7
 
-- **El técnico de planta recibió `campo.sincronizar`.** Usa la misma tableta
+- **El técnico de planta recibió `campo.sincronizar`.** Usa la misma web
   que el de ruta y la aplicación no tiene otra vía para registrar nada; sin ese
   permiso, la app le funcionaría hasta el momento de subir. No recibió
   `campo.visita.registrar` ni `ordenes.crear`: no sale del taller.
@@ -724,7 +948,7 @@ perder el trabajo del técnico es la cola, no un botón mal alineado.
 - **Se puede consumir un repuesto que la bodega móvil no registraba.** Pasa —se
   lo prestó un compañero, lo trae de otra orden— y negarlo no lo evita: sólo
   hace que no quede anotado. El servidor ya sabe compensarlo con un ajuste; la
-  tableta lo registra, avisa, y **nunca muestra un saldo negativo**, que no
+  aplicación lo registra, avisa, y **nunca muestra un saldo negativo**, que no
   significa nada para quien la usa.
 - **El precio que viaja es el que el cliente firmó**, no el del catálogo. Si
   para cuando la operación llega el catálogo cambió, el servidor respeta el
@@ -737,7 +961,7 @@ perder el trabajo del técnico es la cola, no un botón mal alineado.
 - **La navegación es un `switch`, no un enrutador.** Son siete pantallas y
   ninguna necesita enlaces profundos ni historial persistente.
 - **Los tokens viven en el almacén seguro del sistema, no en el SQLite.** Si
-  alguien saca la base de una tableta perdida, no debe sacar con ella la llave
+  alguien saca la base local de un celular perdido, no debe sacar con ella la llave
   para entrar al sistema. Y si el refresco falla —dispositivo revocado a
   distancia— se cierra la sesión pero **la cola no se toca**.
 - **«Hay wifi» no es «hay internet».** El detector exige además

@@ -6,8 +6,15 @@
  * bodeguero se le llena la pantalla de secciones que le van a responder 403.
  */
 import { describe, expect, it } from 'vitest';
-import { SECCIONES, seccionesDe, tienePermiso } from '../src/sesion/navegacion.js';
+import { CATALOGO_PERMISOS, CODIGO_ROL, type CodigoRol } from '@servitotal/compartido';
+import {
+  SECCIONES, seccionesDe, tienePermiso, trabajaEnCampo,
+} from '../src/sesion/navegacion.js';
 import { usuarioDePrueba } from './apoyo.js';
+
+/** Un usuario con ese rol y esos permisos, sin repetir el molde. */
+const usuarioCon = (rol: CodigoRol, permisos: readonly string[]) =>
+  usuarioDePrueba(permisos, rol);
 
 const rutas = (usuario: Parameters<typeof seccionesDe>[0]): string[] =>
   seccionesDe(usuario).map((seccion) => seccion.ruta);
@@ -76,5 +83,50 @@ describe('secciones del panel', () => {
     const usuario = usuarioDePrueba(['cobros.expediente.conformar']);
     expect(tienePermiso(usuario, 'cobros.expediente.conformar')).toBe(true);
     expect(tienePermiso(usuario, 'cobros.expediente.enviar')).toBe(false);
+  });
+});
+
+/**
+ * Quien ve la aplicacion del tecnico.
+ *
+ * Se decide por ROL y no por el permiso `campo.sincronizar`, aunque ese
+ * permiso sea el que el servidor exige. El administrador los tiene TODOS
+ * —incluido ese— y no sale a ninguna casa: usarlo como criterio hacia que
+ * el sistema le atara un dispositivo al entrar, recibiera un rechazo, y lo
+ * dejara escrito en la bitacora como un fallo de autenticacion que nadie
+ * iba a entender.
+ */
+describe('quien trabaja en campo', () => {
+  it('los tecnicos de ruta y de planta, si', () => {
+    expect(trabajaEnCampo(usuarioCon(CODIGO_ROL.TECNICO_RUTA, []))).toBe(true);
+    expect(trabajaEnCampo(usuarioCon(CODIGO_ROL.TECNICO_PLANTA, []))).toBe(true);
+  });
+
+  it('el administrador no, aunque tenga todos los permisos', () => {
+    const administrador = usuarioCon(
+      CODIGO_ROL.ADMINISTRADOR,
+      CATALOGO_PERMISOS.map((permiso) => permiso.codigo),
+    );
+    expect(tienePermiso(administrador, 'campo.sincronizar')).toBe(true);
+    expect(trabajaEnCampo(administrador)).toBe(false);
+  });
+
+  it('tampoco el bodeguero ni el agente', () => {
+    expect(trabajaEnCampo(usuarioCon(CODIGO_ROL.BODEGUERO, []))).toBe(false);
+    expect(trabajaEnCampo(usuarioCon(CODIGO_ROL.AGENTE_TELEFONIA, []))).toBe(false);
+  });
+
+  it('sin sesion, no', () => {
+    expect(trabajaEnCampo(null)).toBe(false);
+  });
+
+  it('la seccion «Mi ruta» solo le aparece a quien sale a campo', () => {
+    const conRuta = (usuario: ReturnType<typeof usuarioCon>): boolean =>
+      seccionesDe(usuario).some((seccion) => seccion.ruta === '/campo');
+
+    expect(conRuta(usuarioCon(CODIGO_ROL.TECNICO_RUTA, ['campo.sincronizar']))).toBe(true);
+    expect(conRuta(usuarioCon(
+      CODIGO_ROL.ADMINISTRADOR, CATALOGO_PERMISOS.map((p) => p.codigo),
+    ))).toBe(false);
   });
 });

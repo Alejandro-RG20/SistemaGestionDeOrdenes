@@ -76,9 +76,13 @@ cp .env.ejemplo .env
 Abra `.env` y ajuste **dos cosas**:
 
 ```ini
-BD_CONTRASENA=lo_que_tenga_su_postgres
-JWT_SECRETO=una-clave-larga-generada-al-azar
+DATABASE_PASSWORD=lo_que_tenga_su_postgres
+JWT_SECRET=una-clave-larga-generada-al-azar
 ```
+
+> Los nombres en español (`BD_CONTRASENA`, `JWT_SECRETO`, `PUERTO`) también
+> funcionan, por si tiene un `.env` de antes. Si define los dos, manda el del
+> pliego.
 
 Para el secreto:
 
@@ -89,7 +93,7 @@ openssl rand -base64 48
 Debe tener **al menos 32 caracteres**; el servidor se niega a arrancar con uno
 más corto, y hace bien.
 
-Si su PostgreSQL no está en el puerto 5432, cambie también `BD_PUERTO`.
+Si su PostgreSQL no está en el puerto 5432, cambie también `DATABASE_PORT`.
 
 El resto de valores sirven tal cual. `ALMACEN_OBJETOS_RAIZ` apunta a
 `./datos/evidencias`, una carpeta del propio proyecto que se crea sola y está
@@ -160,11 +164,28 @@ Según con cuál entre, verá un panel distinto — que es justamente la gracia:
 | Usuario | Rol | Qué verá |
 |---|---|---|
 | `mmorales` | jefa de atención al cliente | **todo**; administra el sistema |
-| `gcruz` | jefe de técnicos | órdenes vencidas del taller, excepciones de campo |
+| `jlopez` | administrador | acceso global (el rol que el pliego exige aparte) |
+| `gcruz` | jefe de técnicos | órdenes vencidas, excepciones, **validación técnica** |
 | `ccruz` | técnico de ruta | **sólo sus órdenes**, sin cobros ni excepciones |
 | `cpalacios` | gestor de cobros | expedientes bloqueados, sin respuesta, sin conformar |
-| `maguirre` | bodeguero | inventario bajo mínimo y repuestos pedidos |
+| `esilva` | jefe de cobros | lo del gestor, más **confirmar pagos** |
+| `maguirre` | bodeguero | inventario bajo mínimo y **recepción de compras** |
+| `clopez` | jefe de compras | **pedidos al proveedor**, sin poder recibirlos |
 | `breyes` | agente de teléfonía | clientes, órdenes, agenda |
+| `bmorales` | usuario de tienda | **sólo las órdenes de su sucursal** |
+| `arodriguez` | usuario de consulta | lee y nada más |
+
+### Tres comparaciones que vale la pena hacer
+
+1. Entre con `clopez` y luego con `maguirre`, y abra la **misma compra**. El
+   jefe de compras ve el bloque para mover el pedido y no el de recibir; el
+   bodeguero, al revés. Quien pide no cuenta lo que llega.
+2. Entre con `bmorales` y mire el total de la bandeja, luego con `jlopez`.
+   El usuario de tienda ve unas nueve mil órdenes —las de su sucursal— y el
+   administrador las treinta mil.
+3. Entre con `gcruz` en **Validación técnica** y abra una orden a la que le
+   falte evidencia: la opción de aprobar **no está**, y en su lugar se explica
+   por qué y qué hacer.
 
 Entre con `gcruz` y luego con `ccruz` y compare la bandeja: el jefe ve unas
 doscientas órdenes vencidas —las del taller entero— y el técnico ve un puñado,
@@ -296,7 +317,28 @@ npm run sembrar    # vacía y regenera los datos
 
 ---
 
-## Las cuatro piezas, de un vistazo
+## Lo que se agregó al sistema
+
+Si viene de una versión anterior, estas son las secciones nuevas del menú:
+
+| Sección | Quién la ve | Para qué |
+|---|---|---|
+| **Validación técnica** | jefe de técnicos | revisar el trabajo antes de darlo por bueno |
+| **Compras y proveedores** | compras y bodega | pedir al proveedor y registrar lo que llega |
+| **Pagos de clientes** | cobros | confirmar que el dinero entró |
+| **Reportes** | jefaturas | los 17 reportes del pliego, en una pantalla |
+| **Tiendas** | administración | las sucursales desde las que entra el trabajo |
+
+Y dentro de cada orden hay dos botones nuevos: **Revisar el trabajo** y
+**Entregar el artículo**, según el permiso de quien mire.
+
+Además, el número de orden ahora es **`OS-2026-000123`**. La búsqueda de la
+bandeja y el portal del cliente aceptan las dos formas —el código completo o el
+número suelto— porque quien atiende teclea lo que el cliente le dicta.
+
+---
+
+## Las tres piezas, de un vistazo
 
 ```
 ┌─────────────────┐     ┌──────────────────┐

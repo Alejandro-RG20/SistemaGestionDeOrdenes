@@ -22,7 +22,19 @@ export interface RespuestaExitosa<T> {
 export interface DetalleError {
   readonly codigo: string;
   readonly mensaje: string;
-  readonly idCorrelacion: string;
+  /**
+   * El identificador que une esta respuesta con su linea en la bitacora.
+   *
+   * Va en ingles porque asi lo fija el contrato de la API en el pliego
+   * (§64). Es la UNICA clave del sistema que no esta en español, y se
+   * mantiene asi a proposito: cambiarla por comodidad interna rompe a
+   * cualquiera que ya lea el error, y el nombre de una clave de protocolo
+   * no es una decision de estilo.
+   *
+   * Dentro del codigo se sigue llamando `idCorrelacion`; la traduccion
+   * ocurre al serializar, que es donde tiene que ocurrir.
+   */
+  readonly correlationId: string;
   /** Errores por campo, cuando el fallo es de validacion. */
   readonly campos?: Readonly<Record<string, string>>;
 }
