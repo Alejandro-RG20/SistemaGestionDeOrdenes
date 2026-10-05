@@ -398,3 +398,90 @@ El usuario de PostgreSQL por defecto es su propio nombre de usuario, no
 ```bash
 createuser -s postgres
 ```
+
+## Lo que se agregó en esta etapa, y cómo verlo
+
+### El cerco por datos
+
+Entre con un técnico (cualquiera de la lista, contraseña `ServiTotal.2026`) y
+abra «Mis órdenes». Verá sus órdenes, no las treinta mil. Copie el enlace de
+una orden desde una sesión de jefatura, péguelo en la sesión del técnico y
+obtendrá **403** con el motivo escrito: «Esta orden no está asignada a usted».
+
+Lo mismo por API, que es como lo ataca cualquiera:
+
+```bash
+TK=$(curl -s localhost:3000/api/v1/autenticacion/sesion -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"nombreUsuario":"robando","contrasena":"ServiTotal.2026"}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["datos"]["tokenAcceso"])')
+
+# el listado viene cercado
+curl -s "localhost:3000/api/v1/ordenes?tamano=5" -H "Authorization: Bearer $TK" \
+  | python3 -c 'import sys,json;print("visibles:",json.load(sys.stdin)["paginacion"]["total"])'
+```
+
+### Que el permiso de leer no mueve existencia
+
+```bash
+TK=$(curl -s localhost:3000/api/v1/autenticacion/sesion -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"nombreUsuario":"arodriguez","contrasena":"ServiTotal.2026"}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["datos"]["tokenAcceso"])')
+
+curl -s localhost:3000/api/v1/movimientos -X POST -H "Authorization: Bearer $TK" \
+  -H 'Content-Type: application/json' \
+  -d '{"tipo":"ingreso","idRepuesto":"…","idBodegaDestino":"…","cantidad":99}'
+# → 403 SIN_PERMISO, y la existencia no se mueve
+```
+
+`arodriguez` es `usuario_consulta`. Antes esto respondía 200 y sumaba 99
+unidades.
+
+### El kardex
+
+Menú → **Kardex**. Busque un repuesto por código o descripción y ábralo. Verá
+cada movimiento con el saldo que quedó después, y el filtro de bodega cambia
+el signo de cada línea: lo que es salida para la central es entrada para la
+móvil.
+
+La comprobación que vale la pena hacer: el **saldo final** del kardex de una
+bodega tiene que ser igual a la cantidad que muestra la pantalla de
+existencias para ese repuesto en esa bodega. Son dos caminos distintos al
+mismo número.
+
+### El recorrido de la solicitud de repuesto
+
+Menú → **Solicitudes de repuesto**. Entre como bodeguero y verá los botones de
+los pasos que le toca dar. Entre como técnico y verá solo las solicitudes de
+**sus** órdenes, y el único botón que le toca: «Confirmar que la recibí».
+
+Pruebe a confirmar como bodeguero: responde 403 con el motivo. Pruebe a
+saltarse un paso (entregar algo que no está preparado): responde 422
+nombrando el paso imposible.
+
+### Movimientos
+
+Menú → **Movimientos**. Un solo formulario, y el tipo de movimiento cambia los
+campos que pide. Los tipos que aparecen en el desplegable son los que su
+perfil puede registrar; con un usuario de consulta la pantalla dice por qué no
+hay formulario en vez de mostrar uno que va a fallar.
+
+### Las rutas nuevas de la API
+
+| Método y ruta | Para qué |
+| --- | --- |
+| `GET /repuestos/:id/kardex` | El libro del repuesto, con saldo corrido. Admite `idBodega`, `desde`, `hasta`. |
+| `GET /solicitudes-repuesto/recorrido` | Las solicitudes con su recorrido. Cercado al técnico. |
+| `POST /solicitudes-repuesto/:id/pasos` | Dar un paso del recorrido del §26. |
+
+### Las migraciones nuevas
+
+| Migración | Qué hace |
+| --- | --- |
+| `0021_expediente_observado_cerrado.sql` | Agrega `observado` y `cerrado` al enumerado del expediente. No reescribe filas. |
+| `0022_solicitud_repuesto_flujo.sql` | Agrega el estado y la autoría de cada paso a `solicitud_repuesto`. Traduce las filas existentes sin inventar pasos: liberada → `recibida`, el resto → `solicitada`. |
+
+Aplicadas sobre la base de desarrollo con 11 406 solicitudes: 11 139 quedaron
+en `recibida` y 267 en `solicitada`, y cero filas con el estado y `liberada`
+en contradicción.

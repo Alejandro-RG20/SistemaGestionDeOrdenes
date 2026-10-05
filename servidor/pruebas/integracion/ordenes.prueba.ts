@@ -18,7 +18,7 @@ async function sesionDe(codigoRol: string): Promise<{ Authorization: string }> {
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
 /** Cliente con articulo propio comprado en el grupo, para tener cobertura. */
@@ -51,7 +51,7 @@ async function sesionDelTecnico(idTec: string): Promise<{ Authorization: string 
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario: rows[0]!.nombre_usuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
 async function crearOrden(cuerpo: Record<string, unknown> = {}): Promise<{ id: string; numero: number }> {
@@ -62,7 +62,7 @@ async function crearOrden(cuerpo: Record<string, unknown> = {}): Promise<{ id: s
       modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'No enfria bien',
       ...cuerpo,
     }).expect(201);
-  return { id: respuesta.body.datos.id, numero: respuesta.body.datos.numero };
+  return { id: respuesta.body.data.id, numero: respuesta.body.data.numero };
 }
 
 /** Carga la evidencia que falta para poder salir del estado actual. */
@@ -130,9 +130,9 @@ describe('creacion de la orden', () => {
         levantadaEnCampo: true,
       }).expect(201);
 
-    expect(creada.body.datos.id).toBe(idPropio);
-    expect(creada.body.datos.numero).toBeTypeOf('number');
-    expect(creada.body.datos.levantadaEnCampo).toBe(true);
+    expect(creada.body.data.id).toBe(idPropio);
+    expect(creada.body.data.numero).toBeTypeOf('number');
+    expect(creada.body.data.levantadaEnCampo).toBe(true);
 
     // Reenviarla no la duplica: avisa que ya llego.
     const reenvio = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
@@ -141,7 +141,7 @@ describe('creacion de la orden', () => {
         modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Hace ruido al arrancar',
       });
     expect(reenvio.status).toBe(409);
-    expect(reenvio.body.error.mensaje).toMatch(/ya llego bien/);
+    expect(reenvio.body.error.message).toMatch(/ya llego bien/);
   });
 
   it('congela los datos de contacto y ubicacion al crearse', async () => {
@@ -152,26 +152,26 @@ describe('creacion de la orden', () => {
         modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'No enciende',
       }).expect(201);
 
-    expect(creada.body.datos.telefonoContacto).toMatch(/^\d{8}$/);
-    expect(creada.body.datos.direccionServicio).toBeTypeOf('string');
-    expect(creada.body.datos.cargoVisita).toBeGreaterThan(0);
+    expect(creada.body.data.telefonoContacto).toMatch(/^\d{8}$/);
+    expect(creada.body.data.direccionServicio).toBeTypeOf('string');
+    expect(creada.body.data.cargoVisita).toBeGreaterThan(0);
 
     // Cambiar la ficha del cliente no mueve la orden.
     await peticion(entorno.aplicacion).post(`${RAIZ}/clientes/${base.idCliente}/telefonos`)
       .set(jefatura).send({ numero: '89990000', reemplazaAlVigente: true }).expect(201);
 
     const ficha = await peticion(entorno.aplicacion)
-      .get(`${RAIZ}/ordenes/${creada.body.datos.id}`).set(agente).expect(200);
-    expect(ficha.body.datos.telefonoContacto).toBe(creada.body.datos.telefonoContacto);
-    expect(ficha.body.datos.telefonoContacto).not.toBe('89990000');
+      .get(`${RAIZ}/ordenes/${creada.body.data.id}`).set(agente).expect(200);
+    expect(ficha.body.data.telefonoContacto).toBe(creada.body.data.telefonoContacto);
+    expect(ficha.body.data.telefonoContacto).not.toBe('89990000');
   });
 
   it('una orden de taller no arrastra cargo por visita', async () => {
     const creada = await crearOrden({ modalidad: MODALIDAD_SERVICIO.TALLER });
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${creada.id}`).set(agente).expect(200);
-    expect(ficha.body.datos.cargoVisita).toBe(0);
-    expect(ficha.body.datos.direccionServicio).toBeNull();
+    expect(ficha.body.data.cargoVisita).toBe(0);
+    expect(ficha.body.data.direccionServicio).toBeNull();
   });
 
   it('evalua la cobertura al crearse y congela la regla aplicada', async () => {
@@ -179,9 +179,9 @@ describe('creacion de la orden', () => {
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${creada.id}`).set(agente).expect(200);
 
-    expect(ficha.body.datos.tipoGarantia).toBe(TIPO_GARANTIA.PROVEEDOR);
-    expect(ficha.body.datos.idReglaCobertura).toBeTypeOf('string');
-    expect(ficha.body.datos.eventos[0].observacion).toMatch(/Cobertura: proveedor/);
+    expect(ficha.body.data.tipoGarantia).toBe(TIPO_GARANTIA.PROVEEDOR);
+    expect(ficha.body.data.idReglaCobertura).toBeTypeOf('string');
+    expect(ficha.body.data.eventos[0].observacion).toMatch(/Cobertura: proveedor/);
   });
 
   it('nace con plazo calculado y arranca en registrada', async () => {
@@ -189,11 +189,11 @@ describe('creacion de la orden', () => {
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${creada.id}`).set(agente).expect(200);
 
-    expect(ficha.body.datos.estado).toBe(ESTADO_ORDEN.REGISTRADA);
-    expect(ficha.body.datos.plazoVenceEn).toBeTypeOf('string');
-    expect(ficha.body.datos.horasParaVencer).toBeGreaterThan(0);
-    expect(ficha.body.datos.vencida).toBe(false);
-    expect(ficha.body.datos.destinosPosibles).toContain(ESTADO_ORDEN.ASIGNADA);
+    expect(ficha.body.data.estado).toBe(ESTADO_ORDEN.REGISTRADA);
+    expect(ficha.body.data.plazoVenceEn).toBeTypeOf('string');
+    expect(ficha.body.data.horasParaVencer).toBeGreaterThan(0);
+    expect(ficha.body.data.vencida).toBe(false);
+    expect(ficha.body.data.destinosPosibles).toContain(ESTADO_ORDEN.ASIGNADA);
   });
 
   it('rechaza un cliente o un articulo que no existen', async () => {
@@ -204,7 +204,7 @@ describe('creacion de la orden', () => {
         modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'Lo que sea',
       });
     expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.campos.idArticulo).toBeTypeOf('string');
+    expect(respuesta.body.error.fields.idArticulo).toBeTypeOf('string');
   });
 });
 
@@ -214,9 +214,9 @@ describe('maquina de estados sobre la API', () => {
     const respuesta = await mover(jefeTecnicos, creada.id, ESTADO_ORDEN.ENTREGADA);
 
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.codigo).toBe('TRANSICION_INVALIDA');
-    expect(respuesta.body.error.mensaje).toMatch(/solo se puede ir a/);
-    expect(respuesta.body.error.mensaje).toContain(ESTADO_ORDEN.ASIGNADA);
+    expect(respuesta.body.error.code).toBe('TRANSICION_INVALIDA');
+    expect(respuesta.body.error.message).toMatch(/solo se puede ir a/);
+    expect(respuesta.body.error.message).toContain(ESTADO_ORDEN.ASIGNADA);
   });
 
   it('no avanza sin la evidencia obligatoria, y dice cual falta', async () => {
@@ -227,8 +227,8 @@ describe('maquina de estados sobre la API', () => {
 
     const sinEvidencia = await mover(agente, creada.id, ESTADO_ORDEN.ASIGNADA);
     expect(sinEvidencia.status).toBe(422);
-    expect(sinEvidencia.body.error.codigo).toBe('REQUISITO_INCUMPLIDO');
-    expect(sinEvidencia.body.error.mensaje).toMatch(/evidencia obligatoria/i);
+    expect(sinEvidencia.body.error.code).toBe('REQUISITO_INCUMPLIDO');
+    expect(sinEvidencia.body.error.message).toMatch(/evidencia obligatoria/i);
 
     await cargarEvidenciaPendiente(creada.id, 'recepcion');
     await mover(agente, creada.id, ESTADO_ORDEN.ASIGNADA).expect(200);
@@ -264,22 +264,22 @@ describe('maquina de estados sobre la API', () => {
     await cargarEvidenciaPendiente(creada.id, 'entrega');
     const entregada = await mover(agente, creada.id, ESTADO_ORDEN.ENTREGADA);
     expect(entregada.status).toBe(200);
-    expect(entregada.body.datos.estadoNuevo).toBe(ESTADO_ORDEN.ENTREGADA);
+    expect(entregada.body.data.estadoNuevo).toBe(ESTADO_ORDEN.ENTREGADA);
     // El plazo de una orden entregada YA NO CORRE, pero no se borra: se
     // conserva el ultimo vigente porque es el registro de lo que se le
     // prometio al cliente, y es contra el que se mide el cumplimiento.
     // Borrarlo dejaba el indicador en 0 de 0 para siempre.
-    expect(entregada.body.datos.plazoVenceEn).toBeTypeOf('string');
+    expect(entregada.body.data.plazoVenceEn).toBeTypeOf('string');
 
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${creada.id}`).set(agente).expect(200);
-    expect(ficha.body.datos.fechaEntrega).toBeTypeOf('string');
-    expect(ficha.body.datos.destinosPosibles).toHaveLength(0);
+    expect(ficha.body.data.fechaEntrega).toBeTypeOf('string');
+    expect(ficha.body.data.destinosPosibles).toHaveLength(0);
     // Y aunque tenga plazo grabado, no aparece como vencida: todo lo que
     // pregunta "¿esta vencida?" excluye los estados finales.
-    expect(ficha.body.datos.vencida).toBe(false);
+    expect(ficha.body.data.vencida).toBe(false);
     // La bitacora conserva cada paso.
-    expect(ficha.body.datos.eventos.length).toBeGreaterThanOrEqual(7);
+    expect(ficha.body.data.eventos.length).toBeGreaterThanOrEqual(7);
   });
 
   it('el responsable de turno es quien mueve la orden', async () => {
@@ -293,7 +293,7 @@ describe('maquina de estados sobre la API', () => {
     const bodeguero = await sesionDe(CODIGO_ROL.BODEGUERO);
     const respuesta = await mover(bodeguero, creada.id, ESTADO_ORDEN.ASIGNADA);
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.codigo).toBe('NO_ES_RESPONSABLE');
+    expect(respuesta.body.error.code).toBe('NO_ES_RESPONSABLE');
   });
 
   it('anular exige motivo escrito y lo guarda', async () => {
@@ -301,7 +301,7 @@ describe('maquina de estados sobre la API', () => {
 
     const sinMotivo = await mover(jefatura, creada.id, ESTADO_ORDEN.ANULADA);
     expect(sinMotivo.status).toBe(422);
-    expect(sinMotivo.body.error.mensaje).toMatch(/Escriba el motivo/);
+    expect(sinMotivo.body.error.message).toMatch(/Escriba el motivo/);
 
     await mover(jefatura, creada.id, ESTADO_ORDEN.ANULADA, {
       motivo: 'El cliente desistio del servicio y pidio que se cerrara',
@@ -309,8 +309,8 @@ describe('maquina de estados sobre la API', () => {
 
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${creada.id}`).set(agente).expect(200);
-    expect(ficha.body.datos.estado).toBe(ESTADO_ORDEN.ANULADA);
-    expect(ficha.body.datos.motivoAnulacion).toMatch(/desistio/);
+    expect(ficha.body.data.estado).toBe(ESTADO_ORDEN.ANULADA);
+    expect(ficha.body.data.motivoAnulacion).toMatch(/desistio/);
   });
 });
 
@@ -322,8 +322,8 @@ describe('conversion de ruta a taller', () => {
         idCliente: base.idCliente, idArticulo: base.idArticulo,
         modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'No enfria',
       }).expect(201);
-    const idOrden = creada.body.datos.id;
-    const numeroOriginal = creada.body.datos.numero;
+    const idOrden = creada.body.data.id;
+    const numeroOriginal = creada.body.data.numero;
 
     const idTec = await idTecnico('ruta');
     const tecnico = await sesionDelTecnico(idTec);
@@ -337,7 +337,7 @@ describe('conversion de ruta a taller', () => {
     await cargarEvidenciaPendiente(idOrden, 'validacion_garantia');
     const sinVisita = await mover(jefeTecnicos, idOrden, ESTADO_ORDEN.EN_RUTA);
     expect(sinVisita.status).toBe(422);
-    expect(sinVisita.body.error.mensaje).toMatch(/visita programada/);
+    expect(sinVisita.body.error.message).toMatch(/visita programada/);
 
     await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${idOrden}/visitas`)
       .set(jefeTecnicos)
@@ -349,23 +349,23 @@ describe('conversion de ruta a taller', () => {
     // Conversion: se lleva el articulo al taller.
     const convertida = await mover(tecnico, idOrden, ESTADO_ORDEN.EN_COLA_TALLER);
     expect(convertida.status).toBe(200);
-    expect(convertida.body.datos.orden.numero).toBe(numeroOriginal);
-    expect(convertida.body.datos.orden.modalidad).toBe(MODALIDAD_SERVICIO.TALLER);
+    expect(convertida.body.data.orden.numero).toBe(numeroOriginal);
+    expect(convertida.body.data.orden.modalidad).toBe(MODALIDAD_SERVICIO.TALLER);
 
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${idOrden}`).set(agente).expect(200);
-    expect(ficha.body.datos.numero).toBe(numeroOriginal);
+    expect(ficha.body.data.numero).toBe(numeroOriginal);
     // El historial conserva el paso por ruta.
-    const estados = ficha.body.datos.eventos.map((e: { estadoNuevo: string }) => e.estadoNuevo);
+    const estados = ficha.body.data.eventos.map((e: { estadoNuevo: string }) => e.estadoNuevo);
     expect(estados).toContain(ESTADO_ORDEN.EN_RUTA);
     expect(estados).toContain(ESTADO_ORDEN.EN_COLA_TALLER);
-    expect(ficha.body.datos.eventos.at(-1).observacion).toMatch(/Conversion de ruta a taller/);
+    expect(ficha.body.data.eventos.at(-1).observacion).toMatch(/Conversion de ruta a taller/);
 
     // Y no hay vuelta atras.
     const vuelta = await mover(jefeTecnicos, idOrden, ESTADO_ORDEN.EN_RUTA);
     expect(vuelta.status).toBe(422);
-    expect(vuelta.body.error.codigo).toBe('TRANSICION_INVALIDA');
-    expect(ficha.body.datos.destinosPosibles).not.toContain(ESTADO_ORDEN.EN_RUTA);
+    expect(vuelta.body.error.code).toBe('TRANSICION_INVALIDA');
+    expect(ficha.body.data.destinosPosibles).not.toContain(ESTADO_ORDEN.EN_RUTA);
   });
 });
 
@@ -383,8 +383,8 @@ describe('agenda: la doble programacion es imposible', () => {
     const choque = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${segunda.id}/visitas`)
       .set(jefeTecnicos).send(franja);
     expect(choque.status).toBe(409);
-    expect(choque.body.error.mensaje).toMatch(/ya tiene una visita/);
-    expect(choque.body.error.mensaje).not.toMatch(/constraint|duplicate/i);
+    expect(choque.body.error.message).toMatch(/ya tiene una visita/);
+    expect(choque.body.error.message).not.toMatch(/constraint|duplicate/i);
 
     // Otro tecnico en la misma franja si puede.
     const otroTecnico = await entorno.piscina.query<{ id: string }>(
@@ -415,8 +415,8 @@ describe('agenda: la doble programacion es imposible', () => {
     // Y la visita anterior sigue ahi, marcada como no vigente.
     const visitas = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${orden.id}/visitas`).set(jefeTecnicos).expect(200);
-    expect(visitas.body.datos).toHaveLength(2);
-    expect(visitas.body.datos.filter((v: { vigente: boolean }) => v.vigente)).toHaveLength(1);
+    expect(visitas.body.data).toHaveLength(2);
+    expect(visitas.body.data.filter((v: { vigente: boolean }) => v.vigente)).toHaveLength(1);
   });
 });
 
@@ -441,8 +441,8 @@ describe('plazos y alertas', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/alertas?tamano=50`).set(jefeTecnicos).expect(200);
 
-    expect(respuesta.body.datos.length).toBeGreaterThan(0);
-    for (const orden of respuesta.body.datos) {
+    expect(respuesta.body.data.length).toBeGreaterThan(0);
+    for (const orden of respuesta.body.data) {
       expect(orden.vencida || orden.enAlerta).toBe(true);
       expect(['entregada', 'cerrada_sin_reparar', 'anulada']).not.toContain(orden.estado);
     }
@@ -452,9 +452,9 @@ describe('plazos y alertas', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes?soloVencidas=true&tamano=10`).set(jefeTecnicos).expect(200);
 
-    expect(respuesta.body.datos.length).toBeLessThanOrEqual(10);
-    expect(respuesta.body.paginacion.total).toBeGreaterThan(0);
-    for (const orden of respuesta.body.datos) expect(orden.vencida).toBe(true);
+    expect(respuesta.body.data.length).toBeLessThanOrEqual(10);
+    expect(respuesta.body.pagination.total).toBeGreaterThan(0);
+    for (const orden of respuesta.body.data) expect(orden.vencida).toBe(true);
   });
 });
 
@@ -468,7 +468,7 @@ describe('nota de correccion', () => {
     // Ya no se puede mover.
     const intento = await mover(jefatura, creada.id, ESTADO_ORDEN.ASIGNADA);
     expect(intento.status).toBe(422);
-    expect(intento.body.error.codigo).toBe('ORDEN_CERRADA');
+    expect(intento.body.error.code).toBe('ORDEN_CERRADA');
 
     await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${creada.id}/notas`).set(jefatura)
       .send({
@@ -478,8 +478,8 @@ describe('nota de correccion', () => {
 
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${creada.id}`).set(agente).expect(200);
-    expect(ficha.body.datos.notas).toHaveLength(1);
-    expect(ficha.body.datos.notas[0].motivo).toMatch(/error de digitacion/);
+    expect(ficha.body.data.notas).toHaveLength(1);
+    expect(ficha.body.data.notas[0].motivo).toMatch(/error de digitacion/);
   });
 
   it('una orden abierta se corrige, no se le adjunta nota', async () => {
@@ -489,7 +489,7 @@ describe('nota de correccion', () => {
       .send({ motivo: 'Motivo cualquiera', detalle: 'Detalle cualquiera de la correccion' });
 
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.codigo).toBe('ORDEN_ABIERTA');
+    expect(respuesta.body.error.code).toBe('ORDEN_ABIERTA');
   });
 
   it('solo quien tiene el permiso adjunta notas', async () => {

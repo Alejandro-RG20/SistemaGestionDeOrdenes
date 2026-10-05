@@ -1342,3 +1342,209 @@ ninguna prueba unitaria iba a destapar:
    calculaba sólo con las horas restantes. Ahora `vencida` y `enAlerta` son
    falsas en los estados finales, igual que ya lo asumían todas las consultas
    SQL. Se cerró antes de que llegara a ninguna pantalla.
+
+## El alcance por datos: dos agujeros que había y ya no
+
+Hasta esta etapa el sistema contestaba bien una pregunta y a medias la otra.
+La primera —**qué** puede hacer cada quien— estaba resuelta con permisos
+comprobados en cada petición. La segunda —**sobre qué** puede hacerlo— solo
+estaba resuelta para el usuario de tienda.
+
+Las dos cosas que faltaban se encontraron corriendo el sistema, no leyéndolo,
+y las dos eran el mismo error: mirar el permiso y no mirar de quién es el
+dato.
+
+### Un usuario de solo consulta podía inventar existencias
+
+`POST /movimientos` es una sola puerta para los seis tipos de movimiento, y
+estaba protegida con `inventario.consultar` —el permiso de **leer**—. El tipo
+viene en el cuerpo, así que la ruta no podía saber qué permiso exigir, y el
+servicio tampoco lo comprobaba.
+
+Resultado, verificado contra el sistema con 30 000 órdenes:
+
+```
+arodriguez · rol usuario_consulta · 8 permisos, ninguno de escritura
+antes:    4 unidades de REF-TER-011 en Bodega central
+POST /api/v1/movimientos  {"tipo":"ingreso","cantidad":99,…}  →  HTTP 200
+después: 103 unidades
+```
+
+La comprobación vive ahora en el **servicio**, no en la ruta, porque el
+servicio es el primer punto del sistema que ya sabe de qué tipo se trata. La
+tabla que decide es `PERMISO_DEL_MOVIMIENTO`, en `compartido`, y la usan los
+dos lados: el servidor para rechazar con 403, y el panel para no ofrecerle un
+formulario a quien no puede usarlo. Toda vía que mueva existencia pasa por
+ahí, incluida la recepción de compras.
+
+Hizo falta un permiso nuevo, `inventario.devolucion.registrar`: el técnico
+devuelve lo que no usó y entrega la pieza sustituida, y ninguno de los
+permisos que ya existían nombraba eso.
+
+### Un técnico veía las 30 000 órdenes y abría la de cualquier compañero
+
+```
+robando · rol tecnico_ruta
+GET /api/v1/ordenes            →  total visible: 30000
+GET /api/v1/ordenes/17929fd6…  →  HTTP 200
+   OS-2025-000024, asignada a OTRO técnico
+   cliente: Jazmina Gomez Palacios · teléfono 81680176
+   dirección: Villa Progreso, casa 50
+```
+
+No era un listado de más: era el teléfono y la dirección de casa de un
+cliente que ese técnico no tenía por qué visitar.
+
+El cerco está en `modulos/ordenes/alcance.ts`, en un solo archivo y no
+repartido por cada consulta, porque la tentación es ponerlo en nueve sitios y
+olvidarlo en el décimo. Dos reglas:
+
+- **usuario de tienda** → solo las órdenes de su sucursal.
+- **técnico** → solo las que tiene asignadas, **o las que él levantó**.
+
+Ese «o las que él levantó» no es una concesión: una orden que el técnico
+acaba de abrir en la casa del cliente todavía no está asignada a nadie, y sin
+esa cláusula el cerco se la bloqueaba a él mismo. Lo descubrió la prueba de
+sincronización, que dejó de pasar.
+
+El cerco se aplica en cinco puertas, no en una: la lista, la ficha, la
+bandeja de alertas, las evidencias y las transiciones de estado. La bandeja
+de alertas no lo tenía y era la vía para enumerar lo que la lista ya
+escondía.
+
+En el filtro de la consulta el cerco va en un campo **aparte** del filtro
+`idTecnico` que usa un jefe para mirar la carga de alguien. Si fueran el
+mismo campo, un técnico que pidiera `?idTecnico=<otro>` lo sobrescribiría y
+se saldría del cerco. Separados, los dos se cumplen a la vez.
+
+### La puerta de escritura era peor que la de lectura
+
+Al cercar las evidencias quedó a la vista que un técnico **no podía listar**
+las evidencias de una orden ajena pero **sí subirle fotos**. Una foto colgada
+de la orden de otro acaba en el expediente de cobro de ese otro, y nadie la
+encuentra buscando donde se tomó. También se cercó la carga.
+
+### 403 y no 404, a propósito
+
+El sistema respondía «no existe» a la orden de otra sucursal, con el
+argumento de que decir «existe pero no le toca» le confirma a quien prueba
+identificadores que acertó. El pliego pide 403 (§13) y se sigue el pliego,
+por dos razones concretas:
+
+- Los identificadores son UUID. No se adivinan contando, así que lo que el
+  403 revela no habilita un ataque: ya hacía falta tener el identificador
+  para preguntar.
+- El 403 le dice la verdad a quien abrió un enlace que le pasaron. «Esta
+  orden no es suya» se entiende; «no existe» lo manda a buscar un error que
+  no hay.
+
+## El kardex: el saldo se calcula, no se guarda
+
+La pantalla de existencias contesta «cuánto hay». El kardex contesta «cómo
+llegamos a eso», que es la pregunta de quien tiene que explicar un faltante.
+
+No hay columna de saldo en ninguna tabla y no debe haberla. El saldo es la
+suma de los movimientos anteriores; una columna que lo guardara sería un
+segundo lugar donde la verdad puede quedar desfasada. Se calcula con una
+función de ventana en la base, que es donde están los datos, y la paginación
+lo respeta: la ventana se calcula antes del `LIMIT`, así que la página dos no
+vuelve a empezar en cero.
+
+**El signo depende de la bodega que se consulta.** El mismo movimiento es una
+salida para la bodega central y una entrada para la móvil, así que el signo no
+se deduce del tipo de movimiento sino de comparar las bodegas del movimiento
+con la que se está mirando. Una sola regla que vale para los seis tipos,
+incluido el ajuste, que lleva la bodega en origen si falta y en destino si
+sobra.
+
+Sin bodega, el kardex es del centro completo: entra lo que vino de afuera,
+sale lo que se consumió, y los traslados internos no mueven el saldo porque
+no mueven nada hacia afuera.
+
+Comprobado contra los datos reales: de los **2 860** pares bodega-repuesto de
+la base, **ninguno** descuadra entre el saldo derivado de los movimientos y la
+existencia proyectada.
+
+## La solicitud de repuesto deja de ser un booleano
+
+El pliego §26 describe seis pasos: el técnico solicita, bodega revisa,
+aprueba o rechaza con motivo, prepara, entrega, y el técnico confirma que la
+tiene. La tabla tenía una columna `liberada boolean`. Dos estados para un
+recorrido de seis pasos, y por tanto ninguna respuesta a lo que la operación
+pregunta todos los días: quién aprobó esto, desde cuándo está preparado,
+entregó bodega y el técnico no pasó a recogerlo.
+
+Cada paso exige **su** permiso, no uno general. El técnico no se aprueba su
+propia solicitud, y bodega no declara que el técnico la recibió: eso es la
+separación de funciones del §65 aplicada a un trámite pequeño. Verificado
+contra el sistema vivo:
+
+```
+el técnico intenta preparar            → 403  no es quien da este paso
+bodega intenta declararla recibida     → 403  no es de una orden asignada a usted
+otro técnico intenta recibirla         → 403
+el técnico de la orden la recibe       → 200  recibida
+```
+
+### Dos correcciones que salieron de probarlo, no de leerlo
+
+**El disparador que iba a romper la liberación automática.** La primera
+versión de la migración derivaba `liberada` del estado con un disparador.
+Habría roto el RF-53: cuando entra un repuesto, `liberarSolicitudes` marca
+`liberada = true` para destrabar las órdenes que lo esperaban, y el disparador
+se la habría vuelto a poner en falso porque el estado seguía siendo
+`solicitada`. Las órdenes se habrían quedado esperando para siempre un
+repuesto que ya estaba en bodega.
+
+Las dos columnas contestan preguntas distintas y por eso conviven:
+
+| columna | pregunta |
+| --- | --- |
+| `liberada` | ¿hay existencia para esta solicitud? Es lo que destraba la orden. |
+| `estado` | ¿por dónde va el trámite con el técnico? Es el recorrido del §26. |
+
+Coinciden en **un** punto, y ese está restringido en la base: si el técnico
+tiene la pieza en la mano, la orden dejó de esperarla. Por eso el paso
+`recibida` pone `liberada` en verdadero, y un CHECK impide la combinación
+contraria.
+
+**La entrega exigía bodega móvil siempre.** Al técnico de ruta la pieza se le
+despacha a su bodega móvil: se la lleva en el vehículo y hace falta saber qué
+lleva encima. Al de planta no: trabaja en el taller, la pieza no sale de la
+bodega del centro y se descuenta cuando la instala. La primera versión
+respondía `SIN_BODEGA_DEL_TECNICO` para todos, lo que dejaba el recorrido
+bloqueado para las órdenes de planta, que son la mayoría del taller. Una
+regla correcta para la mitad del negocio, aplicada a la otra mitad.
+
+## El menú del técnico es otro menú, no el general recortado
+
+El pliego §11 pide un menú de técnico con sus seis cosas. Filtrar el menú
+general por permisos no bastaba: le dejaba «Inventario y bodegas» —el
+catálogo completo del centro— porque tiene `inventario.consultar`, y lo
+necesita para ver lo que lleva encima, pero no es lo que va a abrir.
+
+`SECCIONES_DEL_TECNICO` es una lista aparte. Las rutas son las mismas del
+sistema: no hay pantallas duplicadas para el técnico, solo otra puerta de
+entrada.
+
+## El expediente de cobro: observado y cerrado
+
+El pliego §39 enumera ocho estados y el sistema tenía siete. Faltaban dos, y
+los dos nombran situaciones reales que se estaban forzando dentro de otro
+estado:
+
+**Observado.** El proveedor no rechazó el reclamo: pidió algo. Una foto más
+nítida, la factura, el número de serie legible. Eso se anotaba como
+`rechazado`, y era una mentira con consecuencias: el indicador de recuperación
+contaba como perdido un expediente que solo esperaba un documento, y nadie
+distinguía al proveedor que pide aclaraciones del que se niega a pagar.
+
+**Cerrado.** El expediente terminó y ya no se toca, se haya cobrado o no.
+Antes el único final era `pagado`, así que los rechazos definitivos se
+quedaban en `rechazado` para siempre, mezclados con los que todavía se
+estaban rehaciendo.
+
+No se renombró nada. Los nombres del sistema dicen lo mismo que los del
+pliego con más precisión —`bloqueado_por_evidencia` explica **por qué** está
+detenido, que es lo que el gestor necesita leer— y renombrarlos obligaría a
+reescribir filas de expedientes vivos sin que nadie gane nada.

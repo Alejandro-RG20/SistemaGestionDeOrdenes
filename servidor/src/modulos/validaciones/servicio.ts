@@ -22,6 +22,7 @@ import type { Actor } from '../../comun/contexto-peticion.js';
 import { enTransaccion } from '../../comun/transacciones.js';
 import { ErrorDominio, ErrorNoEncontrado } from '../../comun/errores.js';
 import { construirPaginacion, type ParametrosPagina } from '../../comun/paginacion.js';
+import { exigirCercoSobreOrden } from '../ordenes/alcance.js';
 import * as repositorio from './repositorio.js';
 
 function aValidacion(fila: repositorio.FilaValidacion): ValidacionTecnica {
@@ -40,6 +41,11 @@ function aValidacion(fila: repositorio.FilaValidacion): ValidacionTecnica {
 }
 
 export async function expediente(actor: Actor, idOrden: string): Promise<ExpedienteDeRevision> {
+  // El cerco por datos. Hoy nadie con `taller.validacion.registrar` esta
+  // cercado, asi que no cambia nada; esta puesto para que siga siendo
+  // cierto si manana lo esta.
+  await exigirCercoSobreOrden(actor, idOrden);
+
   const orden = await repositorio.expedienteDeRevision(idOrden);
   if (orden === null) throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
 
@@ -119,6 +125,11 @@ export async function pendientes(
 export async function registrar(
   actor: Actor, idOrden: string, peticion: PeticionValidar,
 ): Promise<ValidacionTecnica> {
+  // El cerco por datos. Hoy nadie con `taller.validacion.registrar` esta
+  // cercado, asi que no cambia nada; esta puesto para que siga siendo
+  // cierto si manana lo esta.
+  await exigirCercoSobreOrden(actor, idOrden);
+
   const orden = await repositorio.expedienteDeRevision(idOrden);
   if (orden === null) throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
 

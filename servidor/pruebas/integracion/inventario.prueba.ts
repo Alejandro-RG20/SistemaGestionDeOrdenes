@@ -22,7 +22,7 @@ async function sesionDe(codigoRol: string): Promise<{ Authorization: string }> {
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
 /** Repuesto recien creado, para no pelear con las existencias de la siembra. */
@@ -69,7 +69,7 @@ async function ordenAbierta(): Promise<string> {
       idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id,
       modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'No enfria, para prueba de inventario',
     }).expect(201);
-  return creada.body.datos.id;
+  return creada.body.data.id;
 }
 
 beforeAll(async () => {
@@ -79,10 +79,10 @@ beforeAll(async () => {
   tecnicoPlanta = await sesionDe(CODIGO_ROL.TECNICO_PLANTA);
 
   const bodegas = await peticion(entorno.aplicacion).get(`${RAIZ}/bodegas`).set(bodeguero).expect(200);
-  idCentral = bodegas.body.datos.find(
+  idCentral = bodegas.body.data.find(
     (b: { tipo: string; nombre: string }) => b.tipo === 'central' && b.nombre === 'Bodega central',
   ).id;
-  idMovil = bodegas.body.datos.find((b: { tipo: string }) => b.tipo === 'movil').id;
+  idMovil = bodegas.body.data.find((b: { tipo: string }) => b.tipo === 'movil').id;
 });
 
 afterAll(async () => { await entorno.cerrar(); });
@@ -94,8 +94,8 @@ describe('movimientos y proyeccion', () => {
       idRepuesto, tipo: TIPO_MOVIMIENTO.INGRESO, idBodegaDestino: idCentral, cantidad: 12,
     }).expect(201);
 
-    expect(respuesta.body.datos.movimiento.cantidad).toBe(12);
-    expect(respuesta.body.datos.existencias[0].cantidad).toBe(12);
+    expect(respuesta.body.data.movimiento.cantidad).toBe(12);
+    expect(respuesta.body.data.existencias[0].cantidad).toBe(12);
     expect(await existenciaDe(idCentral, idRepuesto)).toBe(12);
   });
 
@@ -104,13 +104,13 @@ describe('movimientos y proyeccion', () => {
     const respuesta = await movimiento(bodeguero, {
       idRepuesto, tipo: TIPO_MOVIMIENTO.INGRESO, idBodegaDestino: idCentral, cantidad: 3,
     }).expect(201);
-    expect(respuesta.body.datos.movimiento.precioUnitario).toBe(750);
+    expect(respuesta.body.data.movimiento.precioUnitario).toBe(750);
 
     // Aunque el catalogo cambie despues, el movimiento conserva su precio.
     await entorno.piscina.query('UPDATE repuesto SET precio = 999 WHERE id = $1', [idRepuesto]);
     const movimientos = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/movimientos?idRepuesto=${idRepuesto}`).set(bodeguero).expect(200);
-    expect(movimientos.body.datos[0].precioUnitario).toBe(750);
+    expect(movimientos.body.data[0].precioUnitario).toBe(750);
   });
 
   it('un despacho no crea ni destruye unidades: las mueve', async () => {
@@ -136,8 +136,8 @@ describe('movimientos y proyeccion', () => {
     });
 
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.codigo).toBe('EXISTENCIA_INSUFICIENTE');
-    expect(respuesta.body.error.mensaje).toMatch(/se piden 5 y hay 2/);
+    expect(respuesta.body.error.code).toBe('EXISTENCIA_INSUFICIENTE');
+    expect(respuesta.body.error.message).toMatch(/se piden 5 y hay 2/);
     expect(await existenciaDe(idCentral, idRepuesto)).toBe(2);
   });
 
@@ -149,7 +149,7 @@ describe('movimientos y proyeccion', () => {
       idRepuesto, tipo: TIPO_MOVIMIENTO.AJUSTE, idBodegaDestino: idCentral, cantidad: 2,
     });
     expect(sinJustificar.status).toBe(400);
-    expect(sinJustificar.body.error.campos.justificacion).toMatch(/ajuste justificado/);
+    expect(sinJustificar.body.error.fields.justificacion).toMatch(/ajuste justificado/);
 
     await movimiento(bodeguero, {
       idRepuesto, tipo: TIPO_MOVIMIENTO.AJUSTE, idBodegaDestino: idCentral, cantidad: 2,
@@ -194,7 +194,7 @@ describe('la bodega movil no tiene concurrencia; la central si', () => {
     });
 
     expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.mensaje).toMatch(/solo se descuenta en linea/);
+    expect(respuesta.body.error.message).toMatch(/solo se descuenta en linea/);
     expect(await existenciaDe(idCentral, idRepuesto)).toBe(5);
   });
 
@@ -219,7 +219,7 @@ describe('la bodega movil no tiene concurrencia; la central si', () => {
 
   it('cada bodega movil pertenece a un solo tecnico', async () => {
     const bodegas = await peticion(entorno.aplicacion).get(`${RAIZ}/bodegas`).set(bodeguero).expect(200);
-    const moviles = bodegas.body.datos.filter((b: { tipo: string }) => b.tipo === 'movil');
+    const moviles = bodegas.body.data.filter((b: { tipo: string }) => b.tipo === 'movil');
     expect(moviles.length).toBeGreaterThan(0);
     for (const bodega of moviles) expect(bodega.idTecnico).toBeTypeOf('string');
     expect(new Set(moviles.map((b: { idTecnico: string }) => b.idTecnico)).size).toBe(moviles.length);
@@ -235,7 +235,7 @@ describe('todo consumo va atado a su orden', () => {
       idRepuesto, tipo: TIPO_MOVIMIENTO.CONSUMO, idBodegaOrigen: idCentral, cantidad: 1,
     });
     expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.campos.idOrden).toMatch(/atado a la orden/);
+    expect(respuesta.body.error.fields.idOrden).toMatch(/atado a la orden/);
   });
 
   it('el consumo queda consultable desde la orden', async () => {
@@ -249,8 +249,8 @@ describe('todo consumo va atado a su orden', () => {
 
     const movimientos = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/movimientos?idOrden=${idOrden}`).set(bodeguero).expect(200);
-    expect(movimientos.body.datos).toHaveLength(1);
-    expect(movimientos.body.datos[0].numeroOrden).toBeTypeOf('number');
+    expect(movimientos.body.data).toHaveLength(1);
+    expect(movimientos.body.data[0].numeroOrden).toBeTypeOf('number');
   });
 
   it('no se cargan repuestos a una orden cerrada', async () => {
@@ -266,7 +266,7 @@ describe('todo consumo va atado a su orden', () => {
       .send({ consumos: [{ idRepuesto, cantidad: 1, idBodegaOrigen: idCentral }] });
 
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.codigo).toBe('ORDEN_CERRADA');
+    expect(respuesta.body.error.code).toBe('ORDEN_CERRADA');
     expect(await existenciaDe(idCentral, idRepuesto)).toBe(5);
   });
 });
@@ -294,7 +294,7 @@ describe('consumo en lote: todo o nada', () => {
       });
 
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.codigo).toBe('EXISTENCIA_INSUFICIENTE');
+    expect(respuesta.body.error.code).toBe('EXISTENCIA_INSUFICIENTE');
 
     // Ni el primero ni el segundo se descontaron.
     expect(await existenciaDe(idCentral, alcanza)).toBe(10);
@@ -324,7 +324,7 @@ describe('consumo en lote: todo o nada', () => {
         ],
       }).expect(201);
 
-    expect(respuesta.body.datos).toHaveLength(2);
+    expect(respuesta.body.data).toHaveLength(2);
     expect(await existenciaDe(idCentral, uno)).toBe(7);
     expect(await existenciaDe(idCentral, otro)).toBe(6);
   });
@@ -346,26 +346,26 @@ describe('liberacion automatica al ingresar el repuesto', () => {
     const pendientes = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/solicitudes-repuesto?idRepuesto=${idRepuesto}&soloPendientes=true`)
       .set(bodeguero).expect(200);
-    expect(pendientes.body.datos).toHaveLength(2);
+    expect(pendientes.body.data).toHaveLength(2);
 
     const ingreso = await movimiento(bodeguero, {
       idRepuesto, tipo: TIPO_MOVIMIENTO.INGRESO, idBodegaDestino: idCentral, cantidad: 2,
     }).expect(201);
 
-    expect(ingreso.body.datos.ordenesLiberadas).toHaveLength(2);
-    const numeros = ingreso.body.datos.ordenesLiberadas.map((o: { numeroOrden: number }) => o.numeroOrden);
+    expect(ingreso.body.data.ordenesLiberadas).toHaveLength(2);
+    const numeros = ingreso.body.data.ordenesLiberadas.map((o: { numeroOrden: number }) => o.numeroOrden);
     expect(new Set(numeros).size).toBe(2);
 
     // Ya no quedan pendientes.
     const despues = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/solicitudes-repuesto?idRepuesto=${idRepuesto}&soloPendientes=true`)
       .set(bodeguero).expect(200);
-    expect(despues.body.datos).toHaveLength(0);
+    expect(despues.body.data).toHaveLength(0);
 
     // Y cada orden tiene el aviso en su bitacora.
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${primera}`).set(agente).expect(200);
-    expect(ficha.body.datos.eventos.at(-1).observacion).toMatch(/Ingreso el repuesto que la orden esperaba/);
+    expect(ficha.body.data.eventos.at(-1).observacion).toMatch(/Ingreso el repuesto que la orden esperaba/);
   });
 
   it('si la cantidad no alcanza para todas, libera por orden de llegada', async () => {
@@ -385,12 +385,12 @@ describe('liberacion automatica al ingresar el repuesto', () => {
       idRepuesto, tipo: TIPO_MOVIMIENTO.INGRESO, idBodegaDestino: idCentral, cantidad: 2,
     }).expect(201);
 
-    expect(ingreso.body.datos.ordenesLiberadas).toHaveLength(1);
+    expect(ingreso.body.data.ordenesLiberadas).toHaveLength(1);
 
     const pendientes = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/solicitudes-repuesto?idRepuesto=${idRepuesto}&soloPendientes=true`)
       .set(bodeguero).expect(200);
-    expect(pendientes.body.datos).toHaveLength(1);
+    expect(pendientes.body.data).toHaveLength(1);
   });
 });
 
@@ -405,12 +405,12 @@ describe('permisos y listados', () => {
   it('los listados llegan paginados y el de bajo minimo filtra', async () => {
     const existencias = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/existencias?soloBajoMinimo=true&tamano=10`).set(bodeguero).expect(200);
-    expect(existencias.body.datos.length).toBeLessThanOrEqual(10);
-    for (const fila of existencias.body.datos) expect(fila.bajoMinimo).toBe(true);
+    expect(existencias.body.data.length).toBeLessThanOrEqual(10);
+    for (const fila of existencias.body.data) expect(fila.bajoMinimo).toBe(true);
 
     const repuestos = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/repuestos?tamano=5`).set(bodeguero).expect(200);
-    expect(repuestos.body.datos).toHaveLength(5);
-    expect(repuestos.body.paginacion.total).toBeGreaterThan(300);
+    expect(repuestos.body.data).toHaveLength(5);
+    expect(repuestos.body.pagination.total).toBeGreaterThan(300);
   });
 });

@@ -21,6 +21,7 @@ import { horasParaVencer, sumarHorasLaborables, type CalendarioLaboral } from '.
 import * as servicioAgenda from '../agenda/servicio.js';
 import * as servicioGarantias from '../garantias/servicio.js';
 import * as repositorio from './repositorio.js';
+import { alcanceDe, conCerco, exigirCerco } from './alcance.js';
 import { aEvento, aNota, aResumenOrden, type FilaOrden } from './dto.js';
 
 function conPlazo(fila: FilaOrden, ahora: Date, calendario: CalendarioLaboral): ResumenOrden {
@@ -30,28 +31,10 @@ function conPlazo(fila: FilaOrden, ahora: Date, calendario: CalendarioLaboral): 
   return aResumenOrden(fila, restantes);
 }
 
-/**
- * El alcance del usuario de tienda: solo las ordenes de SU sucursal.
- *
- * Se aplica aqui, en el servicio, y no en el panel. Ocultar filas en la
- * pantalla no es control de acceso —cualquiera puede pedirle la lista a la
- * API directamente—; sacarlas de la consulta si lo es.
- *
- * El personal del centro de servicio no tiene tienda y ve todo, que es lo
- * correcto: el taller repara lo que entra por cualquier sucursal.
- */
-function conAlcanceDelActor(
-  actor: Actor, filtro: repositorio.FiltroOrdenes,
-): repositorio.FiltroOrdenes {
-  const suya = actor.idTienda;
-  if (suya === null || suya === undefined) return filtro;
-  return { ...filtro, idTienda: suya };
-}
-
 export async function listar(
   actor: Actor, filtroPedido: repositorio.FiltroOrdenes, pagina: ParametrosPagina,
 ): Promise<{ datos: readonly ResumenOrden[]; paginacion: Paginacion }> {
-  const filtro = conAlcanceDelActor(actor, filtroPedido);
+  const filtro = conCerco(await alcanceDe(actor), filtroPedido);
   const [total, filas, calendario] = await Promise.all([
     repositorio.contar(filtro),
     repositorio.listar(filtro, pagina.tamano, pagina.desplazamiento),
@@ -77,7 +60,11 @@ export async function listar(
 export async function listarAlertas(
   actor: Actor, pagina: ParametrosPagina,
 ): Promise<{ datos: readonly ResumenOrden[]; paginacion: Paginacion }> {
-  const filtro: repositorio.FiltroOrdenes = { soloActivas: true, soloVencidas: false };
+  // Las alertas tambien se cercan. Sin esto, la bandeja de vencimientos era
+  // la via para enumerar las ordenes que la lista ya no muestra.
+  const filtro = conCerco(
+    await alcanceDe(actor), { soloActivas: true, soloVencidas: false },
+  );
   const [total, filas, calendario] = await Promise.all([
     repositorio.contar(filtro),
     repositorio.listar(filtro, pagina.tamano, pagina.desplazamiento),
@@ -97,19 +84,12 @@ export async function obtenerFicha(actor: Actor, idOrden: string): Promise<Ficha
   if (fila === null) throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
 
   /*
-   * El usuario de tienda solo abre las ordenes de su sucursal.
-   *
-   * Se responde «no existe» y no «no es suya», que es la misma regla del
-   * portal publico: decir «existe pero no le toca» le confirma a quien
-   * prueba identificadores que acerto, y eso es informacion regalada.
-   *
-   * Filtrar la LISTA no basta: sin esto, cualquiera puede pedir la ficha
-   * por su identificador y saltarse el alcance entero.
+   * Filtrar la LISTA no basta. Sin esta linea, cualquiera pide la ficha por
+   * su identificador y se salta el cerco entero: es exactamente lo que
+   * pasaba con los tecnicos, que veian la orden de cualquier compañero con
+   * el telefono y la direccion del cliente dentro.
    */
-  const suya = actor.idTienda;
-  if (suya !== null && suya !== undefined && fila.id_tienda !== suya) {
-    throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
-  }
+  exigirCerco(await alcanceDe(actor), fila);
 
   const [eventos, notas, calendario] = await Promise.all([
     repositorio.listarEventos(idOrden),

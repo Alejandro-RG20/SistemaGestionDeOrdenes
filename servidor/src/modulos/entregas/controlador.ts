@@ -10,7 +10,7 @@ const identificador = (peticion: Request): string =>
   validar(esquemaIdentificador, peticion.params['id']);
 
 export async function verificar(peticion: Request, respuesta: Response): Promise<void> {
-  responderDatos(respuesta, await servicio.verificar(identificador(peticion)));
+  responderDatos(respuesta, await servicio.verificar(actorDe(peticion), identificador(peticion)));
 }
 
 export async function entregar(peticion: Request, respuesta: Response): Promise<void> {

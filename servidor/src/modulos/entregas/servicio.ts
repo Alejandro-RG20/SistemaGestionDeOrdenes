@@ -27,6 +27,7 @@ import { enTransaccion } from '../../comun/transacciones.js';
 import { ErrorDominio, ErrorNoEncontrado } from '../../comun/errores.js';
 import * as validaciones from '../validaciones/servicio.js';
 import * as transiciones from '../ordenes/servicio-transiciones.js';
+import { exigirCercoSobreOrden } from '../ordenes/alcance.js';
 import * as repositorio from './repositorio.js';
 
 function aEntrega(fila: repositorio.FilaEntrega): Entrega {
@@ -45,7 +46,18 @@ function aEntrega(fila: repositorio.FilaEntrega): Entrega {
 /** Un centavo de diferencia por redondeo no es una deuda. */
 const TOLERANCIA_CORDOBAS = 0.5;
 
-export async function verificar(idOrden: string): Promise<VerificacionDeEntrega> {
+/**
+ * Que le falta a esta orden para poder entregarse.
+ *
+ * Lleva el cerco por datos: la verificacion dice quien es el cliente, cuanto
+ * debe y que evidencias tiene. Y como `entregar` la usa, el cerco protege las
+ * dos puertas con una sola linea.
+ */
+export async function verificar(
+  actor: Actor, idOrden: string,
+): Promise<VerificacionDeEntrega> {
+  await exigirCercoSobreOrden(actor, idOrden);
+
   const orden = await repositorio.estadoParaEntrega(idOrden);
   if (orden === null) throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
 
@@ -127,7 +139,7 @@ export async function verificar(idOrden: string): Promise<VerificacionDeEntrega>
 export async function entregar(
   actor: Actor, idOrden: string, peticion: PeticionEntregar,
 ): Promise<Entrega> {
-  const verificacion = await verificar(idOrden);
+  const verificacion = await verificar(actor, idOrden);
 
   if (verificacion.entrega !== null) {
     throw new ErrorDominio(

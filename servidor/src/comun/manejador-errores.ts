@@ -54,24 +54,34 @@ export function manejarErrores(
     ...(esEsperado ? {} : { pila: error instanceof Error ? error.stack : undefined }),
   });
 
+  /*
+   * Aqui se traduce el vocabulario interno a las claves del contrato (§50).
+   * Es el unico sitio donde ocurre para los fallos, igual que
+   * `comun/respuesta.ts` lo es para los exitos.
+   *
+   * El mensaje tecnico NO sale cuando el fallo es inesperado: queda en la
+   * bitacora de arriba, localizable por el identificador de correlacion que
+   * si viaja. Lo que el usuario lee es generico a proposito.
+   */
   const detalle: DetalleError = {
-    codigo: error instanceof ErrorAplicacion ? error.codigo : 'ERROR_INTERNO',
-    mensaje: esEsperado && error instanceof ErrorAplicacion ? error.message : MENSAJE_GENERICO,
+    code: error instanceof ErrorAplicacion ? error.codigo : 'ERROR_INTERNO',
+    message: esEsperado && error instanceof ErrorAplicacion ? error.message : MENSAJE_GENERICO,
     correlationId: idCorrelacion,
     ...(error instanceof ErrorValidacion && Object.keys(error.campos).length > 0
-      ? { campos: error.campos }
+      ? { fields: error.campos }
       : {}),
   };
 
-  respuesta.status(estado).json({ error: detalle });
+  respuesta.status(estado).json({ success: false, error: detalle });
 }
 
 /** Ruta inexistente: tambien responde con la forma uniforme. */
 export function manejarRutaDesconocida(peticion: Request, respuesta: Response): void {
   respuesta.status(404).json({
+    success: false,
     error: {
-      codigo: 'RUTA_DESCONOCIDA',
-      mensaje: `La direccion ${peticion.method} ${peticion.originalUrl} no existe en este sistema.`,
+      code: 'RUTA_DESCONOCIDA',
+      message: `La direccion ${peticion.method} ${peticion.originalUrl} no existe en este sistema.`,
       correlationId: peticion.contexto?.idCorrelacion ?? 'sin-correlacion',
     },
   });

@@ -108,6 +108,7 @@ export const CATALOGO_PERMISOS = [
   { codigo: 'inventario.ingreso.registrar', modulo: MODULO.INVENTARIO, descripcion: 'Ingresar repuestos a la bodega central' },
   { codigo: 'inventario.despacho.registrar', modulo: MODULO.INVENTARIO, descripcion: 'Despachar repuestos a una bodega movil' },
   { codigo: 'inventario.consumo.registrar', modulo: MODULO.INVENTARIO, descripcion: 'Consumir repuestos contra una orden' },
+  { codigo: 'inventario.devolucion.registrar', modulo: MODULO.INVENTARIO, descripcion: 'Devolver repuestos a la bodega central y entregar piezas sustituidas' },
   { codigo: 'inventario.ajuste.registrar', modulo: MODULO.INVENTARIO, descripcion: 'Registrar un ajuste justificado' },
   { codigo: 'inventario.solicitud.gestionar', modulo: MODULO.INVENTARIO, descripcion: 'Crear y dar seguimiento a solicitudes de repuesto' },
 

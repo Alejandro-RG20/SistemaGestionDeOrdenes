@@ -22,7 +22,7 @@ async function sesionDe(codigoRol: string): Promise<{ Authorization: string }> {
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
 const tiposDe = (cuerpo: { grupos: { tipo: string }[] }): string[] =>
@@ -36,7 +36,7 @@ describe('bandeja de avisos', () => {
     const jefatura = await sesionDe(CODIGO_ROL.JEFE_TECNICOS);
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/avisos`).set(jefatura).expect(200);
-    const bandeja = respuesta.body.datos;
+    const bandeja = respuesta.body.data;
 
     expect(tiposDe(bandeja)).toContain(TIPO_AVISO.ORDEN_VENCIDA);
     const vencidas = bandeja.grupos.find(
@@ -53,7 +53,7 @@ describe('bandeja de avisos', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/avisos`).set(jefatura).expect(200);
 
-    for (const grupo of respuesta.body.datos.grupos) {
+    for (const grupo of respuesta.body.data.grupos) {
       expect(grupo.porQue.length).toBeGreaterThan(10);
       expect(grupo.enlaceVerTodo).toBeTruthy();
     }
@@ -66,10 +66,10 @@ describe('bandeja de avisos', () => {
     const suya = await peticion(entorno.aplicacion).get(`${RAIZ}/avisos`).set(tecnico).expect(200);
     const todas = await peticion(entorno.aplicacion).get(`${RAIZ}/avisos`).set(jefatura).expect(200);
 
-    const vencidasTecnico = suya.body.datos.grupos.find(
+    const vencidasTecnico = suya.body.data.grupos.find(
       (grupo: { tipo: string }) => grupo.tipo === TIPO_AVISO.ORDEN_VENCIDA,
     );
-    const vencidasJefatura = todas.body.datos.grupos.find(
+    const vencidasJefatura = todas.body.data.grupos.find(
       (grupo: { tipo: string }) => grupo.tipo === TIPO_AVISO.ORDEN_VENCIDA,
     );
 
@@ -86,7 +86,7 @@ describe('bandeja de avisos', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/avisos`).set(tecnico).expect(200);
 
-    expect(tiposDe(respuesta.body.datos)).not.toContain(TIPO_AVISO.EXCEPCION_SINCRONIZACION);
+    expect(tiposDe(respuesta.body.data)).not.toContain(TIPO_AVISO.EXCEPCION_SINCRONIZACION);
   });
 
   it('la jefatura de tecnicos si ve el trabajo de campo sin conciliar', async () => {
@@ -94,14 +94,14 @@ describe('bandeja de avisos', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/avisos`).set(jefatura).expect(200);
 
-    expect(tiposDe(respuesta.body.datos)).toContain(TIPO_AVISO.EXCEPCION_SINCRONIZACION);
+    expect(tiposDe(respuesta.body.data)).toContain(TIPO_AVISO.EXCEPCION_SINCRONIZACION);
   });
 
   it('el gestor de cobros ve los expedientes bloqueados y no las excepciones', async () => {
     const gestor = await sesionDe(CODIGO_ROL.GESTOR_COBROS);
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/avisos`).set(gestor).expect(200);
-    const tipos = tiposDe(respuesta.body.datos);
+    const tipos = tiposDe(respuesta.body.data);
 
     expect(tipos).toContain(TIPO_AVISO.EXPEDIENTE_BLOQUEADO);
     expect(tipos).not.toContain(TIPO_AVISO.EXCEPCION_SINCRONIZACION);
@@ -111,7 +111,7 @@ describe('bandeja de avisos', () => {
     const bodeguero = await sesionDe(CODIGO_ROL.BODEGUERO);
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/avisos`).set(bodeguero).expect(200);
-    const tipos = tiposDe(respuesta.body.datos);
+    const tipos = tiposDe(respuesta.body.data);
 
     expect(tipos).toContain(TIPO_AVISO.REPUESTO_BAJO_MINIMO);
     expect(tipos).not.toContain(TIPO_AVISO.EXPEDIENTE_BLOQUEADO);
@@ -123,7 +123,7 @@ describe('bandeja de avisos', () => {
       .get(`${RAIZ}/avisos`).set(jefatura).expect(200);
 
     const peso = { critico: 0, atencion: 1, informativo: 2 } as Record<string, number>;
-    const gravedades: string[] = respuesta.body.datos.grupos.map(
+    const gravedades: string[] = respuesta.body.data.grupos.map(
       (grupo: { gravedad: string }) => grupo.gravedad,
     );
     const pesos = gravedades.map((gravedad) => peso[gravedad]!);
@@ -134,7 +134,7 @@ describe('bandeja de avisos', () => {
     const jefatura = await sesionDe(CODIGO_ROL.JEFE_TECNICOS);
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/avisos`).set(jefatura).expect(200);
-    const bandeja = respuesta.body.datos;
+    const bandeja = respuesta.body.data;
 
     const suma = bandeja.grupos.reduce(
       (total: number, grupo: { total: number }) => total + grupo.total, 0,
@@ -171,7 +171,7 @@ describe('portal publico', () => {
       .get(`${RAIZ}/portal/ordenes/${codigo}?telefono=${encodeURIComponent(telefono)}`)
       .expect(200);
 
-    const estado = respuesta.body.datos;
+    const estado = respuesta.body.data;
     expect(estado.numeroOrden).toBe(codigo);
     expect(estado.situacion).toBeTruthy();
     expect(estado.explicacion).toBeTruthy();
@@ -192,7 +192,7 @@ describe('portal publico', () => {
         .get(`${RAIZ}/portal/ordenes/${comoLoEscribe}?telefono=${encodeURIComponent(telefono)}`)
         .expect(200);
       // Y siempre contesta con el codigo, que es como la orden se identifica.
-      expect(respuesta.body.datos.numeroOrden).toBe(codigo);
+      expect(respuesta.body.data.numeroOrden).toBe(codigo);
     }
   });
 
@@ -219,7 +219,7 @@ describe('portal publico', () => {
       .get(`${RAIZ}/portal/ordenes/${numero}?telefono=${encodeURIComponent(telefono)}`)
       .expect(200);
 
-    expect(respuesta.body.datos.cliente).toMatch(/^([A-ZÁÉÍÓÚÑ]\.\s?)+$/);
+    expect(respuesta.body.data.cliente).toMatch(/^([A-ZÁÉÍÓÚÑ]\.\s?)+$/);
   });
 
   it('acepta el telefono escrito con guiones o con codigo de pais', async () => {
@@ -241,7 +241,7 @@ describe('portal publico', () => {
     const inexistente = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/portal/ordenes/99999999?telefono=50588880000`).expect(404);
 
-    expect(ajena.body.error.mensaje).toBe(inexistente.body.error.mensaje);
+    expect(ajena.body.error.message).toBe(inexistente.body.error.message);
   });
 
   it('sin telefono no responde', async () => {
@@ -257,7 +257,7 @@ describe('catalogos de apoyo', () => {
     const agente = await sesionDe(CODIGO_ROL.AGENTE_TELEFONIA);
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/catalogos`).set(agente).expect(200);
-    const catalogos = respuesta.body.datos;
+    const catalogos = respuesta.body.data;
 
     for (const clave of ['marcas', 'categorias', 'tiendas', 'zonas', 'tecnicos']) {
       expect(catalogos[clave].length, `${clave} vino vacio`).toBeGreaterThan(0);
@@ -269,7 +269,7 @@ describe('catalogos de apoyo', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/catalogos`).set(agente).expect(200);
 
-    const tiendas: { nombre: string; perteneceAlGrupo: boolean }[] = respuesta.body.datos.tiendas;
+    const tiendas: { nombre: string; perteneceAlGrupo: boolean }[] = respuesta.body.data.tiendas;
     expect(tiendas.some((tienda) => tienda.perteneceAlGrupo)).toBe(true);
     expect(tiendas.some((tienda) => !tienda.perteneceAlGrupo)).toBe(true);
   });
@@ -281,7 +281,7 @@ describe('catalogos de apoyo', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/catalogos`).set(agente).expect(200);
 
-    for (const tecnico of respuesta.body.datos.tecnicos) {
+    for (const tecnico of respuesta.body.data.tecnicos) {
       expect(['ruta', 'planta']).toContain(tecnico.tipo);
       expect(tecnico.cargaActual).toBeGreaterThanOrEqual(0);
       expect(tecnico.especialidad).toBeTruthy();
@@ -298,7 +298,7 @@ describe('indicadores de operacion', () => {
     const jefatura = await sesionDe(CODIGO_ROL.JEFE_ATENCION_CLIENTE);
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/indicadores/operacion`).set(jefatura).expect(200);
-    const indicadores = respuesta.body.datos;
+    const indicadores = respuesta.body.data;
 
     const suma = indicadores.porEstado.reduce(
       (total: number, fila: { ordenes: number }) => total + fila.ordenes, 0,
@@ -316,7 +316,7 @@ describe('indicadores de operacion', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/indicadores/operacion`).set(jefatura).expect(200);
 
-    const estados = respuesta.body.datos.porEstado.map((fila: { estado: string }) => fila.estado);
+    const estados = respuesta.body.data.porEstado.map((fila: { estado: string }) => fila.estado);
     for (const final of ['entregada', 'cerrada_sin_reparar', 'anulada']) {
       expect(estados).not.toContain(final);
     }
@@ -327,7 +327,7 @@ describe('indicadores de operacion', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/indicadores/operacion`).set(jefatura).expect(200);
 
-    for (const fila of respuesta.body.datos.reincidencias) {
+    for (const fila of respuesta.body.data.reincidencias) {
       expect(fila.ordenes).toBeGreaterThan(1);
       expect(fila.articulo).toBeTruthy();
     }
@@ -338,8 +338,8 @@ describe('indicadores de operacion', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/indicadores/operacion`).set(jefatura).expect(200);
 
-    expect(respuesta.body.datos.tecnicos.length).toBeGreaterThan(0);
-    for (const fila of respuesta.body.datos.tecnicos) {
+    expect(respuesta.body.data.tecnicos.length).toBeGreaterThan(0);
+    for (const fila of respuesta.body.data.tecnicos) {
       expect(fila.vencidas).toBeLessThanOrEqual(fila.enCurso);
       if (fila.horasPromedioCierre !== null) {
         expect(fila.horasPromedioCierre).toBeGreaterThan(0);

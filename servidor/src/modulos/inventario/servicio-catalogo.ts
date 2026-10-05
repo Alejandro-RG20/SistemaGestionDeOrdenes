@@ -8,6 +8,7 @@ import type { ParametrosPagina } from '../../comun/paginacion.js';
 import { construirPaginacion } from '../../comun/paginacion.js';
 import { ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import { enTransaccion } from '../../comun/transacciones.js';
+import { exigirCercoSobreOrden } from '../ordenes/alcance.js';
 import * as repositorio from './repositorio.js';
 import * as repositorioMovimientos from './repositorio-movimientos.js';
 import {
@@ -76,6 +77,10 @@ export async function solicitarRepuesto(
     if (orden.rows[0] === undefined) {
       throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
     }
+
+    // El mismo cerco: pedir un repuesto para la orden de otro la deja
+    // esperando una pieza que su tecnico no pidio.
+    await exigirCercoSobreOrden(actor, idOrden, cliente);
     if (['entregada', 'cerrada_sin_reparar', 'anulada'].includes(orden.rows[0].estado)) {
       throw new ErrorDominio(
         'ORDEN_CERRADA',

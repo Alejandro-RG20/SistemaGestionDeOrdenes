@@ -13,7 +13,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import type { BandejaDeAvisos } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
-import { rolLegible, seccionesDe } from '../sesion/navegacion.js';
+import { menuDe, rolLegible } from '../sesion/navegacion.js';
 
 const REFRESCO_MS = 3 * 60_000;
 
@@ -53,7 +53,7 @@ export function Armazon(
     return () => { vigente = false; clearInterval(temporizador); };
   }, [api]);
 
-  const secciones = seccionesDe(usuario);
+  const secciones = menuDe(usuario);
   let grupoDibujado = '';
 
   return (

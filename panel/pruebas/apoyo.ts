@@ -53,7 +53,7 @@ export class RedSimulada {
         cuerpo: typeof opciones.body === 'string' ? JSON.parse(opciones.body) : undefined,
       });
 
-      const preparada = this.cola.shift() ?? { estado: 200, cuerpo: { datos: null } };
+      const preparada = this.cola.shift() ?? { estado: 200, cuerpo: { success: true, data: null } };
       return {
         ok: preparada.estado >= 200 && preparada.estado < 300,
         status: preparada.estado,

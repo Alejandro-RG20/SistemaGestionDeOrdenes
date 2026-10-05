@@ -8,6 +8,24 @@ export const ESTADO_EXPEDIENTE = {
   ACEPTADO: 'aceptado',
   RECHAZADO: 'rechazado',
   PAGADO: 'pagado',
+  /**
+   * El proveedor no rechazo el reclamo: pidio algo. Una foto mas nitida, la
+   * factura, el numero de serie legible.
+   *
+   * Existe porque sin el eso se anotaba como rechazado, y el indicador de
+   * recuperacion contaba como perdido un expediente que solo esperaba un
+   * documento. Tampoco se distinguia al proveedor que pide aclaraciones del
+   * que se niega a pagar, y son dos conversaciones distintas.
+   */
+  OBSERVADO: 'observado',
+  /**
+   * El expediente termino y ya no se toca, se haya cobrado o no.
+   *
+   * Antes el unico final era 'pagado', asi que los rechazos definitivos se
+   * quedaban en 'rechazado' para siempre, mezclados con los que todavia se
+   * estaban rehaciendo.
+   */
+  CERRADO: 'cerrado',
 } as const;
 export type EstadoExpediente = (typeof ESTADO_EXPEDIENTE)[keyof typeof ESTADO_EXPEDIENTE];
 

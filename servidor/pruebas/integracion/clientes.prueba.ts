@@ -18,7 +18,7 @@ async function sesionDe(codigoRol: string): Promise<{ Authorization: string }> {
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
 beforeAll(async () => {
@@ -40,9 +40,9 @@ describe('busqueda de clientes', () => {
       .get(`${RAIZ}/clientes?texto=${encodeURIComponent(nombre.toUpperCase())}&tamano=5`)
       .set(cabecera).expect(200);
 
-    expect(respuesta.body.datos.length).toBeGreaterThan(0);
-    expect(respuesta.body.datos.length).toBeLessThanOrEqual(5);
-    expect(respuesta.body.paginacion.total).toBeGreaterThan(0);
+    expect(respuesta.body.data.length).toBeGreaterThan(0);
+    expect(respuesta.body.data.length).toBeLessThanOrEqual(5);
+    expect(respuesta.body.pagination.total).toBeGreaterThan(0);
   });
 
   it('busca por telefono exacto', async () => {
@@ -52,8 +52,8 @@ describe('busqueda de clientes', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/clientes?telefono=${rows[0]!.numero}`).set(cabecera).expect(200);
 
-    expect(respuesta.body.datos).toHaveLength(1);
-    expect(respuesta.body.datos[0].id).toBe(rows[0]!.id_cliente);
+    expect(respuesta.body.data).toHaveLength(1);
+    expect(respuesta.body.data[0].id).toBe(rows[0]!.id_cliente);
   });
 
   it('un tecnico de ruta puede consultar clientes pero no crearlos', async () => {
@@ -74,18 +74,18 @@ describe('alta y correccion de clientes', () => {
         direccion: { detalle: 'Villa Venezuela, casa 120', referencia: 'Porton azul' },
       }).expect(201);
 
-    idCliente = respuesta.body.datos.id;
+    idCliente = respuesta.body.data.id;
     // El telefono se normaliza: entra con espacios, se guarda con ocho digitos.
-    expect(respuesta.body.datos.telefonoVigente).toBe('85554433');
-    expect(respuesta.body.datos.telefonos).toHaveLength(1);
-    expect(respuesta.body.datos.direcciones[0].principal).toBe(true);
+    expect(respuesta.body.data.telefonoVigente).toBe('85554433');
+    expect(respuesta.body.data.telefonos).toHaveLength(1);
+    expect(respuesta.body.data.direcciones[0].principal).toBe(true);
   });
 
   it('rechaza un telefono que no tiene ocho digitos', async () => {
     const respuesta = await peticion(entorno.aplicacion).post(`${RAIZ}/clientes`).set(cabecera)
       .send({ nombres: 'Otro Cliente', telefono: '123' });
     expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.campos.telefono).toMatch(/ocho digitos/);
+    expect(respuesta.body.error.fields.telefono).toMatch(/ocho digitos/);
   });
 
   it('conserva el telefono anterior al cambiarlo, no lo sobrescribe', async () => {
@@ -93,10 +93,10 @@ describe('alta y correccion de clientes', () => {
       .post(`${RAIZ}/clientes/${idCliente}/telefonos`).set(cabecera)
       .send({ numero: '77112233', tipo: 'casa', reemplazaAlVigente: true }).expect(201);
 
-    expect(respuesta.body.datos.telefonoVigente).toBe('77112233');
-    expect(respuesta.body.datos.telefonos).toHaveLength(2);
+    expect(respuesta.body.data.telefonoVigente).toBe('77112233');
+    expect(respuesta.body.data.telefonos).toHaveLength(2);
 
-    const anterior = respuesta.body.datos.telefonos.find((t: { numero: string }) => t.numero === '85554433');
+    const anterior = respuesta.body.data.telefonos.find((t: { numero: string }) => t.numero === '85554433');
     expect(anterior.vigente).toBe(false);
     expect(anterior.hasta).toBeTypeOf('string');
   });
@@ -114,7 +114,7 @@ describe('alta y correccion de clientes', () => {
 
     const asientos = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/bitacora?tabla=cliente&idRegistro=${idCliente}`).set(cabecera).expect(200);
-    const cambio = asientos.body.datos.find((a: { campo: string }) => a.campo === 'nombres');
+    const cambio = asientos.body.data.find((a: { campo: string }) => a.campo === 'nombres');
     expect(cambio.valorAnterior).toBe('Cliente');
     expect(cambio.valorNuevo).toBe('Cliente Corregido');
   });
@@ -161,8 +161,8 @@ describe('los datos congelados de la orden no se mueven', () => {
     // Y la ficha del cliente si muestra los datos nuevos: son datos vivos.
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/clientes/${antes.id_cliente}`).set(cabecera).expect(200);
-    expect(ficha.body.datos.telefonoVigente).toBe('81234567');
-    expect(ficha.body.datos.direccionPrincipal).toMatch(/Reparto Schick/);
+    expect(ficha.body.data.telefonoVigente).toBe('81234567');
+    expect(ficha.body.data.direccionPrincipal).toMatch(/Reparto Schick/);
   });
 });
 
@@ -187,8 +187,8 @@ describe('fusion de duplicados', () => {
       .send({ idClienteAbsorbido: duplicado.id, motivo: `${MOTIVO}: misma persona con dos fichas` })
       .expect(200);
 
-    expect(respuesta.body.datos.articulosTrasladados).toBe(Number(duplicado.articulos));
-    expect(respuesta.body.datos.ordenesTrasladadas).toBe(Number(duplicado.ordenes));
+    expect(respuesta.body.data.articulosTrasladados).toBe(Number(duplicado.articulos));
+    expect(respuesta.body.data.ordenesTrasladadas).toBe(Number(duplicado.ordenes));
 
     // Nada se elimina: la ficha absorbida sigue ahi, desactivada y apuntando.
     const totalDespues = await entorno.piscina.query<{ total: number }>(
@@ -198,9 +198,9 @@ describe('fusion de duplicados', () => {
 
     const absorbido = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/clientes/${duplicado.id}`).set(cabecera).expect(200);
-    expect(absorbido.body.datos.activo).toBe(false);
-    expect(absorbido.body.datos.idClientePrincipal).toBe(principal.id);
-    expect(absorbido.body.datos.cantidadArticulos).toBe(0);
+    expect(absorbido.body.data.activo).toBe(false);
+    expect(absorbido.body.data.idClientePrincipal).toBe(principal.id);
+    expect(absorbido.body.data.cantidadArticulos).toBe(0);
   });
 
   it('no fusiona un cliente consigo mismo ni uno ya fusionado', async () => {
@@ -218,7 +218,7 @@ describe('fusion de duplicados', () => {
       .post(`${RAIZ}/clientes/${absorbido.id_cliente_principal}/fusionar`).set(cabecera)
       .send({ idClienteAbsorbido: absorbido.id, motivo: MOTIVO });
     expect(yaFusionado.status).toBe(422);
-    expect(yaFusionado.body.error.codigo).toBe('YA_FUSIONADO');
+    expect(yaFusionado.body.error.code).toBe('YA_FUSIONADO');
   });
 
   it('solo la jefatura puede fusionar', async () => {

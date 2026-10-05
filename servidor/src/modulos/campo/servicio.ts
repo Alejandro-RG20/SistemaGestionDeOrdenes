@@ -12,15 +12,23 @@ import type { Actor } from '../../comun/contexto-peticion.js';
 import { enTransaccion } from '../../comun/transacciones.js';
 import { ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import * as almacen from '../../infraestructura/almacenamiento-objetos.js';
+import { exigirCercoSobreOrden } from '../ordenes/alcance.js';
 import * as repositorio from './repositorio.js';
 
 /** El contrato vive en `compartido`: lo consume tambien el panel. */
 export type EvidenciaListada = EvidenciaDeOrden;
 
-export async function listarDeOrden(idOrden: string): Promise<readonly EvidenciaListada[]> {
-  if (!(await repositorio.ordenExiste(idOrden))) {
-    throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
-  }
+/**
+ * El expediente fotografico de una orden.
+ *
+ * Lleva el mismo cerco que la ficha, y por la misma razon: las evidencias
+ * son fotos de la casa del cliente y de su firma. Proteger la ficha y dejar
+ * esta puerta abierta no protegia nada.
+ */
+export async function listarDeOrden(
+  actor: Actor, idOrden: string,
+): Promise<readonly EvidenciaListada[]> {
+  await exigirCercoSobreOrden(actor, idOrden);
   const filas = await repositorio.listarDeOrden(idOrden);
   return filas.map((fila) => ({
     id: fila.id,
@@ -49,6 +57,17 @@ export async function iniciarCarga(
     if (!(await repositorio.ordenExiste(peticion.idOrden, cliente))) {
       throw new ErrorValidacion('La orden indicada no existe.', { idOrden: 'Orden no valida.' });
     }
+
+    /*
+     * El mismo cerco que para LEER la evidencia.
+     *
+     * Se agrego cuando una prueba dejo ver la incoherencia: el tecnico no
+     * podia listar las evidencias de una orden ajena pero si subirle fotos.
+     * Dejar abierta la de escritura es peor que la de lectura: una foto
+     * colgada de la orden de otro acaba en el expediente de cobro de ese
+     * otro, y nadie la va a encontrar buscando donde la tomaron.
+     */
+    await exigirCercoSobreOrden(actor, peticion.idOrden, cliente);
     // Si la ficha ya llego por la cola de operaciones, el archivo se cuelga
     // de ella. Insertar otra dejaria la orden con dos evidencias donde el
     // tecnico tomo una sola fotografia.

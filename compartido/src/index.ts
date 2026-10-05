@@ -4,6 +4,7 @@
  */
 export * from './dominio/orden.js';
 export * from './dominio/inventario.js';
+export * from './dominio/solicitud-repuesto.js';
 export * from './dominio/evidencia.js';
 export * from './dominio/cobro.js';
 export * from './dominio/proceso-final.js';
@@ -17,6 +18,7 @@ export * from './api/garantias.js';
 export * from './api/ordenes.js';
 export * from './api/agenda.js';
 export * from './api/inventario.js';
+export * from './api/kardex.js';
 export * from './api/sincronizacion.js';
 export * from './api/campo.js';
 export * from './api/cobros.js';

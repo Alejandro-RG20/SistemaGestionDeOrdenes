@@ -27,7 +27,7 @@ export async function listar(peticion: Request, respuesta: Response): Promise<vo
 }
 
 export async function listarDeOrden(peticion: Request, respuesta: Response): Promise<void> {
-  responderDatos(respuesta, await servicio.listarDeOrden(identificador(peticion)));
+  responderDatos(respuesta, await servicio.listarDeOrden(actorDe(peticion), identificador(peticion)));
 }
 
 export async function programar(peticion: Request, respuesta: Response): Promise<void> {

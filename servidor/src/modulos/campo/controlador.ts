@@ -17,7 +17,7 @@ export async function descargarJornada(peticion: Request, respuesta: Response): 
 }
 
 export async function listarDeOrden(peticion: Request, respuesta: Response): Promise<void> {
-  responderDatos(respuesta, await servicio.listarDeOrden(identificador(peticion)));
+  responderDatos(respuesta, await servicio.listarDeOrden(actorDe(peticion), identificador(peticion)));
 }
 
 export async function iniciarCarga(peticion: Request, respuesta: Response): Promise<void> {

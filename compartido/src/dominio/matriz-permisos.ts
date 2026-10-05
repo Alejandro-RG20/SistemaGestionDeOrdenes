@@ -36,7 +36,8 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
     ...CONSULTA_BASE, 'campo.visita.registrar', 'campo.evidencia.cargar', 'campo.sincronizar',
     'taller.diagnostico.registrar', 'taller.cotizacion.registrar', 'taller.reparacion.registrar',
     'ordenes.crear', 'ordenes.cambiar_modalidad',
-    'inventario.consultar', 'inventario.consumo.registrar', 'agenda.consultar',
+    'inventario.consultar', 'inventario.consumo.registrar',
+    'inventario.devolucion.registrar', 'agenda.consultar',
   ],
 
   // El tecnico de planta usa la misma tableta que el de ruta; lo unico que
@@ -47,6 +48,7 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
     ...CONSULTA_BASE, 'campo.evidencia.cargar', 'campo.sincronizar',
     'taller.diagnostico.registrar', 'taller.cotizacion.registrar', 'taller.reparacion.registrar',
     'inventario.consultar', 'inventario.consumo.registrar', 'inventario.solicitud.gestionar',
+    'inventario.devolucion.registrar',
   ],
 
   [CODIGO_ROL.GESTOR_TECNICOS]: [
@@ -61,6 +63,7 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
     'agenda.consultar', 'agenda.programar', 'campo.excepcion.resolver',
     'articulos.editar_datos_sensibles', 'garantias.evaluar', 'garantias.reclasificar',
     'garantias.regla.gestionar', 'inventario.consultar', 'inventario.ajuste.registrar',
+    'inventario.devolucion.registrar',
     'seguridad.bitacora.consultar',
     // La validacion tecnica es suya: es el control que impide que una
     // reparacion sin revisar llegue a un expediente de cobro.
@@ -71,6 +74,7 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
     'ordenes.consultar', 'inventario.consultar', 'inventario.ingreso.registrar',
     'inventario.despacho.registrar', 'inventario.consumo.registrar',
     'inventario.ajuste.registrar', 'inventario.solicitud.gestionar',
+    'inventario.devolucion.registrar',
     // Cuenta lo que llega del proveedor. Es lo unico que mueve existencia.
     'compras.consultar', 'compras.recibir',
   ],

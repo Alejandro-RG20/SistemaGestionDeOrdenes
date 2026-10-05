@@ -35,6 +35,25 @@ export const SECCIONES: readonly SeccionDelPanel[] = [
   { ruta: '/validaciones', etiqueta: 'Validacion tecnica', permisos: ['taller.validacion.registrar'], grupo: 'operacion' },
 
   { ruta: '/inventario', etiqueta: 'Inventario y bodegas', permisos: ['inventario.consultar'], grupo: 'control' },
+  {
+    ruta: '/inventario/movimientos',
+    etiqueta: 'Movimientos',
+    // Se muestra a quien puede registrar ALGUN tipo. Quien solo consulta ve
+    // los movimientos dentro del kardex, no un formulario que no puede usar.
+    permisos: [
+      'inventario.ingreso.registrar', 'inventario.despacho.registrar',
+      'inventario.devolucion.registrar', 'inventario.consumo.registrar',
+      'inventario.ajuste.registrar',
+    ],
+    grupo: 'control',
+  },
+  {
+    ruta: '/inventario/recorrido',
+    etiqueta: 'Solicitudes de repuesto',
+    permisos: ['inventario.solicitud.gestionar', 'inventario.consumo.registrar'],
+    grupo: 'control',
+  },
+  { ruta: '/inventario/kardex', etiqueta: 'Kardex', permisos: ['inventario.consultar'], grupo: 'control' },
   { ruta: '/coberturas', etiqueta: 'Reglas de cobertura', permisos: ['garantias.evaluar'], grupo: 'control' },
   {
     ruta: '/cobros',
@@ -95,4 +114,39 @@ export function trabajaEnCampo(usuario: UsuarioAutenticado | null): boolean {
 export function rolLegible(usuario: UsuarioAutenticado | null): string {
   if (usuario === null) return '';
   return usuario.rol.replace(/_/g, ' ').replace(/^\w/, (letra) => letra.toUpperCase());
+}
+
+
+/**
+ * El menu del tecnico (pliego §11).
+ *
+ * Es una lista aparte y no un filtro del menu general, porque el tecnico no
+ * necesita una version recortada del menu de la jefatura: necesita OTRO
+ * menu, con sus seis cosas y en el orden en que las usa durante el dia.
+ * Filtrar el general por permisos le dejaba «Cola de taller» y «Reportes»
+ * fuera, si, pero tambien le dejaba «Inventario y bodegas» —el catalogo
+ * entero del centro— donde el solo quiere ver lo que lleva en su bodega.
+ *
+ * Las rutas son las mismas del sistema: no hay pantallas duplicadas para el
+ * tecnico, solo otra puerta de entrada.
+ */
+export const SECCIONES_DEL_TECNICO: readonly SeccionDelPanel[] = [
+  { ruta: '/campo', etiqueta: 'Mi ruta de hoy', permisos: [], grupo: 'inicio' },
+  { ruta: '/campo/bodega', etiqueta: 'Mis repuestos', permisos: [], grupo: 'operacion' },
+  { ruta: '/inventario/recorrido', etiqueta: 'Mis solicitudes', permisos: [], grupo: 'operacion' },
+  { ruta: '/ordenes', etiqueta: 'Mis ordenes', permisos: ['ordenes.consultar'], grupo: 'operacion' },
+  { ruta: '/agenda', etiqueta: 'Mi agenda', permisos: ['agenda.consultar'], grupo: 'operacion' },
+  { ruta: '/campo/envios', etiqueta: 'Sincronizacion', permisos: [], grupo: 'control' },
+];
+
+/** El menu que le toca a esta persona: el del tecnico, o el general. */
+export function menuDe(usuario: UsuarioAutenticado | null): readonly SeccionDelPanel[] {
+  if (usuario === null) return [];
+  if (trabajaEnCampo(usuario)) {
+    return SECCIONES_DEL_TECNICO.filter((seccion) => (
+      seccion.permisos.length === 0
+        || seccion.permisos.some((permiso) => tienePermiso(usuario, permiso))
+    ));
+  }
+  return seccionesDe(usuario);
 }

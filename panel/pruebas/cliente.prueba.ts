@@ -36,7 +36,7 @@ describe('cliente de la API', () => {
   it('manda el token de acceso en cada peticion', async () => {
     tokens.guardar(sesionDePrueba(usuarioDePrueba([])));
     const api = new ClienteApi(tokens, () => undefined);
-    red.responder(200, { datos: { total: 0 } });
+    red.responder(200, { success: true, data: { total: 0 } });
 
     await api.pedir('/avisos');
 
@@ -50,7 +50,7 @@ describe('cliente de la API', () => {
     red.responder(422, {
       error: {
         codigo: 'EXPEDIENTE_EVIDENCIA_INCOMPLETA',
-        mensaje: 'A la orden le falta evidencia obligatoria. Falta: Foto del articulo.',
+        message: 'A la orden le falta evidencia obligatoria. Falta: Foto del articulo.',
       },
     });
 
@@ -64,9 +64,9 @@ describe('cliente de la API', () => {
     const api = new ClienteApi(tokens, perdida);
 
     red
-      .responder(401, { error: { mensaje: 'Sesion vencida' } })
-      .responder(200, { datos: { tokenAcceso: 'acceso-2', tokenRefresco: 'refresco-2', usuario: {} } })
-      .responder(200, { datos: { total: 3 } });
+      .responder(401, { error: { message: 'Sesion vencida' } })
+      .responder(200, { success: true, data: { tokenAcceso: 'acceso-2', tokenRefresco: 'refresco-2', usuario: {} } })
+      .responder(200, { success: true, data: { total: 3 } });
 
     const resultado = await api.pedir<{ total: number }>('/avisos');
 
@@ -82,9 +82,9 @@ describe('cliente de la API', () => {
     const api = new ClienteApi(tokens, perdida);
 
     red
-      .responder(401, { error: { mensaje: 'Sesion vencida' } })
-      .responder(401, { error: { mensaje: 'Refresco vencido' } })
-      .responder(401, { error: { mensaje: 'Sesion vencida' } });
+      .responder(401, { error: { message: 'Sesion vencida' } })
+      .responder(401, { error: { message: 'Refresco vencido' } })
+      .responder(401, { error: { message: 'Sesion vencida' } });
 
     await expect(api.pedir('/avisos')).rejects.toThrow();
     expect(perdida).toHaveBeenCalled();
@@ -95,9 +95,9 @@ describe('cliente de la API', () => {
     const api = new ClienteApi(tokens, () => undefined);
 
     red
-      .responder(401, { error: { mensaje: 'vencida' } })
-      .responder(200, { datos: { tokenAcceso: 'a2', tokenRefresco: 'r2', usuario: {} } })
-      .responder(401, { error: { mensaje: 'vencida otra vez' } });
+      .responder(401, { error: { message: 'vencida' } })
+      .responder(200, { success: true, data: { tokenAcceso: 'a2', tokenRefresco: 'r2', usuario: {} } })
+      .responder(401, { error: { message: 'vencida otra vez' } });
 
     await expect(api.pedir('/avisos')).rejects.toThrow();
     // Peticion, refresco, reintento. Y se detiene.
@@ -115,7 +115,7 @@ describe('cliente de la API', () => {
 
   it('un listado sin paginacion no revienta la pantalla', async () => {
     const api = new ClienteApi(tokens, () => undefined);
-    red.responder(200, { datos: [] });
+    red.responder(200, { success: true, data: [] });
 
     const pagina = await api.pedirPagina('/ordenes');
 
@@ -125,7 +125,7 @@ describe('cliente de la API', () => {
 
   it('distingue un 403 de un 401', async () => {
     const api = new ClienteApi(tokens, () => undefined);
-    red.responder(403, { error: { codigo: 'SIN_PERMISO', mensaje: 'No autorizado.' } });
+    red.responder(403, { success: false, error: { code: 'SIN_PERMISO', message: 'No autorizado.' } });
 
     try {
       await api.pedir('/expedientes');
@@ -139,8 +139,7 @@ describe('cliente de la API', () => {
 
   it('iniciar sesion guarda los tokens', async () => {
     const api = new ClienteApi(tokens, () => undefined);
-    red.responder(201, {
-      datos: { tokenAcceso: 'a', tokenRefresco: 'r', usuario: usuarioDePrueba([]) },
+    red.responder(201, { success: true, data: { tokenAcceso: 'a', tokenRefresco: 'r', usuario: usuarioDePrueba([]) },
     });
 
     await api.iniciarSesion('jperez', 'clave');
@@ -151,7 +150,7 @@ describe('cliente de la API', () => {
 
   it('un ingreso fallido no deja tokens a medias', async () => {
     const api = new ClienteApi(tokens, () => undefined);
-    red.responder(401, { error: { mensaje: 'Usuario o contrasena incorrectos.' } });
+    red.responder(401, { error: { message: 'Usuario o contrasena incorrectos.' } });
 
     await expect(api.iniciarSesion('jperez', 'mala')).rejects.toThrow(/incorrectos/);
     expect(tokens.acceso()).toBeNull();

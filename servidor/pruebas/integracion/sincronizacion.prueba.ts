@@ -29,7 +29,7 @@ async function sesionDe(codigoRol: string): Promise<{ Authorization: string }> {
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
 /** Sesion movil: lleva el identificador del dispositivo vinculado. */
@@ -52,7 +52,7 @@ async function sesionMovil(): Promise<{ cabecera: { Authorization: string }; idT
       identificadorDispositivo: rows[0]!.identificador,
     }).expect(201);
   return {
-    cabecera: { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` },
+    cabecera: { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` },
     idTecnico: rows[0]!.id_tecnico,
   };
 }
@@ -135,18 +135,18 @@ describe('idempotencia: reenviar no duplica', () => {
     });
 
     const primera = await sincronizar(movil, [op]).expect(200);
-    expect(primera.body.datos.aplicadas).toBe(1);
-    expect(primera.body.datos.resultados[0].estado).toBe(ESTADO_OPERACION.APLICADA);
-    expect(primera.body.datos.resultados[0].confirmada).toBe(true);
-    const numeroPrimero = primera.body.datos.resultados[0].datos.numero;
+    expect(primera.body.data.aplicadas).toBe(1);
+    expect(primera.body.data.resultados[0].estado).toBe(ESTADO_OPERACION.APLICADA);
+    expect(primera.body.data.resultados[0].confirmada).toBe(true);
+    const numeroPrimero = primera.body.data.resultados[0].datos.numero;
 
     // El mismo envio otra vez, tal cual.
     const segunda = await sincronizar(movil, [op]).expect(200);
-    expect(segunda.body.datos.repetidas).toBe(1);
-    expect(segunda.body.datos.aplicadas).toBe(0);
-    expect(segunda.body.datos.resultados[0].estado).toBe(ESTADO_OPERACION.REPETIDA);
-    expect(segunda.body.datos.resultados[0].idEntidad).toBe(idOrden);
-    expect(segunda.body.datos.resultados[0].datos.numero).toBe(numeroPrimero);
+    expect(segunda.body.data.repetidas).toBe(1);
+    expect(segunda.body.data.aplicadas).toBe(0);
+    expect(segunda.body.data.resultados[0].estado).toBe(ESTADO_OPERACION.REPETIDA);
+    expect(segunda.body.data.resultados[0].idEntidad).toBe(idOrden);
+    expect(segunda.body.data.resultados[0].datos.numero).toBe(numeroPrimero);
 
     // Y en la base hay UNA orden, con UN numero.
     const { rows } = await entorno.piscina.query<{ total: string }>(
@@ -174,7 +174,7 @@ describe('idempotencia: reenviar no duplica', () => {
       }).expect(201);
 
     const op = operacion(TIPO_OPERACION.INVENTARIO_CONSUMO, {
-      idOrden: orden.body.datos.id, idRepuesto, idBodegaOrigen: idBodegaMovil, cantidad: 2,
+      idOrden: orden.body.data.id, idRepuesto, idBodegaOrigen: idBodegaMovil, cantidad: 2,
     });
 
     await sincronizar(movil, [op]).expect(200);
@@ -186,7 +186,7 @@ describe('idempotencia: reenviar no duplica', () => {
 
     const { rows } = await entorno.piscina.query<{ total: string }>(
       `SELECT count(*)::text AS total FROM movimiento_repuesto
-        WHERE id_orden = $1 AND tipo = 'consumo'`, [orden.body.datos.id],
+        WHERE id_orden = $1 AND tipo = 'consumo'`, [orden.body.data.id],
     );
     expect(Number(rows[0]!.total)).toBe(1);
   });
@@ -206,8 +206,8 @@ describe('idempotencia: reenviar no duplica', () => {
     ]).expect(200);
 
     // La segunda depende de que la primera se haya aplicado ya.
-    expect(respuesta.body.datos.aplicadas).toBe(2);
-    expect(respuesta.body.datos.resultados[1].estado).toBe(ESTADO_OPERACION.APLICADA);
+    expect(respuesta.body.data.aplicadas).toBe(2);
+    expect(respuesta.body.data.resultados[1].estado).toBe(ESTADO_OPERACION.APLICADA);
   });
 });
 
@@ -220,20 +220,33 @@ describe('nada de lo registrado en campo se descarta', () => {
         modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'El tecnico ya salio a atenderla',
       }).expect(201);
 
+    /*
+     * Se le asigna al tecnico ANTES de anularla, que es como pasa en la
+     * realidad: el tecnico no va a un domicilio por una orden que no tiene
+     * encargada. Antes esta prueba se la dejaba sin asignar y funcionaba de
+     * casualidad; con el cerco por datos (§13) la operacion ahora falla por
+     * no ser suya, y el fallo que la prueba quiere comprobar es otro: que la
+     * orden estaba anulada.
+     */
+    await entorno.piscina.query(
+      'UPDATE orden_servicio SET id_tecnico = $2 WHERE id = $1',
+      [orden.body.data.id, idTecnicoRuta],
+    );
+
     // La anulan en el centro mientras el tecnico esta en el domicilio.
-    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${orden.body.datos.id}/estado`)
+    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${orden.body.data.id}/estado`)
       .set(jefatura).send({ hacia: 'anulada', motivo: 'El cliente llamo a cancelar el servicio' })
       .expect(200);
 
     // El tecnico vuelve con senal y sincroniza lo que hizo.
     const respuesta = await sincronizar(movil, [
       operacion(TIPO_OPERACION.ORDEN_CAMBIAR_ESTADO, {
-        idOrden: orden.body.datos.id, hacia: 'en_diagnostico',
+        idOrden: orden.body.data.id, hacia: 'en_diagnostico',
         observacion: 'Revise el equipo en el domicilio',
       }),
     ]).expect(200);
 
-    const resultado = respuesta.body.datos.resultados[0];
+    const resultado = respuesta.body.data.resultados[0];
     expect(resultado.estado).toBe(ESTADO_OPERACION.EN_EXCEPCION);
     // Confirmada: el servidor ya tiene el trabajo, el dispositivo puede borrarlo.
     expect(resultado.confirmada).toBe(true);
@@ -243,10 +256,10 @@ describe('nada de lo registrado en campo se descarta', () => {
     // La carga original esta integra en la bandeja.
     const excepcion = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/sincronizacion/excepciones/${resultado.idExcepcion}`).set(gestor).expect(200);
-    expect(excepcion.body.datos.cargaOriginal.carga.observacion).toBe('Revise el equipo en el domicilio');
-    expect(excepcion.body.datos.cargaOriginal.idOperacion).toBeTypeOf('string');
-    expect(excepcion.body.datos.estado).toBe('pendiente');
-    expect(excepcion.body.datos.numeroOrden).toBe(orden.body.datos.numero);
+    expect(excepcion.body.data.cargaOriginal.carga.observacion).toBe('Revise el equipo en el domicilio');
+    expect(excepcion.body.data.cargaOriginal.idOperacion).toBeTypeOf('string');
+    expect(excepcion.body.data.estado).toBe('pendiente');
+    expect(excepcion.body.data.numeroOrden).toBe(orden.body.data.numero);
   });
 
   it('un rechazo queda registrado como procesado, para que el movil pueda borrarlo', async () => {
@@ -258,15 +271,15 @@ describe('nada de lo registrado en campo se descarta', () => {
       }).expect(201);
 
     const op = operacion(TIPO_OPERACION.ORDEN_CAMBIAR_ESTADO, {
-      idOrden: orden.body.datos.id, hacia: 'entregada',
+      idOrden: orden.body.data.id, hacia: 'entregada',
     });
 
     const primera = await sincronizar(movil, [op]).expect(200);
-    expect(primera.body.datos.resultados[0].estado).toBe(ESTADO_OPERACION.EN_EXCEPCION);
+    expect(primera.body.data.resultados[0].estado).toBe(ESTADO_OPERACION.EN_EXCEPCION);
 
     // Reenviarla no crea una segunda excepcion: ya esta registrada.
     const segunda = await sincronizar(movil, [op]).expect(200);
-    expect(segunda.body.datos.resultados[0].estado).toBe(ESTADO_OPERACION.REPETIDA);
+    expect(segunda.body.data.resultados[0].estado).toBe(ESTADO_OPERACION.REPETIDA);
 
     const { rows } = await entorno.piscina.query<{ total: string }>(
       'SELECT count(*)::text AS total FROM excepcion_sincronizacion WHERE id_operacion = $1',
@@ -278,7 +291,7 @@ describe('nada de lo registrado en campo se descarta', () => {
   it('la bandeja se resuelve con una explicacion escrita y no se borra', async () => {
     const pendientes = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/sincronizacion/excepciones?estado=pendiente&tamano=1`).set(gestor).expect(200);
-    const id = pendientes.body.datos[0].id;
+    const id = pendientes.body.data[0].id;
     const totalAntes = await entorno.piscina.query<{ total: number }>(
       'SELECT count(*)::int AS total FROM excepcion_sincronizacion',
     );
@@ -292,9 +305,9 @@ describe('nada de lo registrado en campo se descarta', () => {
       .post(`${RAIZ}/sincronizacion/excepciones/${id}/resolver`).set(gestor)
       .send({ estado: 'resuelta', resolucion: 'Se concilio con el tecnico y se aplico el trabajo a mano' })
       .expect(200);
-    expect(resuelta.body.datos.estado).toBe('resuelta');
-    expect(resuelta.body.datos.resueltaPor).toBeTypeOf('string');
-    expect(resuelta.body.datos.cargaOriginal).toBeTypeOf('object');
+    expect(resuelta.body.data.estado).toBe('resuelta');
+    expect(resuelta.body.data.resueltaPor).toBeTypeOf('string');
+    expect(resuelta.body.data.cargaOriginal).toBeTypeOf('object');
 
     const totalDespues = await entorno.piscina.query<{ total: number }>(
       'SELECT count(*)::int AS total FROM excepcion_sincronizacion',
@@ -306,7 +319,7 @@ describe('nada de lo registrado en campo se descarta', () => {
       .post(`${RAIZ}/sincronizacion/excepciones/${id}/resolver`).set(gestor)
       .send({ estado: 'descartada', resolucion: 'Intento de cerrarla dos veces para la prueba' });
     expect(otraVez.status).toBe(422);
-    expect(otraVez.body.error.codigo).toBe('EXCEPCION_YA_CERRADA');
+    expect(otraVez.body.error.code).toBe('EXCEPCION_YA_CERRADA');
   });
 });
 
@@ -325,11 +338,11 @@ describe('prevalece lo que ocurrio en el domicilio', () => {
 
     const respuesta = await sincronizar(movil, [
       operacion(TIPO_OPERACION.INVENTARIO_CONSUMO, {
-        idOrden: orden.body.datos.id, idRepuesto, idBodegaOrigen: idBodegaMovil, cantidad: 2,
+        idOrden: orden.body.data.id, idRepuesto, idBodegaOrigen: idBodegaMovil, cantidad: 2,
       }),
     ]).expect(200);
 
-    const resultado = respuesta.body.datos.resultados[0];
+    const resultado = respuesta.body.data.resultados[0];
     expect(resultado.estado).toBe(ESTADO_OPERACION.ACEPTADA_CON_DIFERENCIA);
     expect(resultado.confirmada).toBe(true);
     expect(resultado.mensaje).toMatch(/no figuraban/i);
@@ -338,7 +351,7 @@ describe('prevalece lo que ocurrio en el domicilio', () => {
     expect(await existenciaDe(idBodegaMovil, idRepuesto)).toBe(0);
     const { rows } = await entorno.piscina.query<{ tipo: string; cantidad: number }>(
       `SELECT tipo::text AS tipo, cantidad FROM movimiento_repuesto
-        WHERE id_orden = $1 ORDER BY creado_en`, [orden.body.datos.id],
+        WHERE id_orden = $1 ORDER BY creado_en`, [orden.body.data.id],
     );
     expect(rows.map((f) => f.tipo)).toEqual(['ajuste', 'consumo']);
     expect(rows[0]!.cantidad).toBe(2);
@@ -346,8 +359,8 @@ describe('prevalece lo que ocurrio en el domicilio', () => {
     // Y hay una diferencia esperando a que alguien la concilie.
     const excepcion = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/sincronizacion/excepciones/${resultado.idExcepcion}`).set(gestor).expect(200);
-    expect(excepcion.body.datos.motivo).toMatch(/no figuraban en la bodega movil/i);
-    expect(excepcion.body.datos.estado).toBe('pendiente');
+    expect(excepcion.body.data.motivo).toMatch(/no figuraban en la bodega movil/i);
+    expect(excepcion.body.data.estado).toBe('pendiente');
   });
 
   it('prevalece el precio que el cliente firmo, no el del catalogo de hoy', async () => {
@@ -373,18 +386,18 @@ describe('prevalece lo que ocurrio en el domicilio', () => {
 
     const respuesta = await sincronizar(movil, [
       operacion(TIPO_OPERACION.INVENTARIO_CONSUMO, {
-        idOrden: orden.body.datos.id, idRepuesto, idBodegaOrigen: idBodegaMovil,
+        idOrden: orden.body.data.id, idRepuesto, idBodegaOrigen: idBodegaMovil,
         cantidad: 1, precioUnitario: 1_000,
       }),
     ]).expect(200);
 
-    const resultado = respuesta.body.datos.resultados[0];
+    const resultado = respuesta.body.data.resultados[0];
     expect(resultado.estado).toBe(ESTADO_OPERACION.ACEPTADA_CON_DIFERENCIA);
     expect(resultado.datos.precio).toBe(1_000);
 
     const { rows } = await entorno.piscina.query<{ precio_unitario: number }>(
       `SELECT precio_unitario FROM movimiento_repuesto
-        WHERE id_orden = $1 AND tipo = 'consumo'`, [orden.body.datos.id],
+        WHERE id_orden = $1 AND tipo = 'consumo'`, [orden.body.data.id],
     );
     // El que el cliente firmo, no los 1500 del catalogo.
     expect(Number(rows[0]!.precio_unitario)).toBe(1_000);
@@ -414,11 +427,11 @@ describe('quien puede sincronizar', () => {
       .send({ nombreUsuario: rows[0].nombre_usuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
 
     const respuesta = await sincronizar(
-      { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` },
+      { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` },
       [operacion(TIPO_OPERACION.DIAGNOSTICO_REGISTRAR, { idOrden: randomUUID() })],
     );
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.codigo).toBe('SESION_SIN_DISPOSITIVO');
+    expect(respuesta.body.error.code).toBe('SESION_SIN_DISPOSITIVO');
   });
 
   it('solo quien tiene el permiso resuelve excepciones', async () => {

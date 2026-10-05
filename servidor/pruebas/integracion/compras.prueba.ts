@@ -28,7 +28,7 @@ async function sesionDe(codigoRol: string): Promise<{ Authorization: string }> {
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
 async function existenciaDe(idRepuesto: string): Promise<number> {
@@ -49,9 +49,9 @@ async function compraEnviada(cantidad = 6): Promise<{ id: string; lineas: { id: 
       })),
     }).expect(201);
   await peticion(entorno.aplicacion)
-    .post(`${RAIZ}/compras/${creada.body.datos.id}/estado`).set(compras)
+    .post(`${RAIZ}/compras/${creada.body.data.id}/estado`).set(compras)
     .send({ hacia: ESTADO_COMPRA.ENVIADA }).expect(200);
-  return { id: creada.body.datos.id, lineas: creada.body.datos.detalle };
+  return { id: creada.body.data.id, lineas: creada.body.data.detalle };
 }
 
 beforeAll(async () => {
@@ -100,7 +100,7 @@ describe('el pedido no mueve inventario', () => {
           { idRepuesto: repuestos[1]!.id, cantidad: 2, precioUnitario: 250 },
         ],
       }).expect(201);
-    expect(creada.body.datos.total).toBe(800);
+    expect(creada.body.data.total).toBe(800);
   });
 
   it('un repuesto repetido se explica, no revienta con un error de base', async () => {
@@ -112,7 +112,7 @@ describe('el pedido no mueve inventario', () => {
           { idRepuesto: repuestos[0]!.id, cantidad: 3, precioUnitario: 100 },
         ],
       }).expect(400);
-    expect(respuesta.body.error.mensaje).toMatch(/dos veces/);
+    expect(respuesta.body.error.message).toMatch(/dos veces/);
   });
 });
 
@@ -125,12 +125,12 @@ describe('estados de la compra', () => {
       }).expect(201);
 
     const respuesta = await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/compras/${creada.body.datos.id}/recepcion`).set(bodega)
+      .post(`${RAIZ}/compras/${creada.body.data.id}/recepcion`).set(bodega)
       .send({
         idBodega: idBodegaCentral,
-        lineas: [{ idLinea: creada.body.datos.detalle[0].id, cantidad: 5 }],
+        lineas: [{ idLinea: creada.body.data.detalle[0].id, cantidad: 5 }],
       }).expect(422);
-    expect(respuesta.body.error.codigo).toBe('COMPRA_NO_ADMITE_RECEPCION');
+    expect(respuesta.body.error.code).toBe('COMPRA_NO_ADMITE_RECEPCION');
   });
 
   it('una transicion que el flujo no admite se rechaza', async () => {
@@ -142,9 +142,9 @@ describe('estados de la compra', () => {
 
     // De borrador no se salta a confirmada: el proveedor no ha visto nada.
     const respuesta = await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/compras/${creada.body.datos.id}/estado`).set(compras)
+      .post(`${RAIZ}/compras/${creada.body.data.id}/estado`).set(compras)
       .send({ hacia: ESTADO_COMPRA.CONFIRMADA }).expect(422);
-    expect(respuesta.body.error.codigo).toBe('TRANSICION_COMPRA_INVALIDA');
+    expect(respuesta.body.error.code).toBe('TRANSICION_COMPRA_INVALIDA');
   });
 
   it('cancelar exige motivo escrito', async () => {
@@ -155,16 +155,16 @@ describe('estados de la compra', () => {
       }).expect(201);
 
     await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/compras/${creada.body.datos.id}/estado`).set(compras)
+      .post(`${RAIZ}/compras/${creada.body.data.id}/estado`).set(compras)
       .send({ hacia: ESTADO_COMPRA.CANCELADA }).expect(400);
 
     const cancelada = await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/compras/${creada.body.datos.id}/estado`).set(compras)
+      .post(`${RAIZ}/compras/${creada.body.data.id}/estado`).set(compras)
       .send({
         hacia: ESTADO_COMPRA.CANCELADA,
         motivoCancelacion: 'El proveedor descontinuo la pieza y no ofrecio equivalente.',
       }).expect(200);
-    expect(cancelada.body.datos.motivoCancelacion).toMatch(/descontinuo/);
+    expect(cancelada.body.data.motivoCancelacion).toMatch(/descontinuo/);
   });
 });
 
@@ -180,7 +180,7 @@ describe('la recepcion es lo que mueve el inventario', () => {
         lineas: compra.lineas.map((linea) => ({ idLinea: linea.id, cantidad: 2 })),
       }).expect(200);
 
-    expect(recibida.body.datos.estado).toBe(ESTADO_COMPRA.RECIBIDA_PARCIAL);
+    expect(recibida.body.data.estado).toBe(ESTADO_COMPRA.RECIBIDA_PARCIAL);
     expect(await existenciaDe(repuestos[0]!.id)).toBe(antes + 2);
   });
 
@@ -200,8 +200,8 @@ describe('la recepcion es lo que mueve el inventario', () => {
 
     const final = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/compras/${compra.id}`).set(compras).expect(200);
-    expect(final.body.datos.estado).toBe(ESTADO_COMPRA.RECIBIDA);
-    expect(final.body.datos.recibido).toBe(final.body.datos.pedido);
+    expect(final.body.data.estado).toBe(ESTADO_COMPRA.RECIBIDA);
+    expect(final.body.data.recibido).toBe(final.body.data.pedido);
   });
 
   /**
@@ -223,14 +223,14 @@ describe('la recepcion es lo que mueve el inventario', () => {
         ],
       }).expect(422);
 
-    expect(respuesta.body.error.codigo).toBe('RECEPCION_EXCEDIDA');
+    expect(respuesta.body.error.code).toBe('RECEPCION_EXCEDIDA');
     // La primera linea no se descontó del camion ni sumó a la bodega.
     expect(await existenciaDe(repuestos[0]!.id)).toBe(antes);
 
     const sinTocar = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/compras/${compra.id}`).set(compras).expect(200);
-    expect(sinTocar.body.datos.recibido).toBe(0);
-    expect(sinTocar.body.datos.estado).toBe(ESTADO_COMPRA.ENVIADA);
+    expect(sinTocar.body.data.recibido).toBe(0);
+    expect(sinTocar.body.data.estado).toBe(ESTADO_COMPRA.ENVIADA);
   });
 
   it('la recepcion queda como movimiento de inventario con su responsable', async () => {
@@ -285,17 +285,17 @@ describe('proveedores', () => {
       }).expect(201);
 
     await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/proveedores/${creado.body.datos.id}/desactivar`).set(compras).expect(200);
+      .post(`${RAIZ}/proveedores/${creado.body.data.id}/desactivar`).set(compras).expect(200);
 
     const activos = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/proveedores?soloActivos=true`).set(compras).expect(200);
-    expect(activos.body.datos.map((p: { id: string }) => p.id))
-      .not.toContain(creado.body.datos.id);
+    expect(activos.body.data.map((p: { id: string }) => p.id))
+      .not.toContain(creado.body.data.id);
 
     // Pero sigue existiendo.
     const todos = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/proveedores`).set(compras).expect(200);
-    expect(todos.body.datos.map((p: { id: string }) => p.id))
-      .toContain(creado.body.datos.id);
+    expect(todos.body.data.map((p: { id: string }) => p.id))
+      .toContain(creado.body.data.id);
   });
 });

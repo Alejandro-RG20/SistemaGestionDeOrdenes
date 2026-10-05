@@ -17,6 +17,7 @@ import type { ParametrosPagina } from '../../comun/paginacion.js';
 import { construirPaginacion } from '../../comun/paginacion.js';
 import { ErrorConflicto, ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import { construirCalendario, type CalendarioLaboral } from '../../dominio/plazos/indice.js';
+import { exigirCercoSobreOrden } from '../ordenes/alcance.js';
 import * as repositorio from './repositorio.js';
 import { aCalendarioDelCentro, aResumenVisita } from './dto.js';
 
@@ -84,7 +85,17 @@ export async function listar(
   return { datos: filas.map(aResumenVisita), paginacion: construirPaginacion(pagina, total) };
 }
 
-export async function listarDeOrden(idOrden: string): Promise<readonly ResumenVisita[]> {
+/**
+ * Las visitas de una orden.
+ *
+ * Lleva el cerco por datos: una visita dice a que hora se llego a la casa
+ * del cliente y que se encontro. Es el mismo expediente de la orden, visto
+ * por otra puerta.
+ */
+export async function listarDeOrden(
+  actor: Actor, idOrden: string,
+): Promise<readonly ResumenVisita[]> {
+  await exigirCercoSobreOrden(actor, idOrden);
   const filas = await repositorio.listarDeOrden(idOrden);
   return filas.map(aResumenVisita);
 }
@@ -116,6 +127,10 @@ export async function programarVisita(
   actor: Actor, idOrden: string, peticion: PeticionProgramarVisita,
 ): Promise<ResumenVisita> {
   return enTransaccion(async (cliente) => {
+    // El cerco por datos. Hoy ningun rol con `agenda.programar` esta
+    // cercado, asi que no cambia nada; esta puesto para que el dia que se
+    // agregue uno no haya que acordarse de esta linea.
+    await exigirCercoSobreOrden(actor, idOrden, cliente);
     const tecnico = await repositorio.tecnicoExiste(peticion.idTecnico, cliente);
     if (tecnico === null) {
       throw new ErrorValidacion('El tecnico indicado no existe o esta inactivo.',
@@ -183,6 +198,10 @@ export async function reprogramarVisita(
   actor: Actor, idOrden: string, peticion: PeticionReprogramarVisita,
 ): Promise<ResumenVisita> {
   return enTransaccion(async (cliente) => {
+    // El cerco por datos. Hoy ningun rol con `agenda.programar` esta
+    // cercado, asi que no cambia nada; esta puesto para que el dia que se
+    // agregue uno no haya que acordarse de esta linea.
+    await exigirCercoSobreOrden(actor, idOrden, cliente);
     const vigente = await repositorio.buscarVigenteDeOrden(idOrden, cliente);
     if (vigente === null) {
       throw new ErrorNoEncontrado('La orden no tiene ninguna visita vigente que reprogramar.');

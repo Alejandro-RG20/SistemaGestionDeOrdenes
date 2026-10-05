@@ -31,7 +31,7 @@ async function sesionDeTecnico(tipo: 'ruta' | 'planta'): Promise<{
     .send({ nombreUsuario: fila.nombre_usuario, contrasena: CONTRASENA_DE_PRUEBA })
     .expect(201);
   return {
-    cabecera: { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` },
+    cabecera: { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` },
     idTecnico: fila.id_tecnico,
     nombreUsuario: fila.nombre_usuario,
   };
@@ -46,7 +46,7 @@ describe('GET /campo/jornada', () => {
 
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/campo/jornada`).set(cabecera).expect(200);
-    const jornada = respuesta.body.datos;
+    const jornada = respuesta.body.data;
 
     expect(jornada.idTecnico).toBe(idTecnico);
     // Sin bodega movil no puede descargar repuestos en el domicilio.
@@ -61,7 +61,7 @@ describe('GET /campo/jornada', () => {
 
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/campo/jornada`).set(cabecera).expect(200);
-    const ordenes: { id: string; estado: string }[] = respuesta.body.datos.ordenes;
+    const ordenes: { id: string; estado: string }[] = respuesta.body.data.ordenes;
 
     const { rows } = await entorno.piscina.query<{ id: string; id_tecnico: string; estado: string }>(
       'SELECT id, id_tecnico, estado::text AS estado FROM orden_servicio WHERE id = ANY($1::uuid[])',
@@ -79,7 +79,7 @@ describe('GET /campo/jornada', () => {
 
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/campo/jornada`).set(cabecera).expect(200);
-    const jornada = respuesta.body.datos;
+    const jornada = respuesta.body.data;
 
     for (const existencia of jornada.existencias) {
       const { rows } = await entorno.piscina.query<{ cantidad: number }>(
@@ -104,7 +104,7 @@ describe('GET /campo/jornada', () => {
 
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/campo/jornada`)
-      .set({ Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` });
+      .set({ Authorization: `Bearer ${sesion.body.data.tokenAcceso}` });
 
     // La jefatura de tecnicos no tiene campo.sincronizar: se corta antes.
     expect(respuesta.status).toBe(403);

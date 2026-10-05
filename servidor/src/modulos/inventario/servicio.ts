@@ -8,14 +8,17 @@
 import type {
   OrdenLiberada, PeticionMovimientoInventario, ResultadoMovimiento,
 } from '@servitotal/compartido';
-import { TIPO_MOVIMIENTO } from '@servitotal/compartido';
+import { PERMISO_DEL_MOVIMIENTO, TIPO_MOVIMIENTO } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import type { Ejecutor } from '../../comun/transacciones.js';
 import { enTransaccion } from '../../comun/transacciones.js';
-import { ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
+import {
+  ErrorAutorizacion, ErrorDominio, ErrorNoEncontrado, ErrorValidacion,
+} from '../../comun/errores.js';
 import {
   efectoSobreExistencia, validarMovimiento, type PeticionMovimiento,
 } from '../../dominio/inventario/indice.js';
+import { exigirCercoSobreOrden } from '../ordenes/alcance.js';
 import { anotarAvisos, type AvisoDeOrden } from '../ordenes/servicio-avisos.js';
 import * as repositorio from './repositorio.js';
 import * as repositorioMovimientos from './repositorio-movimientos.js';
@@ -130,6 +133,32 @@ async function aplicarMovimiento(
 }
 
 /**
+ * Comprueba que el actor pueda registrar ESE tipo de movimiento.
+ *
+ * La ruta no puede hacerlo: `POST /movimientos` es una puerta y el tipo
+ * viene en el cuerpo, asi que durante un tiempo la puerta se protegio con
+ * `inventario.consultar`, el permiso de leer. Cualquiera que pudiera mirar
+ * el inventario podia moverlo: un usuario de solo consulta metio 99
+ * unidades a la bodega central y el sistema respondio 200.
+ *
+ * Se comprueba aqui, en el servicio, porque es el primer punto del sistema
+ * que ya sabe de que tipo se trata. Toda via que mueva existencia pasa por
+ * esta funcion, incluida la recepcion de compras.
+ */
+function exigirPermisoDelMovimiento(actor: Actor, tipo: string): void {
+  const requerido = PERMISO_DEL_MOVIMIENTO[tipo as keyof typeof PERMISO_DEL_MOVIMIENTO];
+  if (requerido === undefined) {
+    throw new ErrorValidacion('Tipo de movimiento desconocido.', { tipo: 'Tipo no valido.' });
+  }
+  if (!actor.permisos.includes(requerido)) {
+    throw new ErrorAutorizacion(
+      'Su perfil puede consultar el inventario pero no registrar este movimiento. ' +
+        'Si lo necesita, solicitelo a la jefatura.',
+    );
+  }
+}
+
+/**
  * RF-53 · RN-15: al ingresar un repuesto, las ordenes que lo esperaban se
  * liberan solas y queda constancia en la bitacora de cada una.
  *
@@ -176,6 +205,8 @@ async function liberarOrdenesQueEsperaban(
 export async function registrarMovimiento(
   actor: Actor, peticion: PeticionMovimientoInventario,
 ): Promise<ResultadoMovimiento> {
+  exigirPermisoDelMovimiento(actor, peticion.tipo);
+
   const { idMovimiento, existencias, ordenesLiberadas } = await enTransaccion(async (cliente) => {
     // En secuencia: un cliente de transaccion no admite consultas en
     // paralelo. Solo la piscina reparte un cliente por consulta.
@@ -230,6 +261,14 @@ export async function registrarConsumosDeOrden(
         `La orden ${orden.rows[0].numero} ya esta ${orden.rows[0].estado}: no se le pueden cargar repuestos.`,
       );
     }
+
+    /*
+     * El cerco por datos. Consumir repuestos contra la orden de otro tecnico
+     * no es solo mirar donde no toca: le carga el costo de la pieza a la
+     * orden equivocada, y ese costo acaba en el expediente de cobro de otra
+     * persona.
+     */
+    await exigirCercoSobreOrden(actor, idOrden, cliente);
 
     const aplicados: string[] = [];
     for (const consumo of consumos) {

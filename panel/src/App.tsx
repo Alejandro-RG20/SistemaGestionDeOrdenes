@@ -26,6 +26,9 @@ import { Articulo } from './pantallas/Articulo.js';
 import { Agenda } from './pantallas/Agenda.js';
 import { Taller } from './pantallas/Taller.js';
 import { Inventario, SolicitudesDeRepuesto } from './pantallas/Inventario.js';
+import { BuscarKardex, Kardex } from './pantallas/Kardex.js';
+import { Movimientos } from './pantallas/Movimientos.js';
+import { Solicitudes } from './pantallas/Solicitudes.js';
 import { Coberturas } from './pantallas/Coberturas.js';
 import { Excepciones } from './pantallas/Excepciones.js';
 import { Cobros, DetalleExpediente } from './pantallas/Cobros.js';
@@ -172,7 +175,21 @@ function Privado(): JSX.Element {
         <Pantalla codigo="W-08" miga="Inventario y bodegas"><Inventario /></Pantalla>
       } />
       <Route path="/inventario/solicitudes" element={
-        <Pantalla codigo="W-08" miga="Inventario › Solicitudes"><SolicitudesDeRepuesto /></Pantalla>
+        <Pantalla codigo="W-08" miga="Inventario › Pedidos al proveedor"><SolicitudesDeRepuesto /></Pantalla>
+      } />
+      {/* El recorrido del §26: quien aprobo, quien preparo, quien recibio. */}
+      <Route path="/inventario/recorrido" element={
+        <Pantalla codigo="W-27" miga="Inventario › Solicitudes del tecnico"><Solicitudes /></Pantalla>
+      } />
+      <Route path="/inventario/movimientos" element={
+        <Pantalla codigo="W-28" miga="Inventario › Movimientos"><Movimientos /></Pantalla>
+      } />
+      {/* «kardex» a secas es el buscador; con identificador, el libro. */}
+      <Route path="/inventario/kardex" element={
+        <Pantalla codigo="W-29" miga="Inventario › Kardex"><BuscarKardex /></Pantalla>
+      } />
+      <Route path="/inventario/kardex/:id" element={
+        <Pantalla codigo="W-29" miga="Inventario › Kardex del repuesto"><Kardex /></Pantalla>
       } />
       {/* «nueva» antes que «:id»: si no, se leeria como identificador. */}
       <Route path="/compras/nueva" element={

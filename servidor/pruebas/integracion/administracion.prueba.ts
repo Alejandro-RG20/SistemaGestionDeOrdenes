@@ -19,8 +19,8 @@ beforeAll(async () => {
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  cabecera = { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
-  idJefatura = sesion.body.datos.usuario.id;
+  cabecera = { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
+  idJefatura = sesion.body.data.usuario.id;
 });
 
 afterAll(async () => { await entorno.cerrar(); });
@@ -36,15 +36,15 @@ describe('alta y mantenimiento de usuarios', () => {
         correo: 'nueva.agente@servitotal-ejemplo.com',
       }).expect(201);
 
-    expect(creado.body.datos.nombreUsuario).toBe('nueva.agente');
-    expect(creado.body.datos.activo).toBe(true);
+    expect(creado.body.data.nombreUsuario).toBe('nueva.agente');
+    expect(creado.body.data.activo).toBe(true);
 
     await peticion(entorno.aplicacion).post(`${RAIZ}/autenticacion/sesion`)
       .send({ nombreUsuario: 'nueva.agente', contrasena: 'contrasena-de-prueba-1' }).expect(201);
 
     const asientos = await peticion(entorno.aplicacion)
-      .get(`${RAIZ}/bitacora?tabla=usuario&idRegistro=${creado.body.datos.id}`).set(cabecera).expect(200);
-    expect(asientos.body.datos.some((a: { accion: string }) => a.accion === 'crear')).toBe(true);
+      .get(`${RAIZ}/bitacora?tabla=usuario&idRegistro=${creado.body.data.id}`).set(cabecera).expect(200);
+    expect(asientos.body.data.some((a: { accion: string }) => a.accion === 'crear')).toBe(true);
   });
 
   it('rechaza un nombre de usuario repetido con un mensaje que se entiende', async () => {
@@ -55,15 +55,15 @@ describe('alta y mantenimiento de usuarios', () => {
       });
 
     expect(respuesta.status).toBe(409);
-    expect(respuesta.body.error.mensaje).toContain('nueva.agente');
-    expect(respuesta.body.error.mensaje).not.toMatch(/constraint|duplicate key|23505/i);
+    expect(respuesta.body.error.message).toContain('nueva.agente');
+    expect(respuesta.body.error.message).not.toMatch(/constraint|duplicate key|23505/i);
   });
 
   it('rechaza una contrasena corta y un rol inexistente', async () => {
     const corta = await peticion(entorno.aplicacion).post(`${RAIZ}/usuarios`).set(cabecera)
       .send({ nombreUsuario: 'otra.persona', nombres: 'Otra Persona', contrasena: 'corta', codigoRol: CODIGO_ROL.BODEGUERO });
     expect(corta.status).toBe(400);
-    expect(corta.body.error.campos.contrasena).toMatch(/10 caracteres/);
+    expect(corta.body.error.fields.contrasena).toMatch(/10 caracteres/);
 
     const rolMalo = await peticion(entorno.aplicacion).post(`${RAIZ}/usuarios`).set(cabecera)
       .send({ nombreUsuario: 'otra.persona', nombres: 'Otra Persona', contrasena: 'contrasena-larga-1', codigoRol: 'jefe_supremo' });
@@ -81,7 +81,7 @@ describe('alta y mantenimiento de usuarios', () => {
 
     const asientos = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/bitacora?tabla=usuario&idRegistro=${id}`).set(cabecera).expect(200);
-    const cambioDeRol = asientos.body.datos.find((a: { campo: string }) => a.campo === 'rol');
+    const cambioDeRol = asientos.body.data.find((a: { campo: string }) => a.campo === 'rol');
     expect(cambioDeRol.valorAnterior).toBe(CODIGO_ROL.AGENTE_TELEFONIA);
     expect(cambioDeRol.valorNuevo).toBe(CODIGO_ROL.GESTOR_COBROS);
   });
@@ -135,7 +135,7 @@ describe('alta y mantenimiento de usuarios', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/usuarios/${idJefatura}/desactivar`).set(cabecera).send({ motivo: MOTIVO });
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.codigo).toBe('NO_PUEDE_DESACTIVARSE');
+    expect(respuesta.body.error.code).toBe('NO_PUEDE_DESACTIVARSE');
   });
 
   it('responde 404 por un usuario que no existe', async () => {
@@ -148,11 +148,11 @@ describe('alta y mantenimiento de usuarios', () => {
 describe('permisos de un rol', () => {
   it('reemplaza el conjunto de permisos y registra altas y bajas por separado', async () => {
     const roles = await peticion(entorno.aplicacion).get(`${RAIZ}/roles?tamano=50`).set(cabecera).expect(200);
-    const bodeguero = roles.body.datos.find((r: { codigo: string }) => r.codigo === CODIGO_ROL.BODEGUERO);
+    const bodeguero = roles.body.data.find((r: { codigo: string }) => r.codigo === CODIGO_ROL.BODEGUERO);
 
     const previos = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/roles/${bodeguero.id}/permisos`).set(cabecera).expect(200);
-    const codigosPrevios: string[] = previos.body.datos.map((p: { codigo: string }) => p.codigo);
+    const codigosPrevios: string[] = previos.body.data.map((p: { codigo: string }) => p.codigo);
 
     const nuevos = [...codigosPrevios.filter((c) => c !== 'inventario.ajuste.registrar'), 'agenda.consultar'];
     await peticion(entorno.aplicacion).put(`${RAIZ}/roles/${bodeguero.id}/permisos`).set(cabecera)
@@ -160,8 +160,8 @@ describe('permisos de un rol', () => {
 
     const asientos = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/bitacora?tabla=rol_permiso&idRegistro=${bodeguero.id}`).set(cabecera).expect(200);
-    const baja = asientos.body.datos.find((a: { valorAnterior: string }) => a.valorAnterior === 'inventario.ajuste.registrar');
-    const alta = asientos.body.datos.find((a: { valorNuevo: string }) => a.valorNuevo === 'agenda.consultar');
+    const baja = asientos.body.data.find((a: { valorAnterior: string }) => a.valorAnterior === 'inventario.ajuste.registrar');
+    const alta = asientos.body.data.find((a: { valorNuevo: string }) => a.valorNuevo === 'agenda.consultar');
     expect(baja.motivo).toBe('Reorganizacion de funciones de bodega');
     expect(alta.motivo).toBe('Reorganizacion de funciones de bodega');
 
@@ -172,23 +172,23 @@ describe('permisos de un rol', () => {
 
   it('rechaza permisos que no estan en el catalogo, nombrandolos', async () => {
     const roles = await peticion(entorno.aplicacion).get(`${RAIZ}/roles?tamano=50`).set(cabecera).expect(200);
-    const rol = roles.body.datos[0];
+    const rol = roles.body.data[0];
 
     const respuesta = await peticion(entorno.aplicacion)
       .put(`${RAIZ}/roles/${rol.id}/permisos`).set(cabecera)
       .send({ codigosPermiso: ['ordenes.consultar', 'poder.absoluto'], motivo: MOTIVO });
 
     expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.mensaje).toContain('poder.absoluto');
+    expect(respuesta.body.error.message).toContain('poder.absoluto');
   });
 
   it('exige motivo escrito para tocar permisos', async () => {
     const roles = await peticion(entorno.aplicacion).get(`${RAIZ}/roles?tamano=50`).set(cabecera).expect(200);
     const respuesta = await peticion(entorno.aplicacion)
-      .put(`${RAIZ}/roles/${roles.body.datos[0].id}/permisos`).set(cabecera)
+      .put(`${RAIZ}/roles/${roles.body.data[0].id}/permisos`).set(cabecera)
       .send({ codigosPermiso: [] });
     expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.campos.motivo).toBeTypeOf('string');
+    expect(respuesta.body.error.fields.motivo).toBeTypeOf('string');
   });
 });
 
@@ -202,26 +202,26 @@ describe('dispositivos moviles', () => {
     const vinculado = await peticion(entorno.aplicacion).post(`${RAIZ}/dispositivos`).set(cabecera)
       .send({ idUsuario: rows[0]!.id, identificador: 'SRVT-MOV-PRUEBA', modelo: 'Tableta de prueba' })
       .expect(201);
-    expect(vinculado.body.datos.revocadoEn).toBeNull();
+    expect(vinculado.body.data.revocadoEn).toBeNull();
 
     const repetido = await peticion(entorno.aplicacion).post(`${RAIZ}/dispositivos`).set(cabecera)
       .send({ idUsuario: rows[0]!.id, identificador: 'SRVT-MOV-PRUEBA' });
     expect(repetido.status).toBe(409);
 
     const revocado = await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/dispositivos/${vinculado.body.datos.id}/revocar`).set(cabecera)
+      .post(`${RAIZ}/dispositivos/${vinculado.body.data.id}/revocar`).set(cabecera)
       .send({ motivo: 'La tableta se extravio en ruta' }).expect(200);
-    expect(revocado.body.datos.revocadoEn).toBeTypeOf('string');
+    expect(revocado.body.data.revocadoEn).toBeTypeOf('string');
 
     // Revocar dos veces no es un error silencioso: se avisa.
     const otraVez = await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/dispositivos/${vinculado.body.datos.id}/revocar`).set(cabecera)
+      .post(`${RAIZ}/dispositivos/${vinculado.body.data.id}/revocar`).set(cabecera)
       .send({ motivo: 'La tableta se extravio en ruta' });
     expect(otraVez.status).toBe(422);
 
     const asientos = await peticion(entorno.aplicacion)
-      .get(`${RAIZ}/bitacora?tabla=dispositivo&idRegistro=${vinculado.body.datos.id}`).set(cabecera).expect(200);
-    expect(asientos.body.datos).toHaveLength(2);
+      .get(`${RAIZ}/bitacora?tabla=dispositivo&idRegistro=${vinculado.body.data.id}`).set(cabecera).expect(200);
+    expect(asientos.body.data).toHaveLength(2);
   });
 
   it('no vincula dispositivos a una cuenta desactivada', async () => {
@@ -234,7 +234,7 @@ describe('dispositivos moviles', () => {
       const respuesta = await peticion(entorno.aplicacion).post(`${RAIZ}/dispositivos`).set(cabecera)
         .send({ idUsuario: rows[0]!.id, identificador: 'SRVT-MOV-INACTIVA' });
       expect(respuesta.status).toBe(422);
-      expect(respuesta.body.error.codigo).toBe('USUARIO_INACTIVO');
+      expect(respuesta.body.error.code).toBe('USUARIO_INACTIVO');
     } finally {
       await entorno.piscina.query('UPDATE usuario SET activo = true WHERE id = $1', [rows[0]!.id]);
     }

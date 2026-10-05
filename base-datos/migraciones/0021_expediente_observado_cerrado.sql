@@ -1,0 +1,34 @@
+-- =====================================================================
+-- 0021 · El expediente de cobro: observado y cerrado (pliego §39)
+-- =====================================================================
+--
+-- El pliego enumera ocho estados para el expediente y el sistema tenia
+-- siete. Faltaban dos, y los dos nombran situaciones reales que hoy se
+-- estaban forzando dentro de otro estado:
+--
+--  OBSERVADO. El proveedor no rechazo el reclamo: pidio algo. Una foto mas
+--  nitida, la factura, el numero de serie legible. Hoy eso se anotaba como
+--  'rechazado', y es una mentira con consecuencias: el indicador de
+--  recuperacion contaba como perdido un expediente que solo estaba
+--  esperando un documento, y nadie distinguia al proveedor que pide
+--  aclaraciones del que se niega a pagar.
+--
+--  CERRADO. El expediente termino y ya no se toca, se haya cobrado o no.
+--  Hoy 'pagado' era el final, lo que dejaba sin final a los expedientes que
+--  se rechazan de verdad: quedaban en 'rechazado' para siempre, mezclados
+--  con los que todavia se estaban rehaciendo.
+--
+-- POR QUE NO SE RENOMBRA NADA
+--
+-- El pliego dice Pendiente / Preparando / Enviado / Observado / Aprobado /
+-- Rechazado / Pagado / Cerrado. Los nombres del sistema dicen lo mismo con
+-- mas precision —'bloqueado_por_evidencia' explica POR QUE esta detenido,
+-- que es lo que el gestor necesita leer— y renombrarlos obligaria a
+-- reescribir filas de expedientes vivos sin que nadie gane nada. Se agregan
+-- los dos que faltaban y se conservan los siete que ya funcionaban.
+--
+-- Agregar valores a un enumerado no reescribe ninguna fila: los
+-- expedientes existentes siguen en el estado en que estaban.
+
+ALTER TYPE estado_expediente ADD VALUE IF NOT EXISTS 'observado' AFTER 'enviado';
+ALTER TYPE estado_expediente ADD VALUE IF NOT EXISTS 'cerrado' AFTER 'pagado';

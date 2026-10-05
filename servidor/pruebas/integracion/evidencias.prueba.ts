@@ -20,9 +20,18 @@ async function sesionDe(codigoRol: string): Promise<{ Authorization: string }> {
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
+/**
+ * Una orden nueva, ASIGNADA al tecnico que va a trabajarla.
+ *
+ * La asignacion no es adorno de la prueba: desde que existe el cerco por
+ * datos (§13), un tecnico no toca —ni para leer ni para subir fotos— una
+ * orden que no es suya. Antes esta prueba levantaba la orden con el agente y
+ * se la dejaba sin asignar, y el tecnico le subia evidencias igual. Eso era
+ * justamente el agujero: una foto colgada de la orden de otro.
+ */
 async function ordenNueva(): Promise<string> {
   const { rows } = await entorno.piscina.query<{ id_cliente: string; id: string }>(
     `SELECT a.id_cliente, a.id FROM articulo a JOIN cliente c ON c.id = a.id_cliente
@@ -34,7 +43,33 @@ async function ordenNueva(): Promise<string> {
       idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id,
       modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Para probar la carga de evidencias',
     }).expect(201);
-  return creada.body.datos.id;
+
+  await asignarAlTecnicoDeLaSesion(creada.body.data.id);
+  return creada.body.data.id;
+}
+
+/**
+ * Asigna la orden al tecnico cuya sesion usan estas pruebas.
+ *
+ * Se hace por la base y no por la API porque el tecnico no tiene
+ * `ordenes.asignar` —y no debe tenerlo—, y montar aqui una sesion de
+ * jefatura solo para asignar añadiria ruido a una prueba que es sobre
+ * evidencias.
+ */
+async function asignarAlTecnicoDeLaSesion(idOrden: string): Promise<void> {
+  const token = tecnico.Authorization.replace('Bearer ', '');
+  const carga = JSON.parse(
+    Buffer.from(token.split('.')[1]!, 'base64url').toString('utf8'),
+  ) as { sub: string };
+
+  const { rows } = await entorno.piscina.query<{ id: string }>(
+    'SELECT id FROM tecnico WHERE id_usuario = $1 AND activo', [carga.sub],
+  );
+  if (rows[0] === undefined) throw new Error('La sesion de pruebas no es de un tecnico con ficha.');
+
+  await entorno.piscina.query(
+    'UPDATE orden_servicio SET id_tecnico = $2 WHERE id = $1', [idOrden, rows[0].id],
+  );
 }
 
 /**
@@ -59,7 +94,7 @@ async function sesionDeDispositivo(): Promise<{ Authorization: string }> {
       contrasena: CONTRASENA_DE_PRUEBA,
       identificadorDispositivo: rows[0]!.identificador,
     }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
 /** Sube el archivo por trozos, como haria el movil con mala senal. */
@@ -75,7 +110,7 @@ async function subirPorPartes(
       .set('Content-Type', 'application/octet-stream')
       .set('X-Desplazamiento', String(enviados))
       .send(parte).expect(200);
-    enviados = respuesta.body.datos.bytesRecibidos;
+    enviados = respuesta.body.data.bytesRecibidos;
   }
   return enviados;
 }
@@ -102,15 +137,15 @@ describe('carga por partes con reanudacion', () => {
         latitud: 12.13, longitud: -86.25,
       }).expect(201);
 
-    expect(carga.body.datos.bytesRecibidos).toBe(0);
-    expect(carga.body.datos.completa).toBe(false);
-    const { idCarga, idEvidencia } = carga.body.datos;
+    expect(carga.body.data.bytesRecibidos).toBe(0);
+    expect(carga.body.data.completa).toBe(false);
+    const { idCarga, idEvidencia } = carga.body.data;
 
     // La evidencia ya consta, sin archivo: si el telefono muere a mitad de
     // la subida, el taller igual sabe que esa foto existe y falta.
     const antes = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${idOrden}/evidencias`).set(tecnico).expect(200);
-    const pendiente = antes.body.datos.find((e: { id: string }) => e.id === idEvidencia);
+    const pendiente = antes.body.data.find((e: { id: string }) => e.id === idEvidencia);
     expect(pendiente.sincronizada).toBe(false);
     expect(pendiente.rutaArchivo).toBeNull();
 
@@ -121,11 +156,11 @@ describe('carga por partes con reanudacion', () => {
       .post(`${RAIZ}/evidencias/cargas/${idCarga}/cerrar`).set(tecnico)
       .send({ idEvidencia }).expect(200);
 
-    expect(cerrada.body.datos.sincronizada).toBe(true);
-    expect(cerrada.body.datos.huellaDigital).toBe(huella);
-    expect(cerrada.body.datos.bytes).toBe(contenido.length);
+    expect(cerrada.body.data.sincronizada).toBe(true);
+    expect(cerrada.body.data.huellaDigital).toBe(huella);
+    expect(cerrada.body.data.bytes).toBe(contenido.length);
     // La base guarda la RUTA, no el binario.
-    expect(cerrada.body.datos.rutaArchivo).toMatch(/^ordenes\//);
+    expect(cerrada.body.data.rutaArchivo).toMatch(/^ordenes\//);
   });
 
   /**
@@ -157,7 +192,7 @@ describe('carga por partes con reanudacion', () => {
           },
         }],
       }).expect(200);
-    expect(cola.body.datos.aplicadas).toBe(1);
+    expect(cola.body.data.aplicadas).toBe(1);
 
     // Y despues el archivo. Se tiene que colgar de la ficha que ya existe.
     const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`).set(tecnico)
@@ -166,14 +201,14 @@ describe('carga por partes con reanudacion', () => {
         bytes: contenido.length, huellaDigital: huella, momentoDispositivo: momento,
       }).expect(201);
 
-    await subirPorPartes(carga.body.datos.idCarga, contenido, 1_024);
+    await subirPorPartes(carga.body.data.idCarga, contenido, 1_024);
     await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/evidencias/cargas/${carga.body.datos.idCarga}/cerrar`).set(tecnico)
-      .send({ idEvidencia: carga.body.datos.idEvidencia }).expect(200);
+      .post(`${RAIZ}/evidencias/cargas/${carga.body.data.idCarga}/cerrar`).set(tecnico)
+      .send({ idEvidencia: carga.body.data.idEvidencia }).expect(200);
 
     const listadas = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${idOrden}/evidencias`).set(tecnico).expect(200);
-    const deEsaFoto = listadas.body.datos
+    const deEsaFoto = listadas.body.data
       .filter((e: { clave: string }) => e.clave === 'foto_falla');
 
     expect(deEsaFoto).toHaveLength(1);
@@ -198,15 +233,15 @@ describe('carga por partes con reanudacion', () => {
           bytes: contenido.length, huellaDigital: huella,
           momentoDispositivo: new Date().toISOString(),
         }).expect(201);
-      await subirPorPartes(carga.body.datos.idCarga, contenido, 1_024);
+      await subirPorPartes(carga.body.data.idCarga, contenido, 1_024);
       await peticion(entorno.aplicacion)
-        .post(`${RAIZ}/evidencias/cargas/${carga.body.datos.idCarga}/cerrar`).set(tecnico)
-        .send({ idEvidencia: carga.body.datos.idEvidencia }).expect(200);
+        .post(`${RAIZ}/evidencias/cargas/${carga.body.data.idCarga}/cerrar`).set(tecnico)
+        .send({ idEvidencia: carga.body.data.idEvidencia }).expect(200);
     }
 
     const listadas = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${idOrden}/evidencias`).set(tecnico).expect(200);
-    expect(listadas.body.datos
+    expect(listadas.body.data
       .filter((e: { clave: string }) => e.clave === 'foto_articulo')).toHaveLength(2);
   });
 
@@ -221,7 +256,7 @@ describe('carga por partes con reanudacion', () => {
         bytes: contenido.length, huellaDigital: huella,
         momentoDispositivo: new Date().toISOString(),
       }).expect(201);
-    const { idCarga } = carga.body.datos;
+    const { idCarga } = carga.body.data;
 
     // Se corta la conexion a mitad de camino.
     await peticion(entorno.aplicacion).patch(`${RAIZ}/evidencias/cargas/${idCarga}`)
@@ -230,8 +265,8 @@ describe('carga por partes con reanudacion', () => {
 
     const estado = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/evidencias/cargas/${idCarga}`).set(tecnico).expect(200);
-    expect(estado.body.datos.bytesRecibidos).toBe(2_000);
-    expect(estado.body.datos.completa).toBe(false);
+    expect(estado.body.data.bytesRecibidos).toBe(2_000);
+    expect(estado.body.data.completa).toBe(false);
 
     // Reanuda exactamente desde ahi.
     await peticion(entorno.aplicacion).patch(`${RAIZ}/evidencias/cargas/${idCarga}`)
@@ -240,12 +275,12 @@ describe('carga por partes con reanudacion', () => {
 
     const completa = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/evidencias/cargas/${idCarga}`).set(tecnico).expect(200);
-    expect(completa.body.datos.bytesRecibidos).toBe(contenido.length);
-    expect(completa.body.datos.completa).toBe(true);
+    expect(completa.body.data.bytesRecibidos).toBe(contenido.length);
+    expect(completa.body.data.completa).toBe(true);
 
     await peticion(entorno.aplicacion)
       .post(`${RAIZ}/evidencias/cargas/${idCarga}/cerrar`).set(tecnico)
-      .send({ idEvidencia: carga.body.datos.idEvidencia }).expect(200);
+      .send({ idEvidencia: carga.body.data.idEvidencia }).expect(200);
   });
 
   it('reanudar desde el byte equivocado se rechaza en lugar de corromper el archivo', async () => {
@@ -258,18 +293,18 @@ describe('carga por partes con reanudacion', () => {
         momentoDispositivo: new Date().toISOString(),
       }).expect(201);
 
-    await peticion(entorno.aplicacion).patch(`${RAIZ}/evidencias/cargas/${carga.body.datos.idCarga}`)
+    await peticion(entorno.aplicacion).patch(`${RAIZ}/evidencias/cargas/${carga.body.data.idCarga}`)
       .set(tecnico).set('Content-Type', 'application/octet-stream').set('X-Desplazamiento', '0')
       .send(contenido.subarray(0, 1_000)).expect(200);
 
     const desfasada = await peticion(entorno.aplicacion)
-      .patch(`${RAIZ}/evidencias/cargas/${carga.body.datos.idCarga}`)
+      .patch(`${RAIZ}/evidencias/cargas/${carga.body.data.idCarga}`)
       .set(tecnico).set('Content-Type', 'application/octet-stream').set('X-Desplazamiento', '2500')
       .send(contenido.subarray(2_500));
 
     expect(desfasada.status).toBe(422);
-    expect(desfasada.body.error.codigo).toBe('DESPLAZAMIENTO_INCORRECTO');
-    expect(desfasada.body.error.mensaje).toMatch(/Reanude desde el byte 1000/);
+    expect(desfasada.body.error.code).toBe('DESPLAZAMIENTO_INCORRECTO');
+    expect(desfasada.body.error.message).toMatch(/Reanude desde el byte 1000/);
   });
 
   it('un archivo que no casa con su huella no se da por bueno', async () => {
@@ -284,15 +319,15 @@ describe('carga por partes con reanudacion', () => {
         momentoDispositivo: new Date().toISOString(),
       }).expect(201);
 
-    await subirPorPartes(carga.body.datos.idCarga, contenido, 1_500);
+    await subirPorPartes(carga.body.data.idCarga, contenido, 1_500);
 
     const cerrada = await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/evidencias/cargas/${carga.body.datos.idCarga}/cerrar`).set(tecnico)
-      .send({ idEvidencia: carga.body.datos.idEvidencia });
+      .post(`${RAIZ}/evidencias/cargas/${carga.body.data.idCarga}/cerrar`).set(tecnico)
+      .send({ idEvidencia: carga.body.data.idEvidencia });
 
     expect(cerrada.status).toBe(422);
-    expect(cerrada.body.error.codigo).toBe('HUELLA_NO_COINCIDE');
-    expect(cerrada.body.error.mensaje).toMatch(/volver a subirlo/);
+    expect(cerrada.body.error.code).toBe('HUELLA_NO_COINCIDE');
+    expect(cerrada.body.error.message).toMatch(/volver a subirlo/);
   });
 
   it('no se cierra una carga incompleta', async () => {
@@ -305,23 +340,23 @@ describe('carga por partes con reanudacion', () => {
         momentoDispositivo: new Date().toISOString(),
       }).expect(201);
 
-    await peticion(entorno.aplicacion).patch(`${RAIZ}/evidencias/cargas/${carga.body.datos.idCarga}`)
+    await peticion(entorno.aplicacion).patch(`${RAIZ}/evidencias/cargas/${carga.body.data.idCarga}`)
       .set(tecnico).set('Content-Type', 'application/octet-stream').set('X-Desplazamiento', '0')
       .send(contenido.subarray(0, 1_000)).expect(200);
 
     const cerrada = await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/evidencias/cargas/${carga.body.datos.idCarga}/cerrar`).set(tecnico)
-      .send({ idEvidencia: carga.body.datos.idEvidencia });
+      .post(`${RAIZ}/evidencias/cargas/${carga.body.data.idCarga}/cerrar`).set(tecnico)
+      .send({ idEvidencia: carga.body.data.idEvidencia });
 
     expect(cerrada.status).toBe(422);
-    expect(cerrada.body.error.codigo).toBe('CARGA_INCOMPLETA');
+    expect(cerrada.body.error.code).toBe('CARGA_INCOMPLETA');
   });
 
   it('una carga que no existe se avisa, no revienta', async () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/evidencias/cargas/00000000-0000-4000-8000-000000000000`).set(tecnico);
     expect(respuesta.status).toBe(404);
-    expect(respuesta.body.error.mensaje).toMatch(/Vuelva a iniciarla/);
+    expect(respuesta.body.error.message).toMatch(/Vuelva a iniciarla/);
   });
 
   it('un agente de telefonia no carga evidencias de campo', async () => {
@@ -331,5 +366,54 @@ describe('carga por partes con reanudacion', () => {
         idOrden, clave: 'foto_articulo', tipo: 'foto', bytes: 10,
         huellaDigital: 'a'.repeat(64), momentoDispositivo: new Date().toISOString(),
       }).expect(403);
+  });
+});
+
+/**
+ * El cerco por datos sobre la evidencia (§13).
+ *
+ * Esta prueba existe por lo que descubrio la anterior: el tecnico no podia
+ * LISTAR las evidencias de una orden ajena pero si SUBIRLE fotos. La puerta
+ * de escritura era la peor de las dos: una foto colgada de la orden de otro
+ * acaba en el expediente de cobro de ese otro, y nadie la encuentra buscando
+ * donde se tomo.
+ */
+describe('un tecnico no toca la evidencia de una orden ajena', () => {
+  async function ordenDeOtro(): Promise<string> {
+    const { rows } = await entorno.piscina.query<{ id: string }>(
+      `SELECT o.id FROM orden_servicio o
+        WHERE o.id_tecnico IS NOT NULL
+          AND o.id_tecnico <> (
+            SELECT t.id FROM tecnico t
+              JOIN usuario u ON u.id = t.id_usuario
+             WHERE u.nombre_usuario = (
+               SELECT u2.nombre_usuario FROM usuario u2
+                 JOIN rol r ON r.id = u2.id_rol
+                WHERE r.codigo = 'tecnico_ruta' AND u2.activo
+                ORDER BY u2.nombre_usuario LIMIT 1
+             ))
+        LIMIT 1`,
+    );
+    return rows[0]!.id;
+  }
+
+  it('no puede iniciar una carga sobre ella', async () => {
+    const idOrden = await ordenDeOtro();
+    const respuesta = await peticion(entorno.aplicacion)
+      .post(`${RAIZ}/evidencias/cargas`).set(tecnico)
+      .send({
+        idOrden, clave: 'foto_articulo', tipo: 'foto',
+        huellaDigital: 'a'.repeat(64), bytes: 10,
+        momentoDispositivo: new Date().toISOString(),
+      });
+
+    expect(respuesta.status).toBe(403);
+    expect(respuesta.body.error.code).toBe('SIN_PERMISO');
+  });
+
+  it('ni listar las que ya tiene', async () => {
+    const idOrden = await ordenDeOtro();
+    await peticion(entorno.aplicacion)
+      .get(`${RAIZ}/ordenes/${idOrden}/evidencias`).set(tecnico).expect(403);
   });
 });

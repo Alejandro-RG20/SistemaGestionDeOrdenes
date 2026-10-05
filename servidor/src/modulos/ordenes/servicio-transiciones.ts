@@ -20,6 +20,7 @@ import {
 import { horasParaVencer, sumarHorasLaborables } from '../../dominio/plazos/indice.js';
 import * as servicioAgenda from '../agenda/servicio.js';
 import * as repositorio from './repositorio.js';
+import { alcanceDe, exigirCerco } from './alcance.js';
 import { aResumenOrden } from './dto.js';
 
 /**
@@ -56,6 +57,10 @@ export async function mover(
   const { estadoAnterior, estadoNuevo } = await enTransaccion(async (cliente) => {
     const fila = await repositorio.buscarContextoTransicion(idOrden, cliente);
     if (fila === null) throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
+
+    // El cerco primero: la maquina de estados dice si el PASO vale, esto
+    // dice si la ORDEN es suya. Son dos preguntas y hay que hacer las dos.
+    exigirCerco(await alcanceDe(actor, cliente), fila);
 
     const momento = momentoEvidenciaDe(fila.estado);
     // En secuencia: comparten el cliente de la transaccion.

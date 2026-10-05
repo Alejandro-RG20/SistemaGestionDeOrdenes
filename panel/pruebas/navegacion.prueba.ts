@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { CATALOGO_PERMISOS, CODIGO_ROL, type CodigoRol } from '@servitotal/compartido';
 import {
-  SECCIONES, seccionesDe, tienePermiso, trabajaEnCampo,
+  SECCIONES, SECCIONES_DEL_TECNICO, menuDe, seccionesDe, tienePermiso, trabajaEnCampo,
 } from '../src/sesion/navegacion.js';
 import { usuarioDePrueba } from './apoyo.js';
 
@@ -128,5 +128,82 @@ describe('quien trabaja en campo', () => {
     expect(conRuta(usuarioCon(
       CODIGO_ROL.ADMINISTRADOR, CATALOGO_PERMISOS.map((p) => p.codigo),
     ))).toBe(false);
+  });
+});
+
+
+/**
+ * El menu del tecnico (pliego §11).
+ *
+ * El tecnico no recibe el menu general recortado: recibe otro menu. La
+ * diferencia que importa es «Inventario y bodegas», el catalogo completo del
+ * centro, que el filtro por permisos le dejaba puesto porque tiene
+ * `inventario.consultar` —y lo necesita, para ver lo que lleva encima— pero
+ * que no es lo que el va a abrir.
+ */
+describe('menu del tecnico', () => {
+  const tecnico = usuarioCon(CODIGO_ROL.TECNICO_RUTA, [
+    'ordenes.consultar', 'agenda.consultar', 'inventario.consultar',
+    'inventario.consumo.registrar', 'campo.sincronizar',
+  ]);
+
+  it('al tecnico se le da el menu del tecnico, no el general', () => {
+    const suyas = menuDe(tecnico).map((seccion) => seccion.ruta);
+    expect(suyas).toEqual(SECCIONES_DEL_TECNICO
+      .filter((s) => s.permisos.length === 0 || s.permisos.some((p) => tienePermiso(tecnico, p)))
+      .map((s) => s.ruta));
+  });
+
+  it('lleva sus repuestos, sus solicitudes y su sincronizacion', () => {
+    const suyas = menuDe(tecnico).map((seccion) => seccion.ruta);
+    expect(suyas).toContain('/campo/bodega');
+    expect(suyas).toContain('/inventario/recorrido');
+    expect(suyas).toContain('/campo/envios');
+  });
+
+  it('NO lleva el catalogo de inventario del centro entero', () => {
+    const suyas = menuDe(tecnico).map((seccion) => seccion.ruta);
+    expect(suyas).not.toContain('/inventario');
+    expect(suyas).not.toContain('/inventario/kardex');
+  });
+
+  it('a quien no sale a campo se le sigue dando el menu general', () => {
+    const bodeguero = usuarioCon(CODIGO_ROL.BODEGUERO, [
+      'ordenes.consultar', 'inventario.consultar', 'inventario.ingreso.registrar',
+    ]);
+    expect(menuDe(bodeguero)).toEqual(seccionesDe(bodeguero));
+  });
+
+  it('sin sesion no hay menu de ningun tipo', () => {
+    expect(menuDe(null)).toHaveLength(0);
+  });
+});
+
+/**
+ * Las secciones nuevas de inventario.
+ *
+ * «Movimientos» solo se le ofrece a quien puede registrar alguno. Un usuario
+ * de consulta ve el kardex —que es lectura— y no un formulario que el
+ * servidor va a rechazarle con 403.
+ */
+describe('secciones de inventario', () => {
+  it('el formulario de movimientos no se le ofrece a quien solo consulta', () => {
+    const consulta = usuarioCon(CODIGO_ROL.USUARIO_CONSULTA, ['inventario.consultar']);
+    const suyas = seccionesDe(consulta).map((seccion) => seccion.ruta);
+    expect(suyas).toContain('/inventario/kardex');
+    expect(suyas).not.toContain('/inventario/movimientos');
+  });
+
+  it('al bodeguero si', () => {
+    const bodeguero = usuarioCon(CODIGO_ROL.BODEGUERO, [
+      'inventario.consultar', 'inventario.ingreso.registrar',
+    ]);
+    const suyas = seccionesDe(bodeguero).map((seccion) => seccion.ruta);
+    expect(suyas).toContain('/inventario/movimientos');
+  });
+
+  it('toda seccion declarada apunta a una ruta unica', () => {
+    const rutasDeclaradas = SECCIONES.map((seccion) => seccion.ruta);
+    expect(new Set(rutasDeclaradas).size).toBe(rutasDeclaradas.length);
   });
 });

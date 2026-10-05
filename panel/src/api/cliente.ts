@@ -53,8 +53,16 @@ export interface PaginaDeDatos<T> {
   readonly paginacion: Paginacion;
 }
 
+/**
+ * El fallo tal como viaja por el cable (pliego §50).
+ *
+ * Las claves estan en ingles porque es el contrato de la API, no vocabulario
+ * interno. `ErrorDeApi` las vuelve a nombrar en español en cuanto entran, y
+ * desde ahi adentro el panel no sabe que existieron: ese es justamente el
+ * punto de tener la traduccion en un solo sitio.
+ */
 interface CuerpoError {
-  error?: { codigo?: string; mensaje?: string; campos?: Record<string, string> };
+  error?: { code?: string; message?: string; fields?: Record<string, string> };
 }
 
 export interface AlmacenDeTokens {
@@ -125,14 +133,14 @@ export class ClienteApi {
 
     if (!respuesta.ok) {
       throw new ErrorDeApi(
-        cuerpo.error?.codigo ?? 'ERROR_DESCONOCIDO',
+        cuerpo.error?.code ?? 'ERROR_DESCONOCIDO',
         // El servidor ya escribio un mensaje para una persona; se usa ese.
-        cuerpo.error?.mensaje ?? 'El servidor rechazo la peticion.',
+        cuerpo.error?.message ?? 'El servidor rechazo la peticion.',
         respuesta.status,
-        cuerpo.error?.campos,
+        cuerpo.error?.fields,
       );
     }
-    return cuerpo.datos as T;
+    return cuerpo.data as T;
   }
 
   /** Listado paginado: devuelve datos y paginacion juntos. */
@@ -156,14 +164,14 @@ export class ClienteApi {
       RespuestaExitosa<readonly T[]> & CuerpoError;
     if (!respuesta.ok) {
       throw new ErrorDeApi(
-        cuerpo.error?.codigo ?? 'ERROR_DESCONOCIDO',
-        cuerpo.error?.mensaje ?? 'El servidor rechazo la peticion.',
+        cuerpo.error?.code ?? 'ERROR_DESCONOCIDO',
+        cuerpo.error?.message ?? 'El servidor rechazo la peticion.',
         respuesta.status,
       );
     }
     return {
-      datos: cuerpo.datos ?? [],
-      paginacion: cuerpo.paginacion ?? { pagina: 1, tamano: 0, total: 0, totalPaginas: 0 },
+      datos: cuerpo.data ?? [],
+      paginacion: cuerpo.pagination ?? { pagina: 1, tamano: 0, total: 0, totalPaginas: 0 },
     };
   }
 
@@ -178,7 +186,7 @@ export class ClienteApi {
       });
       if (!respuesta.ok) return false;
       const cuerpo = (await respuesta.json()) as RespuestaExitosa<Sesion>;
-      this.tokens.guardar(cuerpo.datos);
+      this.tokens.guardar(cuerpo.data);
       return true;
     } catch {
       return false;
@@ -210,13 +218,13 @@ export class ClienteApi {
       RespuestaExitosa<Sesion> & CuerpoError;
     if (!respuesta.ok) {
       throw new ErrorDeApi(
-        cuerpo.error?.codigo ?? 'ERROR_DESCONOCIDO',
-        cuerpo.error?.mensaje ?? 'No se pudo iniciar sesion.',
+        cuerpo.error?.code ?? 'ERROR_DESCONOCIDO',
+        cuerpo.error?.message ?? 'No se pudo iniciar sesion.',
         respuesta.status,
       );
     }
-    this.tokens.guardar(cuerpo.datos);
-    return cuerpo.datos;
+    this.tokens.guardar(cuerpo.data);
+    return cuerpo.data;
   }
 
   // ── protocolo de campo ───────────────────────────────────────────────
@@ -272,12 +280,12 @@ export class ClienteApi {
       RespuestaExitosa<EstadoDeCarga> & CuerpoError;
     if (!respuesta.ok) {
       throw new ErrorDeApi(
-        cuerpo.error?.codigo ?? 'ERROR_DESCONOCIDO',
-        cuerpo.error?.mensaje ?? 'El servidor rechazo la parte.',
+        cuerpo.error?.code ?? 'ERROR_DESCONOCIDO',
+        cuerpo.error?.message ?? 'El servidor rechazo la parte.',
         respuesta.status,
       );
     }
-    return cuerpo.datos;
+    return cuerpo.data;
   }
 
   async cerrarCarga(idCarga: string, idEvidencia: string): Promise<{ sincronizada: boolean }> {

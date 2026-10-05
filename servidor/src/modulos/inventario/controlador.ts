@@ -4,9 +4,14 @@ import { responderDatos, responderListado } from '../../comun/respuesta.js';
 import { leerParametrosPagina } from '../../comun/paginacion.js';
 import { actorDe } from '../../comun/autenticacion.js';
 import { esquemaIdentificador, validar } from '../seguridad/esquemas.js';
-import { esquemaConsumosDeOrden, esquemaMovimiento, esquemaSolicitudRepuesto } from './esquemas.js';
+import {
+  esquemaConsumosDeOrden, esquemaMovimiento, esquemaPasoSolicitud,
+  esquemaRangoKardex, esquemaSolicitudRepuesto,
+} from './esquemas.js';
 import * as servicio from './servicio.js';
 import * as catalogo from './servicio-catalogo.js';
+import * as kardex from './servicio-kardex.js';
+import * as solicitudes from './servicio-solicitudes.js';
 
 const identificador = (peticion: Request): string => validar(esquemaIdentificador, peticion.params['id']);
 
@@ -81,4 +86,44 @@ export async function registrarConsumos(peticion: Request, respuesta: Response):
     await servicio.registrarConsumosDeOrden(actorDe(peticion), identificador(peticion), consumos),
     201,
   );
+}
+
+/**
+ * El kardex de un repuesto (pliego §28).
+ *
+ * El saldo viene calculado por la base y la paginacion lo respeta: la pagina
+ * dos no vuelve a empezar en cero.
+ */
+export async function obtenerKardex(peticion: Request, respuesta: Response): Promise<void> {
+  const pagina = leerParametrosPagina(peticion.query as Record<string, unknown>);
+  const rango = validar(esquemaRangoKardex, {
+    desde: textoDeConsulta(peticion, 'desde'),
+    hasta: textoDeConsulta(peticion, 'hasta'),
+  });
+  const resultado = await kardex.obtenerKardex({
+    idRepuesto: identificador(peticion),
+    idBodega: uuidDeConsulta(peticion, 'idBodega'),
+    ...rango,
+  }, pagina);
+
+  const { paginacion, ...libro } = resultado;
+  responderDatos(respuesta, libro, 200, paginacion);
+}
+
+/** El recorrido de las solicitudes. Un tecnico solo ve las suyas. */
+export async function listarRecorrido(peticion: Request, respuesta: Response): Promise<void> {
+  const pagina = leerParametrosPagina(peticion.query as Record<string, unknown>);
+  const resultado = await kardex.listarRecorrido(actorDe(peticion), {
+    estado: textoDeConsulta(peticion, 'estado'),
+    idOrden: uuidDeConsulta(peticion, 'idOrden'),
+    soloAbiertas: peticion.query['soloAbiertas'] === 'true',
+  }, pagina);
+  responderListado(respuesta, resultado.datos, resultado.paginacion);
+}
+
+/** Un paso del recorrido: revisar, aprobar, rechazar, preparar, entregar, recibir. */
+export async function darPasoDeSolicitud(peticion: Request, respuesta: Response): Promise<void> {
+  const datos = validar(esquemaPasoSolicitud, peticion.body);
+  const fila = await solicitudes.darPaso(actorDe(peticion), identificador(peticion), datos);
+  responderDatos(respuesta, kardex.aSolicitudPublica(fila));
 }

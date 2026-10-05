@@ -39,6 +39,12 @@ export interface FilaOrdenCompleta extends FilaOrden {
   readonly levantada_en_campo: boolean;
   readonly motivo_anulacion: string | null;
   readonly fecha_entrega: Date | null;
+  /**
+   * Lo necesita el cerco por datos: una orden que el tecnico levanto en
+   * campo es suya aunque todavia no tenga tecnico asignado. NO sale en la
+   * ficha que se devuelve: es dato interno de autorizacion.
+   */
+  readonly creado_por: string | null;
 }
 
 export interface FilaEvento {

@@ -48,8 +48,13 @@ export interface VeredictoExpediente {
 
 const PERMITIDA: VeredictoExpediente = { permitida: true };
 
-/** Estados de los que ya no se sale. */
-export const ESTADOS_FINALES_EXPEDIENTE: readonly EstadoExpediente[] = [ESTADO_EXPEDIENTE.PAGADO];
+/**
+ * El unico estado del que no se sale es 'cerrado'.
+ *
+ * 'pagado' dejo de ser final: un expediente cobrado todavia se cierra, y
+ * ese cierre es el que separa la cartera viva de la archivada.
+ */
+export const ESTADOS_FINALES_EXPEDIENTE: readonly EstadoExpediente[] = [ESTADO_EXPEDIENTE.CERRADO];
 
 const TRANSICIONES: Readonly<Record<EstadoExpediente, readonly EstadoExpediente[]>> = {
   [ESTADO_EXPEDIENTE.EN_CONFORMACION]: [
@@ -68,12 +73,29 @@ const TRANSICIONES: Readonly<Record<EstadoExpediente, readonly EstadoExpediente[
     ESTADO_EXPEDIENTE.BLOQUEADO_POR_EVIDENCIA,
     ESTADO_EXPEDIENTE.EN_CONFORMACION,
   ],
-  [ESTADO_EXPEDIENTE.ENVIADO]: [ESTADO_EXPEDIENTE.ACEPTADO, ESTADO_EXPEDIENTE.RECHAZADO],
+  [ESTADO_EXPEDIENTE.ENVIADO]: [
+    ESTADO_EXPEDIENTE.ACEPTADO, ESTADO_EXPEDIENTE.RECHAZADO,
+    // El proveedor pidio algo. No es un rechazo.
+    ESTADO_EXPEDIENTE.OBSERVADO,
+  ],
+  /*
+   * De una observacion se sale por donde se entro: se atiende lo que
+   * pidieron y el expediente vuelve a conformacion para reenviarse, o el
+   * proveedor acaba rechazandolo.
+   */
+  [ESTADO_EXPEDIENTE.OBSERVADO]: [
+    ESTADO_EXPEDIENTE.EN_CONFORMACION, ESTADO_EXPEDIENTE.LISTO_PARA_ENVIAR,
+    ESTADO_EXPEDIENTE.RECHAZADO,
+  ],
   [ESTADO_EXPEDIENTE.ACEPTADO]: [ESTADO_EXPEDIENTE.PAGADO],
   // Un rechazo no es el final: se corrige lo que senalo el tercero y se
-  // vuelve a presentar. Eso es plata que de otro modo se pierde.
-  [ESTADO_EXPEDIENTE.RECHAZADO]: [ESTADO_EXPEDIENTE.EN_CONFORMACION],
-  [ESTADO_EXPEDIENTE.PAGADO]: [],
+  // vuelve a presentar. Eso es plata que de otro modo se pierde. Y cuando ya
+  // no hay nada que corregir, se cierra asumiendo que no se cobra.
+  [ESTADO_EXPEDIENTE.RECHAZADO]: [
+    ESTADO_EXPEDIENTE.EN_CONFORMACION, ESTADO_EXPEDIENTE.CERRADO,
+  ],
+  [ESTADO_EXPEDIENTE.PAGADO]: [ESTADO_EXPEDIENTE.CERRADO],
+  [ESTADO_EXPEDIENTE.CERRADO]: [],
 };
 
 export function destinosPosibles(estado: EstadoExpediente): readonly EstadoExpediente[] {

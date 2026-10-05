@@ -23,7 +23,7 @@ async function sesionDe(codigoRol: string): Promise<{ Authorization: string }> {
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
 /**
@@ -66,7 +66,7 @@ describe('conformacion del expediente', () => {
 
     const respuesta = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/ordenes/${orden!.id}/expediente`).set(gestor).send({}).expect(201);
-    const expediente = respuesta.body.datos;
+    const expediente = respuesta.body.data;
 
     expect(expediente.destinatario).toBe(DESTINATARIO_EXPEDIENTE.PROVEEDOR);
     // El reclamo va a la marca del articulo, no a una generica.
@@ -87,8 +87,8 @@ describe('conformacion del expediente', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/ordenes/${orden.id}/expediente`).set(gestor).send({}).expect(201);
 
-    expect(respuesta.body.datos.estado).toBe(ESTADO_EXPEDIENTE.BLOQUEADO_POR_EVIDENCIA);
-    expect(respuesta.body.datos.evidenciaPendiente.length).toBeGreaterThan(0);
+    expect(respuesta.body.data.estado).toBe(ESTADO_EXPEDIENTE.BLOQUEADO_POR_EVIDENCIA);
+    expect(respuesta.body.data.evidenciaPendiente.length).toBeGreaterThan(0);
   });
 
   it('no se conforma dos veces sobre la misma orden', async () => {
@@ -99,7 +99,7 @@ describe('conformacion del expediente', () => {
       .post(`${RAIZ}/ordenes/${rows[0]!.id_orden}/expediente`).set(gestor).send({});
 
     expect(respuesta.status).toBe(409);
-    expect(respuesta.body.error.mensaje).toMatch(/ya tiene un expediente/i);
+    expect(respuesta.body.error.message).toMatch(/ya tiene un expediente/i);
   });
 
   it('una reparacion que paga el cliente no tiene a quien reclamarle', async () => {
@@ -116,7 +116,7 @@ describe('conformacion del expediente', () => {
       .post(`${RAIZ}/ordenes/${rows[0].id}/expediente`).set(gestor).send({});
 
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.mensaje).toMatch(/paga el cliente/i);
+    expect(respuesta.body.error.message).toMatch(/paga el cliente/i);
   });
 
   it('no se conforma sobre una orden que todavia esta en el taller', async () => {
@@ -130,7 +130,7 @@ describe('conformacion del expediente', () => {
       .post(`${RAIZ}/ordenes/${rows[0].id}/expediente`).set(gestor).send({});
 
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.codigo).toBe('ORDEN_NO_ENTREGADA');
+    expect(respuesta.body.error.code).toBe('ORDEN_NO_ENTREGADA');
   });
 });
 
@@ -147,9 +147,9 @@ describe('RF-57: la evidencia incompleta frena el envio', () => {
       .send({ hacia: ESTADO_EXPEDIENTE.LISTO_PARA_ENVIAR });
 
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.codigo).toBe('EXPEDIENTE_EVIDENCIA_INCOMPLETA');
+    expect(respuesta.body.error.code).toBe('EXPEDIENTE_EVIDENCIA_INCOMPLETA');
     // No basta con negarse: hay que decir que foto conseguir.
-    expect(respuesta.body.error.mensaje).toMatch(/Falta: .+/);
+    expect(respuesta.body.error.message).toMatch(/Falta: .+/);
   });
 
   it('la ficha enumera exactamente lo que falta', async () => {
@@ -160,8 +160,8 @@ describe('RF-57: la evidencia incompleta frena el envio', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/expedientes/${rows[0]!.id}`).set(gestor).expect(200);
 
-    expect(respuesta.body.datos.evidenciaPendiente.length).toBeGreaterThan(0);
-    for (const pendiente of respuesta.body.datos.evidenciaPendiente) {
+    expect(respuesta.body.data.evidenciaPendiente.length).toBeGreaterThan(0);
+    for (const pendiente of respuesta.body.data.evidenciaPendiente) {
       expect(pendiente.etiqueta).toBeTruthy();
     }
   });
@@ -176,8 +176,8 @@ describe('recorrido completo de un expediente', () => {
 
     const creado = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/ordenes/${orden!.id}/expediente`).set(gestor).send({}).expect(201);
-    const id: string = creado.body.datos.id;
-    expect(creado.body.datos.desglose.total).toBeGreaterThan(0);
+    const id: string = creado.body.data.id;
+    expect(creado.body.data.desglose.total).toBeGreaterThan(0);
 
     const mover = (cuerpo: object) => peticion(entorno.aplicacion)
       .post(`${RAIZ}/expedientes/${id}/estado`).set(gestor).send(cuerpo);
@@ -185,13 +185,13 @@ describe('recorrido completo de un expediente', () => {
     await mover({ hacia: ESTADO_EXPEDIENTE.LISTO_PARA_ENVIAR }).expect(200);
 
     const enviado = await mover({ hacia: ESTADO_EXPEDIENTE.ENVIADO }).expect(200);
-    expect(enviado.body.datos.fechaEnvio).not.toBeNull();
+    expect(enviado.body.data.fechaEnvio).not.toBeNull();
 
     const rechazado = await mover({
       hacia: ESTADO_EXPEDIENTE.RECHAZADO,
       motivoRechazo: 'La factura de compra no es legible en el escaneo.',
     }).expect(200);
-    expect(rechazado.body.datos.motivoRechazo).toMatch(/legible/);
+    expect(rechazado.body.data.motivoRechazo).toMatch(/legible/);
 
     // Un rechazo no es el final: se corrige y se vuelve a presentar.
     await mover({ hacia: ESTADO_EXPEDIENTE.EN_CONFORMACION }).expect(200);
@@ -202,13 +202,13 @@ describe('recorrido completo de un expediente', () => {
     const pagado = await mover({
       hacia: ESTADO_EXPEDIENTE.PAGADO, montoCobrado: 100,
     }).expect(200);
-    expect(pagado.body.datos.montoCobrado).toBe(100);
-    expect(pagado.body.datos.estado).toBe(ESTADO_EXPEDIENTE.PAGADO);
+    expect(pagado.body.data.montoCobrado).toBe(100);
+    expect(pagado.body.data.estado).toBe(ESTADO_EXPEDIENTE.PAGADO);
 
     // Y ya no se toca.
     const despues = await mover({ hacia: ESTADO_EXPEDIENTE.EN_CONFORMACION });
     expect(despues.status).toBe(422);
-    expect(despues.body.error.codigo).toBe('EXPEDIENTE_CERRADO');
+    expect(despues.body.error.code).toBe('EXPEDIENTE_CERRADO');
   });
 
   it('rechazar sin motivo se rechaza', async () => {
@@ -224,7 +224,7 @@ describe('recorrido completo de un expediente', () => {
     // Lo rechaza el dominio, no el esquema: la regla vive en la maquina de
     // estados, que es donde se puede razonar sobre ella.
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.codigo).toBe('EXPEDIENTE_FALTA_RESULTADO');
+    expect(respuesta.body.error.code).toBe('EXPEDIENTE_FALTA_RESULTADO');
   });
 });
 
@@ -236,7 +236,7 @@ describe('verificacion contra los datos de hoy', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/expedientes/${rows[0]!.id}/verificar`).set(gestor).expect(200);
 
-    const ficha = respuesta.body.datos;
+    const ficha = respuesta.body.data;
     expect(ficha.desglose.total).toBe(ficha.montoReclamado);
     expect(ficha.evidenciaCompleta).toBe(ficha.evidenciaPendiente.length === 0);
   });
@@ -251,13 +251,13 @@ describe('pagos del cliente', () => {
       .post(`${RAIZ}/ordenes/${rows[0]!.id}/pagos`).set(gestor)
       .send({ monto: 1250.5, formaPago: 'efectivo', referencia: 'REC-909090' }).expect(201);
 
-    expect(creado.body.datos.monto).toBe(1250.5);
+    expect(creado.body.data.monto).toBe(1250.5);
 
     const listado = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/pagos?idOrden=${rows[0]!.id}`).set(gestor).expect(200);
-    expect(listado.body.datos.some((pago: { id: string }) => pago.id === creado.body.datos.id))
+    expect(listado.body.data.some((pago: { id: string }) => pago.id === creado.body.data.id))
       .toBe(true);
-    expect(listado.body.paginacion).toBeDefined();
+    expect(listado.body.pagination).toBeDefined();
   });
 
   it('un pago en cero no se registra', async () => {
@@ -274,15 +274,15 @@ describe('listado e indicadores', () => {
   it('el listado siempre viene paginado', async () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/expedientes?tamano=5`).set(gestor).expect(200);
-    expect(respuesta.body.datos.length).toBeLessThanOrEqual(5);
-    expect(respuesta.body.paginacion.total).toBeGreaterThan(0);
+    expect(respuesta.body.data.length).toBeLessThanOrEqual(5);
+    expect(respuesta.body.pagination.total).toBeGreaterThan(0);
   });
 
   it('filtra por estado y por destinatario', async () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/expedientes?estado=${ESTADO_EXPEDIENTE.PAGADO}&destinatario=proveedor`)
       .set(gestor).expect(200);
-    for (const expediente of respuesta.body.datos) {
+    for (const expediente of respuesta.body.data) {
       expect(expediente.estado).toBe(ESTADO_EXPEDIENTE.PAGADO);
       expect(expediente.destinatario).toBe(DESTINATARIO_EXPEDIENTE.PROVEEDOR);
     }
@@ -291,7 +291,7 @@ describe('listado e indicadores', () => {
   it('los indicadores cuadran con lo que hay', async () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/cobros/indicadores`).set(jefatura).expect(200);
-    const indicadores = respuesta.body.datos;
+    const indicadores = respuesta.body.data;
 
     expect(indicadores.expedientes).toBeGreaterThan(0);
     expect(indicadores.totalCobrado).toBeLessThanOrEqual(indicadores.totalReclamado);
@@ -311,7 +311,7 @@ describe('listado e indicadores', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/cobros/indicadores`).set(jefatura).expect(200);
 
-    for (const fila of respuesta.body.datos.porMarca) {
+    for (const fila of respuesta.body.data.porMarca) {
       expect(fila.marca).toBeTruthy();
       expect(fila.tasaRecuperacion).toBeGreaterThanOrEqual(0);
       expect(fila.cobrado).toBeLessThanOrEqual(fila.reclamado);

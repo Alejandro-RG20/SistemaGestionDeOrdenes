@@ -52,6 +52,26 @@ export interface FiltroOrdenes {
    * alguien pueda olvidar poner.
    */
   readonly idTienda?: string | undefined;
+  /**
+   * Alcance por tecnico. Tampoco lo elige quien consulta: lo impone el
+   * servicio para el tecnico, que solo ve las ordenes que tiene asignadas.
+   *
+   * Va aparte de `idTecnico` a proposito. `idTecnico` es el filtro que un
+   * jefe usa para mirar la carga de alguien; este es el cerco. Si fueran el
+   * mismo campo, un tecnico que pidiera `?idTecnico=<otro>` lo
+   * sobreescribiria y se saldria del cerco. Separados, los dos se cumplen a
+   * la vez: el cerco no se puede ensanchar desde la peticion.
+   */
+  readonly idTecnicoAlcance?: string | undefined;
+  /**
+   * Parte del mismo cerco del tecnico: las ordenes que EL levanto.
+   *
+   * Va junto con `idTecnicoAlcance` y en OR con el, no en AND: una orden
+   * cuenta como suya si se la asignaron o si la creo el. Sin esto, la orden
+   * que acaba de levantar en campo —que todavia no tiene tecnico— le
+   * quedaba invisible.
+   */
+  readonly idCreadorAlcance?: string | undefined;
 }
 
 const DONDE = `
@@ -63,7 +83,10 @@ const DONDE = `
     AND ($6::boolean IS FALSE OR (o.plazo_vence_en < now()
          AND o.estado NOT IN ('entregada','cerrada_sin_reparar','anulada')))
     AND ($7::uuid IS NULL OR o.id_tienda = $7)
-    AND ($8::text IS NULL OR o.codigo = $8)`;
+    AND ($8::text IS NULL OR o.codigo = $8)
+    AND ($9::uuid IS NULL
+         OR o.id_tecnico = $9
+         OR ($10::uuid IS NOT NULL AND o.creado_por = $10))`;
 
 /**
  * Los parametros del filtro, en el orden del WHERE.
@@ -78,11 +101,12 @@ function parametros(filtro: FiltroOrdenes): unknown[] {
     filtro.estado ?? null, filtro.idTecnico ?? null, filtro.idCliente ?? null,
     filtro.numero ?? null, filtro.soloActivas, filtro.soloVencidas,
     filtro.idTienda ?? null, filtro.codigo ?? null,
+    filtro.idTecnicoAlcance ?? null, filtro.idCreadorAlcance ?? null,
   ];
 }
 
 /** Cuantos parametros ocupa el filtro. La paginacion va despues de estos. */
-const PARAMETROS_DEL_FILTRO = 8;
+const PARAMETROS_DEL_FILTRO = 10;
 const LIMITE = `$${PARAMETROS_DEL_FILTRO + 1}`;
 const DESPLAZAMIENTO = `$${PARAMETROS_DEL_FILTRO + 2}`;
 
@@ -113,7 +137,7 @@ export async function buscarPorId(
     `SELECT ${CAMPOS}, o.telefono_contacto, o.direccion_servicio, o.referencia_ubicacion,
             o.id_zona, z.nombre AS zona, o.id_tienda, ti.nombre AS tienda,
             o.cargo_visita, o.id_regla_cobertura,
-            o.levantada_en_campo, o.motivo_anulacion, o.fecha_entrega
+            o.levantada_en_campo, o.motivo_anulacion, o.fecha_entrega, o.creado_por
        ${DESDE} LEFT JOIN zona z ON z.id = o.id_zona
                 LEFT JOIN tienda_origen ti ON ti.id = o.id_tienda
       WHERE o.id = $1`,
@@ -156,6 +180,9 @@ export interface FilaContextoTransicion {
   readonly id_tecnico: string | null;
   readonly id_responsable_actual: string | null;
   readonly id_centro: string;
+  /** Los necesita el cerco por datos antes de dejar mover la orden. */
+  readonly id_tienda: string | null;
+  readonly creado_por: string | null;
   readonly tiene_visita: boolean;
   readonly tiene_diagnostico: boolean;
   readonly tiene_cotizacion: boolean;
@@ -170,7 +197,7 @@ export async function buscarContextoTransicion(
   const { rows } = await ejecutor.query<FilaContextoTransicion>(
     `SELECT o.id, o.codigo, o.numero, o.estado, o.modalidad::text AS modalidad,
             o.tipo_garantia::text AS tipo_garantia, o.id_tecnico,
-            o.id_responsable_actual, o.id_centro,
+            o.id_responsable_actual, o.id_centro, o.id_tienda, o.creado_por,
             EXISTS (SELECT 1 FROM visita v WHERE v.id_orden = o.id AND v.vigente) AS tiene_visita,
             EXISTS (SELECT 1 FROM diagnostico d WHERE d.id_orden = o.id) AS tiene_diagnostico,
             EXISTS (SELECT 1 FROM cotizacion c WHERE c.id_orden = o.id) AS tiene_cotizacion,
@@ -218,6 +245,25 @@ export async function buscarPlazo(
       WHERE activa AND estado = $1::estado_orden AND (tipo = $2::tipo_garantia OR tipo IS NULL)
       ORDER BY tipo NULLS LAST LIMIT 1`,
     [estado, tipoGarantia],
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Las dos columnas que el cerco por datos necesita, y nada mas.
+ *
+ * Existe aparte de `buscarPorId` porque el cerco se comprueba tambien desde
+ * modulos que no van a armar la ficha entera —evidencias, transiciones— y
+ * traer veinte columnas para mirar dos es trabajo que la base no tiene por
+ * que hacer en cada peticion.
+ */
+export async function buscarCerco(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<{ id_tienda: string | null; id_tecnico: string | null; creado_por: string | null } | null> {
+  const { rows } = await ejecutor.query<{
+    id_tienda: string | null; id_tecnico: string | null; creado_por: string | null;
+  }>(
+    'SELECT id_tienda, id_tecnico, creado_por FROM orden_servicio WHERE id = $1', [idOrden],
   );
   return rows[0] ?? null;
 }

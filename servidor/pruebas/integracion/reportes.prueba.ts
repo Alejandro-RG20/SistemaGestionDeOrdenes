@@ -26,7 +26,7 @@ async function sesionDe(codigoRol: string): Promise<{ Authorization: string }> {
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
 beforeAll(async () => {
@@ -42,10 +42,10 @@ describe('reportes', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/reportes`).set(admin).expect(200);
 
-    expect(respuesta.body.datos).toHaveLength(REPORTES.length);
+    expect(respuesta.body.data).toHaveLength(REPORTES.length);
     // Cada uno dice para que sirve: un reporte sin proposito escrito nadie
     // sabe cuando usarlo, y termina siendo uno mas en una lista larga.
-    for (const definicion of respuesta.body.datos) {
+    for (const definicion of respuesta.body.data) {
       expect(definicion.proposito.length).toBeGreaterThan(15);
     }
   });
@@ -56,7 +56,7 @@ describe('reportes', () => {
       const respuesta = await peticion(entorno.aplicacion)
         .get(`${RAIZ}/reportes/${reporte.clave}`).set(admin).expect(200);
 
-      const datos = respuesta.body.datos;
+      const datos = respuesta.body.data;
       expect(datos.clave).toBe(reporte.clave);
       expect(datos.columnas.map((c: { clave: string }) => c.clave))
         .toEqual(reporte.columnas.map((c) => c.clave));
@@ -80,9 +80,9 @@ describe('reportes', () => {
       .get(`${RAIZ}/reportes/ordenes_por_estado?desde=2099-01-01&hasta=2099-12-31`)
       .set(admin).expect(200);
 
-    expect(total(completo.body.datos.filas)).toBeGreaterThan(0);
+    expect(total(completo.body.data.filas)).toBeGreaterThan(0);
     // Un rango en el futuro no puede contener ordenes.
-    expect(total(recorte.body.datos.filas)).toBe(0);
+    expect(total(recorte.body.data.filas)).toBe(0);
   });
 
   it('un reporte que no admite rango ignora las fechas en vez de fallar', async () => {
@@ -96,7 +96,7 @@ describe('reportes', () => {
   it('un reporte inexistente da 404, no un error de base', async () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/reportes/no_existe_este`).set(admin).expect(404);
-    expect(respuesta.body.error.codigo).toBe('NO_ENCONTRADO');
+    expect(respuesta.body.error.code).toBe('NO_ENCONTRADO');
   });
 
   it('un tecnico no consulta reportes', async () => {

@@ -41,6 +41,7 @@ import type {
   ResumenExpediente, ResumenPago,
 } from '@servitotal/compartido';
 import * as dto from './dto.js';
+import { exigirCercoSobreOrden } from '../ordenes/alcance.js';
 import * as repositorio from './repositorio.js';
 
 export async function listar(
@@ -97,6 +98,10 @@ async function armarFicha(fila: dto.FilaExpediente): Promise<FichaExpediente> {
  * despues se mueve es como se pierde la credibilidad ante una marca.
  */
 export async function conformar(actor: Actor, idOrden: string): Promise<FichaExpediente> {
+  // El cerco por datos antes de cualquier otra cosa: el expediente de cobro
+  // lleva el desglose completo de la orden y los datos del cliente.
+  await exigirCercoSobreOrden(actor, idOrden);
+
   const existente = await repositorio.buscarPorOrden(idOrden);
   if (existente !== null) {
     throw new ErrorConflicto(
@@ -271,6 +276,14 @@ export async function listarPagos(
 export async function registrarPago(
   actor: Actor, idOrden: string, peticion: PeticionRegistrarPago,
 ): Promise<ResumenPago> {
+  /*
+   * El cerco por datos. Un usuario de tienda cobra en SU mostrador: anotar
+   * un pago sobre la orden de otra sucursal deja el dinero cuadrado en la
+   * caja equivocada, y el descuadre aparece cuando ya nadie recuerda quien
+   * lo registro.
+   */
+  await exigirCercoSobreOrden(actor, idOrden);
+
   const orden = await repositorio.desgloseDeOrden(idOrden);
   if (orden === null) throw new ErrorNoEncontrado('No existe esa orden de servicio.');
 

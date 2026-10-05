@@ -25,11 +25,11 @@ describe('inicio de sesion', () => {
       .send({ nombreUsuario: agente, contrasena: CONTRASENA_DE_PRUEBA });
 
     expect(respuesta.status).toBe(201);
-    expect(respuesta.body.datos.tokenAcceso).toBeTypeOf('string');
-    expect(respuesta.body.datos.tokenRefresco).toBeTypeOf('string');
-    expect(respuesta.body.datos.tokenAcceso).not.toBe(respuesta.body.datos.tokenRefresco);
-    expect(respuesta.body.datos.usuario.rol).toBe(CODIGO_ROL.AGENTE_TELEFONIA);
-    expect(respuesta.body.datos.usuario.permisos).toContain('ordenes.crear');
+    expect(respuesta.body.data.tokenAcceso).toBeTypeOf('string');
+    expect(respuesta.body.data.tokenRefresco).toBeTypeOf('string');
+    expect(respuesta.body.data.tokenAcceso).not.toBe(respuesta.body.data.tokenRefresco);
+    expect(respuesta.body.data.usuario.rol).toBe(CODIGO_ROL.AGENTE_TELEFONIA);
+    expect(respuesta.body.data.usuario.permisos).toContain('ordenes.crear');
     // La respuesta nunca lleva el hash de la contrasena.
     expect(JSON.stringify(respuesta.body)).not.toContain('scrypt$');
   });
@@ -44,8 +44,8 @@ describe('inicio de sesion', () => {
 
     expect(conUsuarioReal.status).toBe(401);
     expect(conUsuarioInventado.status).toBe(401);
-    expect(conUsuarioReal.body.error.mensaje).toBe(conUsuarioInventado.body.error.mensaje);
-    expect(conUsuarioReal.body.error.codigo).toBe(conUsuarioInventado.body.error.codigo);
+    expect(conUsuarioReal.body.error.message).toBe(conUsuarioInventado.body.error.message);
+    expect(conUsuarioReal.body.error.code).toBe(conUsuarioInventado.body.error.code);
   });
 
   it('bloquea la cuenta tras cinco intentos fallidos y no la abre ni con la contrasena correcta', async () => {
@@ -68,8 +68,8 @@ describe('inicio de sesion', () => {
       .post(`${RAIZ}/autenticacion/sesion`)
       .send({ nombreUsuario: victima, contrasena: CONTRASENA_DE_PRUEBA });
     expect(conLaBuena.status).toBe(401);
-    expect(conLaBuena.body.error.codigo).toBe('CUENTA_BLOQUEADA');
-    expect(conLaBuena.body.error.mensaje).toMatch(/bloqueada/i);
+    expect(conLaBuena.body.error.code).toBe('CUENTA_BLOQUEADA');
+    expect(conLaBuena.body.error.message).toMatch(/bloqueada/i);
   });
 
   it('reinicia el contador de intentos cuando se acierta', async () => {
@@ -89,8 +89,8 @@ describe('inicio de sesion', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/autenticacion/sesion`).send({ nombreUsuario: agente });
     expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.codigo).toBe('DATOS_INVALIDOS');
-    expect(respuesta.body.error.campos.contrasena).toBeTypeOf('string');
+    expect(respuesta.body.error.code).toBe('DATOS_INVALIDOS');
+    expect(respuesta.body.error.fields.contrasena).toBeTypeOf('string');
   });
 });
 
@@ -99,7 +99,7 @@ describe('uso del token de acceso', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/autenticacion/sesion`)
       .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-    return respuesta.body.datos.tokenAcceso;
+    return respuesta.body.data.tokenAcceso;
   }
 
   it('sin token, cualquier ruta privada responde 401', async () => {
@@ -115,7 +115,7 @@ describe('uso del token de acceso', () => {
       .get(`${RAIZ}/autenticacion/yo`).set('Authorization', `Bearer ${manipulado}`);
 
     expect(respuesta.status).toBe(401);
-    expect(respuesta.body.error.mensaje).not.toMatch(/signature|jwt|jose/i);
+    expect(respuesta.body.error.message).not.toMatch(/signature|jwt|jose/i);
   });
 
   it('el token de refresco no sirve como token de acceso', async () => {
@@ -125,7 +125,7 @@ describe('uso del token de acceso', () => {
 
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/autenticacion/yo`)
-      .set('Authorization', `Bearer ${sesion.body.datos.tokenRefresco}`);
+      .set('Authorization', `Bearer ${sesion.body.data.tokenRefresco}`);
     expect(respuesta.status).toBe(401);
   });
 
@@ -133,8 +133,8 @@ describe('uso del token de acceso', () => {
     const token = await tokenDe(agente);
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/autenticacion/yo`).set('Authorization', `Bearer ${token}`).expect(200);
-    expect(respuesta.body.datos.nombreUsuario).toBe(agente);
-    expect(Array.isArray(respuesta.body.datos.permisos)).toBe(true);
+    expect(respuesta.body.data.nombreUsuario).toBe(agente);
+    expect(Array.isArray(respuesta.body.data.permisos)).toBe(true);
   });
 
   it('conserva el identificador de correlacion que envia el cliente', async () => {
@@ -152,14 +152,14 @@ describe('refresco de sesion', () => {
 
     const refrescada = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/autenticacion/refresco`)
-      .send({ tokenRefresco: sesion.body.datos.tokenRefresco }).expect(200);
+      .send({ tokenRefresco: sesion.body.data.tokenRefresco }).expect(200);
 
-    expect(refrescada.body.datos.tokenAcceso).toBeTypeOf('string');
-    expect(refrescada.body.datos.usuario.nombreUsuario).toBe(agente);
+    expect(refrescada.body.data.tokenAcceso).toBeTypeOf('string');
+    expect(refrescada.body.data.usuario.nombreUsuario).toBe(agente);
 
     await peticion(entorno.aplicacion)
       .get(`${RAIZ}/autenticacion/yo`)
-      .set('Authorization', `Bearer ${refrescada.body.datos.tokenAcceso}`).expect(200);
+      .set('Authorization', `Bearer ${refrescada.body.data.tokenAcceso}`).expect(200);
   });
 
   it('el token de acceso no sirve para refrescar', async () => {
@@ -169,7 +169,7 @@ describe('refresco de sesion', () => {
 
     const respuesta = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/autenticacion/refresco`)
-      .send({ tokenRefresco: sesion.body.datos.tokenAcceso });
+      .send({ tokenRefresco: sesion.body.data.tokenAcceso });
     expect(respuesta.status).toBe(401);
   });
 
@@ -183,14 +183,14 @@ describe('refresco de sesion', () => {
     try {
       const respuesta = await peticion(entorno.aplicacion)
         .post(`${RAIZ}/autenticacion/refresco`)
-        .send({ tokenRefresco: sesion.body.datos.tokenRefresco });
+        .send({ tokenRefresco: sesion.body.data.tokenRefresco });
       expect(respuesta.status).toBe(401);
-      expect(respuesta.body.error.codigo).toBe('CUENTA_NO_VIGENTE');
+      expect(respuesta.body.error.code).toBe('CUENTA_NO_VIGENTE');
 
       // Y el token de acceso que ya tenia tampoco vale.
       await peticion(entorno.aplicacion)
         .get(`${RAIZ}/autenticacion/yo`)
-        .set('Authorization', `Bearer ${sesion.body.datos.tokenAcceso}`).expect(401);
+        .set('Authorization', `Bearer ${sesion.body.data.tokenAcceso}`).expect(401);
     } finally {
       await entorno.piscina.query('UPDATE usuario SET activo = true WHERE nombre_usuario = $1', [persona]);
     }
@@ -216,15 +216,15 @@ describe('sesion atada a un dispositivo movil', () => {
 
     await peticion(entorno.aplicacion)
       .post(`${RAIZ}/autenticacion/refresco`)
-      .send({ tokenRefresco: sesion.body.datos.tokenRefresco }).expect(200);
+      .send({ tokenRefresco: sesion.body.data.tokenRefresco }).expect(200);
 
     await entorno.piscina.query('UPDATE dispositivo SET revocado_en = now() WHERE id = $1', [dispositivo.id]);
     try {
       const respuesta = await peticion(entorno.aplicacion)
         .post(`${RAIZ}/autenticacion/refresco`)
-        .send({ tokenRefresco: sesion.body.datos.tokenRefresco });
+        .send({ tokenRefresco: sesion.body.data.tokenRefresco });
       expect(respuesta.status).toBe(401);
-      expect(respuesta.body.error.codigo).toBe('DISPOSITIVO_REVOCADO');
+      expect(respuesta.body.error.code).toBe('DISPOSITIVO_REVOCADO');
     } finally {
       await entorno.piscina.query('UPDATE dispositivo SET revocado_en = NULL WHERE id = $1', [dispositivo.id]);
     }
@@ -239,6 +239,6 @@ describe('sesion atada a un dispositivo movil', () => {
         identificadorDispositivo: 'TABLETA-QUE-NADIE-VINCULO',
       });
     expect(respuesta.status).toBe(401);
-    expect(respuesta.body.error.codigo).toBe('DISPOSITIVO_NO_VINCULADO');
+    expect(respuesta.body.error.code).toBe('DISPOSITIVO_NO_VINCULADO');
   });
 });

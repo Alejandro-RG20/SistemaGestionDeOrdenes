@@ -21,7 +21,7 @@ async function sesionDe(codigoRol: string): Promise<{ Authorization: string }> {
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
 /** Catalogos de la siembra, para armar articulos verosimiles. */
@@ -63,7 +63,7 @@ const serieNueva = (): string => `PRUEBA-ETAPA3-${(serieContador += 1).toString(
 async function crearArticulo(datos: Record<string, unknown>): Promise<string> {
   const respuesta = await peticion(entorno.aplicacion).post(`${RAIZ}/articulos`).set(jefatura)
     .send({ numeroSerie: serieNueva(), ...datos }).expect(201);
-  return respuesta.body.datos.id;
+  return respuesta.body.data.id;
 }
 
 async function evaluar(idArticulo: string, extras: Record<string, unknown> = {}): Promise<{
@@ -71,7 +71,7 @@ async function evaluar(idArticulo: string, extras: Record<string, unknown> = {})
 }> {
   const respuesta = await peticion(entorno.aplicacion).post(`${RAIZ}/coberturas/evaluar`)
     .set(jefatura).send({ idArticulo, ...extras }).expect(200);
-  return respuesta.body.datos;
+  return respuesta.body.data;
 }
 
 beforeAll(async () => {
@@ -94,11 +94,11 @@ describe('alta de articulos', () => {
       }).expect(201);
 
     // La serie se normaliza a mayusculas: es como se identifica el aparato.
-    expect(creado.body.datos.numeroSerie).toBe(serie.toUpperCase());
+    expect(creado.body.data.numeroSerie).toBe(serie.toUpperCase());
 
     const porSerie = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/articulos/serie/${serie}`).set(jefatura).expect(200);
-    expect(porSerie.body.datos.id).toBe(creado.body.datos.id);
+    expect(porSerie.body.data.id).toBe(creado.body.data.id);
   });
 
   it('no admite dos articulos con la misma serie y lo explica', async () => {
@@ -112,8 +112,8 @@ describe('alta de articulos', () => {
 
     const repetido = await peticion(entorno.aplicacion).post(`${RAIZ}/articulos`).set(jefatura).send(comun);
     expect(repetido.status).toBe(409);
-    expect(repetido.body.error.mensaje).toMatch(/transfieralo/i);
-    expect(repetido.body.error.mensaje).not.toMatch(/constraint|duplicate/i);
+    expect(repetido.body.error.message).toMatch(/transfieralo/i);
+    expect(repetido.body.error.message).not.toMatch(/constraint|duplicate/i);
   });
 
   it('exige serie o la marca de placa ilegible', async () => {
@@ -124,7 +124,7 @@ describe('alta de articulos', () => {
         idCategoria: base.idCategoria, idTiendaOrigen: base.idTiendaGrupo,
       });
     expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.campos.numeroSerie).toMatch(/placa no es legible/);
+    expect(respuesta.body.error.fields.numeroSerie).toMatch(/placa no es legible/);
   });
 
   it('rechaza referencias inexistentes con un mensaje por campo', async () => {
@@ -135,7 +135,7 @@ describe('alta de articulos', () => {
         idCategoria: base.idCategoria, idTiendaOrigen: base.idTiendaGrupo, numeroSerie: serieNueva(),
       });
     expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.campos.idCliente).toMatch(/no existe/i);
+    expect(respuesta.body.error.fields.idCliente).toMatch(/no existe/i);
   });
 });
 
@@ -238,8 +238,8 @@ describe('reglas de cobertura versionadas', () => {
         motivo: `${MOTIVO}: el fabricante amplio la cobertura a 36 meses`,
       }).expect(201);
 
-    expect(nueva.body.datos.version).toBeGreaterThan(1);
-    expect(nueva.body.datos.activa).toBe(true);
+    expect(nueva.body.data.version).toBeGreaterThan(1);
+    expect(nueva.body.data.activa).toBe(true);
 
     const { rows } = await entorno.piscina.query<{ total: string }>(
       `SELECT count(*)::text AS total FROM regla_cobertura
@@ -260,7 +260,7 @@ describe('reglas de cobertura versionadas', () => {
     const respuesta = await peticion(entorno.aplicacion).post(`${RAIZ}/coberturas/reglas`).set(jefatura)
       .send({ mesesCobertura: 12, exigeTiendaGrupo: true, fallasExcluidas: [], motivo: 'corto' });
     expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.campos.motivo).toBeTypeOf('string');
+    expect(respuesta.body.error.fields.motivo).toBeTypeOf('string');
   });
 });
 
@@ -285,7 +285,7 @@ describe('datos sensibles del articulo', () => {
 
     const asientos = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/bitacora?tabla=articulo&idRegistro=${id}`).set(jefatura).expect(200);
-    const cambio = asientos.body.datos.find((a: { campo: string }) => a.campo === 'fecha_compra');
+    const cambio = asientos.body.data.find((a: { campo: string }) => a.campo === 'fecha_compra');
     expect(cambio.motivo).toMatch(/trajo la factura/);
     expect(cambio.valorNuevo).toBe(haceMeses(3));
   });
@@ -298,7 +298,7 @@ describe('datos sensibles del articulo', () => {
     });
     const respuesta = await peticion(entorno.aplicacion).patch(`${RAIZ}/articulos/${id}`).set(agente)
       .send({ modelo: 'LG-GR-389' }).expect(200);
-    expect(respuesta.body.datos.modelo).toBe('LG-GR-389');
+    expect(respuesta.body.data.modelo).toBe('LG-GR-389');
   });
 });
 
@@ -345,7 +345,7 @@ describe('reevaluacion de las ordenes abiertas', () => {
         motivo: `${MOTIVO}: la fecha estaba mal digitada, el aparato es de 2018`,
       }).expect(200);
 
-    const reevaluada = respuesta.body.datos.ordenesReevaluadas
+    const reevaluada = respuesta.body.data.ordenesReevaluadas
       .find((o: { numero: number }) => o.numero === orden.numero);
     expect(reevaluada).toBeDefined();
     expect(reevaluada.tipoAnterior).toBe(TIPO_GARANTIA.PROVEEDOR);
@@ -378,7 +378,7 @@ describe('reevaluacion de las ordenes abiertas', () => {
         motivo: `${MOTIVO}: el cliente vendio el aparato`,
       }).expect(200);
 
-    const reevaluada = respuesta.body.datos.ordenesReevaluadas
+    const reevaluada = respuesta.body.data.ordenesReevaluadas
       .find((o: { numero: number }) => o.numero === orden.numero);
     expect(reevaluada.tipoNuevo).toBe(TIPO_GARANTIA.PARTICULAR);
   });
@@ -437,10 +437,10 @@ describe('historial del articulo', () => {
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/articulos/${rows[0]!.id_articulo}`).set(jefatura).expect(200);
 
-    expect(ficha.body.datos.historial.length).toBeGreaterThan(1);
-    expect(ficha.body.datos.historial[0].numero).toBeTypeOf('number');
+    expect(ficha.body.data.historial.length).toBeGreaterThan(1);
+    expect(ficha.body.data.historial[0].numero).toBeTypeOf('number');
     // El historial no filtra costos internos hacia el portal, pero si los
     // muestra al personal: aqui basta con que la falla y el estado esten.
-    expect(ficha.body.datos.historial[0].fallaReportada).toBeTypeOf('string');
+    expect(ficha.body.data.historial[0].fallaReportada).toBeTypeOf('string');
   });
 });

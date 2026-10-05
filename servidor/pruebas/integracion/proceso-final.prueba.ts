@@ -29,7 +29,7 @@ async function sesionDe(codigoRol: string): Promise<{ Authorization: string }> {
   const sesion = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
+  return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
 beforeAll(async () => {
@@ -54,7 +54,7 @@ async function ordenNueva(): Promise<{ id: string; codigo: string }> {
       idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id,
       modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'Para probar el cierre del proceso',
     }).expect(201);
-  return { id: creada.body.datos.id, codigo: creada.body.datos.codigo };
+  return { id: creada.body.data.id, codigo: creada.body.data.codigo };
 }
 
 describe('el numero de orden que ve la gente', () => {
@@ -74,13 +74,13 @@ describe('el numero de orden que ve la gente', () => {
     const orden = await ordenNueva();
     const porCodigo = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes?numero=${orden.codigo}`).set(agente).expect(200);
-    expect(porCodigo.body.datos).toHaveLength(1);
-    expect(porCodigo.body.datos[0].id).toBe(orden.id);
+    expect(porCodigo.body.data).toHaveLength(1);
+    expect(porCodigo.body.data[0].id).toBe(orden.id);
 
-    const numero = porCodigo.body.datos[0].numero;
+    const numero = porCodigo.body.data[0].numero;
     const porNumero = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes?numero=${numero}`).set(agente).expect(200);
-    expect(porNumero.body.datos[0].id).toBe(orden.id);
+    expect(porNumero.body.data[0].id).toBe(orden.id);
   });
 });
 
@@ -112,7 +112,7 @@ describe('validacion tecnica', () => {
 
     const respuesta = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/ordenes/${rows[0].id_orden}/validaciones`)
-      .set({ Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` })
+      .set({ Authorization: `Bearer ${sesion.body.data.tokenAcceso}` })
       .send({
         resultado: 'aprobada',
         observacion: 'Reviso su propio trabajo y lo aprueba.',
@@ -120,7 +120,7 @@ describe('validacion tecnica', () => {
         revisoEvidencias: true, revisoRepuestos: true,
       }).expect(422);
 
-    expect(respuesta.body.error.codigo).toBe('VALIDACION_PROPIA');
+    expect(respuesta.body.error.code).toBe('VALIDACION_PROPIA');
   });
 
   /**
@@ -132,10 +132,10 @@ describe('validacion tecnica', () => {
       .get(`${RAIZ}/validaciones/pendientes?tamano=25`).set(jefeTecnicos).expect(200);
 
     let conFaltantes: string | null = null;
-    for (const orden of pendientes.body.datos) {
+    for (const orden of pendientes.body.data) {
       const revision = await peticion(entorno.aplicacion)
         .get(`${RAIZ}/ordenes/${orden.idOrden}/revision`).set(jefeTecnicos).expect(200);
-      if (revision.body.datos.evidenciasFaltantes.length > 0) {
+      if (revision.body.data.evidenciasFaltantes.length > 0) {
         conFaltantes = orden.idOrden;
         break;
       }
@@ -151,10 +151,10 @@ describe('validacion tecnica', () => {
         revisoEvidencias: true, revisoRepuestos: true,
       }).expect(422);
 
-    expect(respuesta.body.error.codigo).toBe('EVIDENCIA_INCOMPLETA');
+    expect(respuesta.body.error.code).toBe('EVIDENCIA_INCOMPLETA');
     // El mensaje nombra la evidencia que falta: «no se puede» a secas deja
     // al jefe sin saber que pedirle al tecnico.
-    expect(respuesta.body.error.mensaje).toMatch(/falta evidencia obligatoria \(/);
+    expect(respuesta.body.error.message).toMatch(/falta evidencia obligatoria \(/);
   });
 
   /**
@@ -174,14 +174,14 @@ describe('validacion tecnica', () => {
     let aprobada = false;
     let vioFirmaComoFaltante = false;
 
-    for (const orden of pendientes.body.datos) {
+    for (const orden of pendientes.body.data) {
       const revision = await peticion(entorno.aplicacion)
         .get(`${RAIZ}/ordenes/${orden.idOrden}/revision`).set(jefeTecnicos).expect(200);
 
-      if (revision.body.datos.evidenciasFaltantes.includes('firma_cliente')) {
+      if (revision.body.data.evidenciasFaltantes.includes('firma_cliente')) {
         vioFirmaComoFaltante = true;
       }
-      if (revision.body.datos.evidenciasFaltantes.length > 0) continue;
+      if (revision.body.data.evidenciasFaltantes.length > 0) continue;
 
       const respuesta = await peticion(entorno.aplicacion)
         .post(`${RAIZ}/ordenes/${orden.idOrden}/validaciones`).set(jefeTecnicos)
@@ -207,7 +207,7 @@ describe('validacion tecnica', () => {
   it('pedir correccion si se puede, y queda en el historial', async () => {
     const pendientes = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/validaciones/pendientes?tamano=1`).set(jefeTecnicos).expect(200);
-    const idOrden = pendientes.body.datos[0].idOrden;
+    const idOrden = pendientes.body.data[0].idOrden;
 
     await peticion(entorno.aplicacion)
       .post(`${RAIZ}/ordenes/${idOrden}/validaciones`).set(jefeTecnicos)
@@ -220,15 +220,15 @@ describe('validacion tecnica', () => {
 
     const historial = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${idOrden}/validaciones`).set(jefeTecnicos).expect(200);
-    expect(historial.body.datos.length).toBeGreaterThan(0);
-    expect(historial.body.datos[0].resultado).toBe('requiere_correccion');
+    expect(historial.body.data.length).toBeGreaterThan(0);
+    expect(historial.body.data[0].resultado).toBe('requiere_correccion');
   });
 
   it('una observacion de dos palabras no pasa: la revision tiene que sustentar algo', async () => {
     const pendientes = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/validaciones/pendientes?tamano=1`).set(jefeTecnicos).expect(200);
     await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/ordenes/${pendientes.body.datos[0].idOrden}/validaciones`)
+      .post(`${RAIZ}/ordenes/${pendientes.body.data[0].idOrden}/validaciones`)
       .set(jefeTecnicos)
       .send({
         resultado: 'aprobada', observacion: 'ok',
@@ -241,7 +241,7 @@ describe('validacion tecnica', () => {
     const pendientes = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/validaciones/pendientes?tamano=1`).set(jefeTecnicos).expect(200);
     await peticion(entorno.aplicacion)
-      .get(`${RAIZ}/ordenes/${pendientes.body.datos[0].idOrden}/revision`)
+      .get(`${RAIZ}/ordenes/${pendientes.body.data[0].idOrden}/revision`)
       .set(agente).expect(403);
   });
 });
@@ -252,8 +252,8 @@ describe('entrega del articulo', () => {
     const verificacion = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${orden.id}/entrega`).set(mostrador).expect(200);
 
-    expect(verificacion.body.datos.puedeEntregarse).toBe(false);
-    const sinCumplir = verificacion.body.datos.requisitos
+    expect(verificacion.body.data.puedeEntregarse).toBe(false);
+    const sinCumplir = verificacion.body.data.requisitos
       .filter((r: { cumplido: boolean }) => !r.cumplido);
     expect(sinCumplir.length).toBeGreaterThan(0);
     // Cada requisito sin cumplir dice QUE HACER. El mostrador tiene al
@@ -269,12 +269,12 @@ describe('entrega del articulo', () => {
       .post(`${RAIZ}/ordenes/${orden.id}/entrega`).set(mostrador)
       .send({ recibidoPor: 'Ana Munguia Reyes', esElCliente: true }).expect(422);
 
-    expect(respuesta.body.error.codigo).toBe('ENTREGA_BLOQUEADA');
+    expect(respuesta.body.error.code).toBe('ENTREGA_BLOQUEADA');
     expect(respuesta.body.estado).toBeUndefined();
     // La orden NO se movio.
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${orden.id}`).set(agente).expect(200);
-    expect(ficha.body.datos.estado).toBe(ESTADO_ORDEN.REGISTRADA);
+    expect(ficha.body.data.estado).toBe(ESTADO_ORDEN.REGISTRADA);
   });
 
   it('si retira un tercero, su documento es obligatorio', async () => {
@@ -299,10 +299,10 @@ describe('entrega del articulo', () => {
     const verificacion = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${rows[0].id_orden}/entrega`).set(mostrador).expect(200);
 
-    expect(verificacion.body.datos.entrega).not.toBeNull();
-    expect(verificacion.body.datos.entrega.recibidoPor.length).toBeGreaterThan(3);
+    expect(verificacion.body.data.entrega).not.toBeNull();
+    expect(verificacion.body.data.entrega.recibidoPor.length).toBeGreaterThan(3);
     // Ya entregada: no se vuelve a entregar.
-    expect(verificacion.body.datos.puedeEntregarse).toBe(false);
+    expect(verificacion.body.data.puedeEntregarse).toBe(false);
   });
 });
 
@@ -313,8 +313,8 @@ describe('tiendas', () => {
       .get(`${RAIZ}/ordenes/${orden.id}`).set(agente).expect(200);
     // El agente no pertenece a ninguna tienda y no mando ninguna: queda
     // en null, que es honesto. No se inventa una.
-    expect(ficha.body.datos).toHaveProperty('idTienda');
-    expect(ficha.body.datos).toHaveProperty('tienda');
+    expect(ficha.body.data).toHaveProperty('idTienda');
+    expect(ficha.body.data).toHaveProperty('tienda');
   });
 
   it('una tienda desactivada no recibe ordenes nuevas', async () => {
@@ -325,7 +325,7 @@ describe('tiendas', () => {
       }).expect(201);
 
     await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/tiendas/${creada.body.datos.id}/desactivar`).set(admin).expect(200);
+      .post(`${RAIZ}/tiendas/${creada.body.data.id}/desactivar`).set(admin).expect(200);
 
     const { rows } = await entorno.piscina.query<{ id_cliente: string; id: string }>(
       `SELECT a.id_cliente, a.id FROM articulo a JOIN cliente c ON c.id = a.id_cliente
@@ -336,9 +336,9 @@ describe('tiendas', () => {
       .send({
         idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id,
         modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'Con una tienda desactivada',
-        idTienda: creada.body.datos.id,
+        idTienda: creada.body.data.id,
       }).expect(400);
-    expect(respuesta.body.error.campos.idTienda).toBeDefined();
+    expect(respuesta.body.error.fields.idTienda).toBeDefined();
   });
 
   /**
@@ -352,7 +352,7 @@ describe('tiendas', () => {
     if (rows[0] === undefined) return;
     const respuesta = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/tiendas/${rows[0].id_tienda}/desactivar`).set(admin).expect(400);
-    expect(respuesta.body.error.mensaje).toMatch(/usuario\(s\) asignado\(s\)/);
+    expect(respuesta.body.error.message).toMatch(/usuario\(s\) asignado\(s\)/);
   });
 
   it('un tecnico no administra tiendas', async () => {
@@ -363,33 +363,50 @@ describe('tiendas', () => {
 });
 
 describe('alcance del usuario de tienda', () => {
-  it('solo ve las ordenes de su sucursal, y las demas «no existen»', async () => {
+  /*
+   * ESTA PRUEBA CAMBIO DE 404 A 403, A PROPOSITO.
+   *
+   * Antes el sistema respondia «no existe» a la orden de otra sucursal, con
+   * el argumento de que decir «existe pero no le toca» le confirma a quien
+   * prueba identificadores que acerto. El pliego pide 403 (§13) y se sigue
+   * el pliego, por dos razones concretas:
+   *
+   *  - Los identificadores son UUID. No se adivinan contando, asi que lo que
+   *    el 403 revela no habilita un ataque: ya hacia falta tener el
+   *    identificador para preguntar.
+   *  - El 403 le dice la verdad a quien abrio un enlace que le pasaron:
+   *    «esta orden no es suya» es un mensaje que se entiende, mientras que
+   *    «no existe» lo manda a buscar un error que no hay.
+   */
+  it('solo ve las ordenes de su sucursal; las demas responden 403', async () => {
     const nombreUsuario = await usuarioConRol(entorno.piscina, CODIGO_ROL.USUARIO_TIENDA);
     const sesion = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/autenticacion/sesion`)
       .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-    const cabecera = { Authorization: `Bearer ${sesion.body.datos.tokenAcceso}` };
-    const suTienda = sesion.body.datos.usuario.idTienda;
+    const cabecera = { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
+    const suTienda = sesion.body.data.usuario.idTienda;
     expect(suTienda).not.toBeNull();
 
     const suyas = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes?tamano=20`).set(cabecera).expect(200);
-    expect(suyas.body.paginacion.total).toBeGreaterThan(0);
+    expect(suyas.body.pagination.total).toBeGreaterThan(0);
 
-    for (const orden of suyas.body.datos) {
+    for (const orden of suyas.body.data) {
       const ficha = await peticion(entorno.aplicacion)
         .get(`${RAIZ}/ordenes/${orden.id}`).set(cabecera).expect(200);
-      expect(ficha.body.datos.idTienda).toBe(suTienda);
+      expect(ficha.body.data.idTienda).toBe(suTienda);
     }
 
-    // Y una de otra tienda responde «no existe», no «no es suya»: decir
-    // que existe le confirma a quien prueba identificadores que acerto.
+    // Y una de otra tienda responde 403, nombrando el motivo.
     const { rows } = await entorno.piscina.query<{ id: string }>(
       'SELECT id FROM orden_servicio WHERE id_tienda IS DISTINCT FROM $1 LIMIT 1',
       [suTienda],
     );
     const respuesta = await peticion(entorno.aplicacion)
-      .get(`${RAIZ}/ordenes/${rows[0]!.id}`).set(cabecera).expect(404);
-    expect(respuesta.body.error.codigo).toBe('NO_ENCONTRADO');
+      .get(`${RAIZ}/ordenes/${rows[0]!.id}`).set(cabecera).expect(403);
+    expect(respuesta.body.error.code).toBe('SIN_PERMISO');
+    expect(respuesta.body.error.message).toMatch(/otra sucursal/i);
+    // Y no se filtra nada de la orden ajena en la respuesta.
+    expect(respuesta.body.data).toBeUndefined();
   });
 });

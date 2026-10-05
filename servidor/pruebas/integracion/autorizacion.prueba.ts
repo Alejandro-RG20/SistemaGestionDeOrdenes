@@ -16,7 +16,7 @@ async function tokenDe(codigoRol: string): Promise<string> {
   const respuesta = await peticion(entorno.aplicacion)
     .post(`${RAIZ}/autenticacion/sesion`)
     .send({ nombreUsuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
-  return respuesta.body.datos.tokenAcceso;
+  return respuesta.body.data.tokenAcceso;
 }
 
 beforeAll(async () => { entorno = await montarApi(); });
@@ -29,8 +29,8 @@ describe('rutas de administracion', () => {
       .get(`${RAIZ}/usuarios`).set('Authorization', `Bearer ${token}`);
 
     expect(respuesta.status).toBe(403);
-    expect(respuesta.body.error.codigo).toBe('SIN_PERMISO');
-    expect(respuesta.body.datos).toBeUndefined();
+    expect(respuesta.body.error.code).toBe('SIN_PERMISO');
+    expect(respuesta.body.data).toBeUndefined();
   });
 
   it('un tecnico de ruta tampoco puede crear usuarios ni tocar permisos', async () => {
@@ -106,24 +106,24 @@ describe('forma uniforme de la respuesta', () => {
 
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/usuarios?tamano=10`).set(cabecera).expect(200);
-    expect(respuesta.body.datos).toHaveLength(10);
+    expect(respuesta.body.data).toHaveLength(10);
     // El total sale de la plantilla sembrada; se compara contra la base
     // para que agregar una cuenta no rompa una prueba que no habla de eso.
     const enLaBase = await entorno.piscina.query<{ total: string }>(
       'SELECT count(*)::text AS total FROM usuario',
     );
-    expect(respuesta.body.paginacion).toMatchObject({
+    expect(respuesta.body.pagination).toMatchObject({
       pagina: 1, tamano: 10, total: Number(enLaBase.rows[0]!.total),
     });
     // Derivado, no escrito a mano: lo que se comprueba es que el conteo
     // cuadre con el total, no cuanta gente hay sembrada.
-    expect(respuesta.body.paginacion.totalPaginas)
+    expect(respuesta.body.pagination.totalPaginas)
       .toBe(Math.ceil(Number(enLaBase.rows[0]!.total) / 10));
 
     const excesiva = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/usuarios?tamano=5000`).set(cabecera);
     expect(excesiva.status).toBe(400);
-    expect(excesiva.body.error.campos.tamano).toMatch(/maximo/i);
+    expect(excesiva.body.error.fields.tamano).toMatch(/maximo/i);
   });
 
   it('la segunda pagina no repite la primera', async () => {
@@ -134,8 +134,8 @@ describe('forma uniforme de la respuesta', () => {
     const segunda = await peticion(entorno.aplicacion).get(`${RAIZ}/usuarios?tamano=5&pagina=2`).set(cabecera).expect(200);
 
     const identificadores = new Set([
-      ...primera.body.datos.map((u: { id: string }) => u.id),
-      ...segunda.body.datos.map((u: { id: string }) => u.id),
+      ...primera.body.data.map((u: { id: string }) => u.id),
+      ...segunda.body.data.map((u: { id: string }) => u.id),
     ]);
     expect(identificadores.size).toBe(10);
   });
@@ -154,7 +154,7 @@ describe('forma uniforme de la respuesta', () => {
     const conSesion = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/inventado`).set('Authorization', `Bearer ${token}`);
     expect(conSesion.status).toBe(404);
-    expect(conSesion.body.error.codigo).toBe('RUTA_DESCONOCIDA');
+    expect(conSesion.body.error.code).toBe('RUTA_DESCONOCIDA');
   });
 
   it('un identificador que no es UUID se rechaza sin tocar la base', async () => {
@@ -162,6 +162,6 @@ describe('forma uniforme de la respuesta', () => {
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/usuarios/no-es-un-uuid`).set('Authorization', `Bearer ${token}`);
     expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.codigo).toBe('DATOS_INVALIDOS');
+    expect(respuesta.body.error.code).toBe('DATOS_INVALIDOS');
   });
 });
