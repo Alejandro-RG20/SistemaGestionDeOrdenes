@@ -25,6 +25,7 @@ export * from './api/cobros.js';
 export * from './api/avisos.js';
 export * from './api/portal.js';
 export * from './api/indicadores.js';
+export * from './api/tablero.js';
 export * from './api/catalogos.js';
 export * from './api/proceso-final.js';
 export * from './api/reportes.js';

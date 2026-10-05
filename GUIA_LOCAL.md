@@ -485,3 +485,36 @@ hay formulario en vez de mostrar uno que va a fallar.
 Aplicadas sobre la base de desarrollo con 11 406 solicitudes: 11 139 quedaron
 en `recibida` y 267 en `solicitada`, y cero filas con el estado y `liberada`
 en contradicción.
+
+### El tablero de inicio
+
+Entre con cualquier usuario: las once cifras de arriba son la foto de hoy.
+Están cercadas, así que la comparación vale la pena: entre con `jlopez`
+(administrador), con un usuario de tienda y con un técnico, y mire «Órdenes
+abiertas». Deben bajar: 1 500 → 478 → 56.
+
+Cada tarjeta con enlace abre la lista que explica el número. Las que no llevan
+enlace están deshabilitadas a propósito, no es que no respondan.
+
+### Descargar un reporte
+
+Menú → **Reportes**, elija uno y use «Descargar en CSV». El archivo lleva los
+mismos filtros de fecha que la pantalla.
+
+Si quiere ver por qué el escapado importa, busque en el CSV una celda que
+empiece con comilla simple: son las que empezaban por `=`, `+`, `-` o `@`, que
+Excel ejecutaría como fórmula.
+
+### Las alertas nuevas
+
+Menú → **Panel principal**, debajo de las cifras. Con los datos sembrados
+deberían aparecer «Cotizaciones sin respuesta del cliente» (135) y «Compras que
+no han llegado completas» (17). «Repuestos agotados» no aparece porque no hay
+ninguno en cero, que es la verdad de estos datos.
+
+### Las rutas nuevas de esta etapa
+
+| Método y ruta | Para qué |
+| --- | --- |
+| `GET /tablero` | Las once cifras del inicio más la actividad reciente. Cercado. |
+| `GET /reportes/:clave/exportar` | El mismo reporte, como archivo CSV. |

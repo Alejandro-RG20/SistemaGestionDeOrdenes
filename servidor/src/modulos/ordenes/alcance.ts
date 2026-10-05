@@ -55,9 +55,6 @@ export interface AlcanceDeOrdenes {
   readonly idUsuario: string | null;
 }
 
-/** Alcance sin cerco: lo que tiene el personal del centro de servicio. */
-export const SIN_CERCO: AlcanceDeOrdenes = { idTienda: null, idTecnico: null, idUsuario: null };
-
 /**
  * Resuelve el cerco del actor.
  *

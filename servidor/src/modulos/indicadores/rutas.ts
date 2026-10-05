@@ -13,5 +13,11 @@ export function rutasDeIndicadores(): Router {
   const router = Router();
   router.get('/indicadores/operacion',
     exigirPermiso('ordenes.consultar'), asincrono(controlador.operacion));
+
+  // El tablero de inicio. Mismo permiso, misma razon: son agregados de lo
+  // que quien entra ya puede ver orden por orden, y van cercados igual.
+  router.get('/tablero',
+    exigirPermiso('ordenes.consultar'), asincrono(controlador.tablero));
+
   return router;
 }

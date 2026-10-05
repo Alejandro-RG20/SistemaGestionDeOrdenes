@@ -185,3 +185,69 @@ incompleto, al final lo cosmético.
 4. Formato de respuesta del §50.
 5. Estados de cobro, menús por rol, exportación de reportes, avisos.
 6. Las pruebas del §56–§61 y el informe de 21 puntos del §67.
+
+---
+
+# Segunda parte: lo que se hizo con este diagnóstico
+
+Escrito después, sobre el mismo documento, para que el diagnóstico y lo que
+salió de él queden juntos y no haya que cruzar dos archivos.
+
+## Resuelto
+
+| Punto del diagnóstico | Qué se hizo |
+| --- | --- |
+| 2.1 Un usuario de consulta podía inventar existencias | `PERMISO_DEL_MOVIMIENTO` en `compartido`, comprobada en el servicio. Permiso nuevo `inventario.devolucion.registrar`. |
+| 2.2 Un técnico veía las 30 000 órdenes | `modulos/ordenes/alcance.ts`, aplicado en once puertas. |
+| 3.1 Formato de respuesta §50 | `{success, data, pagination}` y `{success:false, error:{code, message, correlationId, fields}}`. |
+| 3.3 Kardex | `GET /repuestos/:id/kardex`, con saldo corrido y el signo según la bodega. |
+| 3.3 Flujo de solicitud §26 | Seis pasos con autoría de cada uno, y permiso por paso. |
+| 3.3 Pantallas de movimientos | Un formulario, cinco tipos, sólo los que el perfil puede registrar. |
+| 3.4 Estados de cobro §39 | `observado` y `cerrado`. |
+| 3.5 Menú del técnico §11 | `SECCIONES_DEL_TECNICO`, lista aparte. |
+| 3.6 Exportación de reportes §43 | `GET /reportes/:clave/exportar`, CSV. |
+| 3.8 Pruebas §56–§61 | `alcance-datos.prueba.ts` y `kardex-y-solicitudes.prueba.ts`, incluida la aritmética del §59. |
+
+## Lo que NO se cambió, y por qué
+
+### Los nombres de los permisos (§14)
+
+El pliego nombra `inventario.entrada`, `inventario.salida`, `compra.aprobar`.
+El sistema usa `inventario.ingreso.registrar`,
+`inventario.despacho.registrar`, `compras.gestionar`.
+
+No se renombraron, y la razón no es comodidad: **el esquema actual distingue
+cosas que el del pliego junta.** `inventario.salida` sería un solo permiso
+para tres operaciones que en este taller las hacen personas distintas —
+despachar a una bodega móvil, consumir contra una orden, y ajustar un
+faltante—. Fundirlas en un permiso le daría al técnico la capacidad de
+ajustar el inventario, que es exactamente lo que el §65 pide separar.
+
+Lo que sí se hizo es que el esquema quede completo: faltaba el permiso de
+devolución, y las devoluciones se estaban colando por el permiso de consulta.
+
+Si de todos modos se prefieren los nombres del pliego, el cambio es un mapa
+en `CATALOGO_PERMISOS` y una migración de `rol_permiso`; se puede hacer, pero
+hay que decidir primero qué pasa con la granularidad que se pierde.
+
+### Los nombres de los estados del expediente (§39)
+
+Igual: se agregaron los dos que faltaban y se conservaron los siete que ya
+funcionaban. `bloqueado_por_evidencia` dice **por qué** el expediente está
+detenido, que es lo que el gestor necesita leer; `Preparando` no lo dice.
+Renombrarlos obligaría a reescribir filas de expedientes vivos sin que nadie
+gane nada.
+
+## Lo que queda pendiente
+
+Honestamente, y sin maquillarlo:
+
+- **§42, el tablero.** Los indicadores existen y consultan datos reales, pero
+  no cubren todas las tarjetas que el pliego enumera.
+- **§55, las notificaciones.** La bandeja de avisos es el canal —así se
+  decidió, el responsable entra a ver— y genera nueve tipos de aviso. El
+  pliego enumera algunos que todavía no se generan, entre ellos los de los
+  flujos nuevos: una solicitud entregada que el técnico no confirmó, y un
+  expediente observado sin respuesta.
+- **§37, cotizaciones.** El ciclo existe en el modelo y en la máquina de
+  estados; falta la pantalla que lo haga evidente de punta a punta.

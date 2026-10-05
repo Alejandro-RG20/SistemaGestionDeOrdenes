@@ -205,10 +205,53 @@ describe('recorrido completo de un expediente', () => {
     expect(pagado.body.data.montoCobrado).toBe(100);
     expect(pagado.body.data.estado).toBe(ESTADO_EXPEDIENTE.PAGADO);
 
-    // Y ya no se toca.
+    /*
+     * ESTA PARTE CAMBIO AL AGREGAR 'cerrado' (§39).
+     *
+     * Antes 'pagado' era el final y de ahi no se salia. Eso dejaba sin final a
+     * los expedientes que se rechazan de verdad: se quedaban en 'rechazado'
+     * para siempre, mezclados con los que todavia se estaban rehaciendo.
+     *
+     * Ahora un expediente cobrado todavia se cierra, y ese cierre es el que
+     * separa la cartera viva de la archivada. Volver atras sigue prohibido.
+     */
+    const atras = await mover({ hacia: ESTADO_EXPEDIENTE.EN_CONFORMACION });
+    expect(atras.status).toBe(422);
+
+    const cerrado = await mover({ hacia: ESTADO_EXPEDIENTE.CERRADO }).expect(200);
+    expect(cerrado.body.data.estado).toBe(ESTADO_EXPEDIENTE.CERRADO);
+
+    // Y AHORA si: un expediente cerrado ya no se toca.
     const despues = await mover({ hacia: ESTADO_EXPEDIENTE.EN_CONFORMACION });
     expect(despues.status).toBe(422);
     expect(despues.body.error.code).toBe('EXPEDIENTE_CERRADO');
+  });
+
+  /*
+   * 'observado' tambien es nuevo (§39), y nombra algo que antes se anotaba
+   * como rechazo: el proveedor no se nego a pagar, pidio un documento. El
+   * indicador de recuperacion contaba como perdido lo que solo esperaba una
+   * foto mas nitida.
+   */
+  it('el proveedor observa el expediente, se corrige y se reenvia', async () => {
+    const { rows } = await entorno.piscina.query<{ id: string }>(
+      'SELECT id FROM expediente_cobro WHERE estado = $1 LIMIT 1',
+      [ESTADO_EXPEDIENTE.ENVIADO],
+    );
+    if (rows[0] === undefined) return;
+
+    const paso = (cuerpo: Record<string, unknown>) => peticion(entorno.aplicacion)
+      .post(`${RAIZ}/expedientes/${rows[0]!.id}/estado`).set(gestor).send(cuerpo);
+
+    const observado = await paso({
+      hacia: ESTADO_EXPEDIENTE.OBSERVADO,
+      motivo: 'El proveedor pide la factura de compra legible',
+    });
+    expect(observado.status).toBe(200);
+    expect(observado.body.data.estado).toBe(ESTADO_EXPEDIENTE.OBSERVADO);
+
+    // De observado se sale corrigiendo, no solo rechazando.
+    await paso({ hacia: ESTADO_EXPEDIENTE.EN_CONFORMACION }).expect(200);
   });
 
   it('rechazar sin motivo se rechaza', async () => {

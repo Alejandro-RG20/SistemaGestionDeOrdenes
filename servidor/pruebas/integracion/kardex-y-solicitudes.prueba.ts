@@ -71,12 +71,23 @@ afterAll(async () => { await entorno.cerrar(); });
 
 describe('la aritmetica del inventario cuadra con el kardex', () => {
   it('10 -> 7/3 -> 7/2 -> 8/1, y el kardex dice lo mismo en cada paso', async () => {
-    // Un repuesto SIN movimientos, para que los numeros sean los del
-    // ejercicio y no los de la siembra.
+    /*
+     * Un repuesto NUEVO, creado aqui.
+     *
+     * La primera version buscaba uno sin movimientos en la siembra y no habia
+     * ninguno: la siembra mueve todo el catalogo. Con un repuesto recien
+     * creado los numeros son exactamente los del ejercicio del pliego —10,
+     * 7/3, 7/2, 8/1— en vez de deltas sobre un saldo cualquiera, y una prueba
+     * que compara numeros literales se lee mucho mejor que una que compara
+     * diferencias.
+     *
+     * Se inserta por la base porque el sistema no tiene alta de repuestos por
+     * API: el catalogo lo carga el administrador del grupo, no el taller.
+     */
     const { rows: repuestos } = await entorno.piscina.query<{ id: string }>(
-      `SELECT r.id FROM repuesto r
-        WHERE NOT EXISTS (SELECT 1 FROM movimiento_repuesto m WHERE m.id_repuesto = r.id)
-        LIMIT 1`,
+      `INSERT INTO repuesto (codigo, descripcion, precio, stock_minimo)
+       VALUES ($1, 'Repuesto de prueba de aritmetica', 100, 2) RETURNING id`,
+      [`PRB-ARI-${Date.now().toString().slice(-6)}`],
     );
     const idRepuesto = repuestos[0]!.id;
 

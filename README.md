@@ -1548,3 +1548,86 @@ No se renombró nada. Los nombres del sistema dicen lo mismo que los del
 pliego con más precisión —`bloqueado_por_evidencia` explica **por qué** está
 detenido, que es lo que el gestor necesita leer— y renombrarlos obligaría a
 reescribir filas de expedientes vivos sin que nadie gane nada.
+
+## El tablero: once cifras y ninguna inventada
+
+El §42 pide un tablero con información real y lo dice explícito: «no usar
+métricas ficticias». La razón no es formal. Una cifra inventada en la pantalla
+de inicio es la que la jefatura mira todos los días para decidir si manda a
+alguien a trabajar el sábado.
+
+Las once son `count` sobre filas reales, en **una sola consulta** con
+subconsultas escalares: once `SELECT count(*)` sueltos son once viajes a la
+base cada vez que alguien abre el inicio, y el inicio lo abren todos primero.
+
+Dos decisiones que se notan:
+
+**El tono lo decide el servidor, no la pantalla.** Que 40 órdenes atrasadas
+sean críticas y 0 no lo sean es una regla de negocio, y tiene que ser la misma
+en cualquier pantalla que las muestre.
+
+**Cada cifra con enlace es un botón de verdad.** Lleva a la lista que explica
+el número. Un número que no se puede abrir no sirve para actuar, y el §63
+prohíbe los botones decorativos.
+
+**Y el tablero va cercado.** Un tablero sin cerco es la misma fuga que la lista
+de órdenes, sólo agregada. Comprobado con los mismos datos:
+
+| Quién | Órdenes abiertas | Con plazo vencido |
+| --- | --- | --- |
+| Administrador | 1 500 | 1 414 |
+| Usuario de tienda | 478 | 448 |
+| Técnico de ruta | 56 | 54 |
+
+La actividad reciente sale de `bitacora`, que ya registra toda operación que
+cambia algo. Una tabla de «actividad» aparte sería un segundo lugar con lo
+mismo, y los dos se desincronizan.
+
+## Exportar un reporte: por qué CSV y no PDF
+
+El CSV lo abre Excel con doble clic y no obliga a meter una biblioteca de
+ofimática —ni la fuente de un PDF— en el servidor para resolver algo que son
+cuatro reglas de escapado. Lo que la jefatura hace con el reporte es pegarlo en
+una hoja y sumar columnas; para eso el CSV es el formato, no un PDF del que hay
+que volver a teclear los números.
+
+El endpoint reusa `servicio.ejecutar`, el mismo que sirve la pantalla, para que
+el archivo y lo que la persona ve no puedan diferir. Y no responde con la
+envoltura del §50, que es correcto: lo que viaja no es un dato de la API, es un
+archivo. Un CSV envuelto en JSON no lo abre Excel.
+
+**Dos detalles que no son adorno:**
+
+El **BOM** al principio. Sin él, Excel en Windows abre el archivo en su página
+de códigos local y «Garantía de proveedor» sale como «GarantÃ­a».
+
+Las celdas que empiezan por `=`, `+`, `-` o `@` se prefijan con una comilla
+simple. Excel interpreta esas celdas como **fórmulas**, y un nombre de cliente
+que empiece con un guion se convierte en un error de hoja de cálculo —o, con
+datos puestos a propósito, en algo peor—. Es inyección de fórmulas, y el sitio
+donde se evita es al serializar. Hay ocho pruebas sobre esto.
+
+## Tres avisos que faltaban, y uno que devolvía cero
+
+El §55 enumera diez alertas. Ocho ya existían; estas tres se agregaron:
+
+**Repuesto agotado**, aparte de «bajo mínimo» y con otra gravedad. Bajo mínimo
+es informativo: reponga pronto. Agotado es crítico: la próxima orden que
+necesite esa pieza se detiene. Mezclarlos hacía que lo urgente se perdiera
+entre lo que sólo hay que ir pidiendo. Con los datos actuales no hay ninguno
+agotado, y el aviso no aparece: cero de verdad, no cero de relleno.
+
+**Compra pendiente**, incluyendo `recibida_parcial`: parte de la mercadería
+sigue sin llegar y alguien tiene que perseguirla. Encuentra 17.
+
+**Cotización sin respuesta del cliente.** Es el único aviso del sistema sobre
+algo que no depende del taller, y por eso hace falta: nadie la persigue porque,
+formalmente, no hay nada que hacer de este lado, mientras el artículo ocupa
+espacio en el taller.
+
+Este último devolvía **cero** en la primera versión, y la causa vale contarla:
+`cotizacion.aceptada` es **NULL** mientras el cliente no contesta, y pasa a
+`true` o `false` cuando contesta. No es un booleano de dos valores. `NOT
+aceptada` con NULL da NULL, y NULL no pasa el WHERE: la condición descartaba
+exactamente las 135 cotizaciones que tenía que encontrar. Pendiente es NULL;
+`false` es «el cliente dijo que no», que es otra cosa y no se avisa.

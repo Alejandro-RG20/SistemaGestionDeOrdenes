@@ -23,6 +23,7 @@ import {
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
 import { Aviso, Cargando, cordobas, Fallo, fechaCorta, Tarjeta, Vacio } from '../componentes/piezas.js';
+import { RAIZ_API, consultaDe } from '../api/cliente.js';
 
 const TITULO_DE_GRUPO: Record<string, string> = {
   operacion: 'Operacion',
@@ -183,6 +184,31 @@ export function Reportes(): JSX.Element {
           {resultado.datos.advertencia !== null ? (
             <Aviso tono="warn">{resultado.datos.advertencia}</Aviso>
           ) : null}
+
+          {/*
+            * Descargar el reporte (§43).
+            *
+            * Es un enlace y no un boton con `fetch`: el navegador sabe
+            * descargar archivos y la cabecera Content-Disposition del
+            * servidor ya dice como se llama. Traerlo por fetch obligaria a
+            * armar un Blob, una URL temporal y un `<a>` invisible para
+            * acabar en el mismo sitio.
+            *
+            * Lleva los MISMOS filtros que la pantalla, asi que lo que se
+            * descarga es exactamente lo que se esta viendo.
+            */}
+          <p>
+            <a
+              className="secundario"
+              href={`${RAIZ_API}/reportes/${clave}/exportar${consultaDe({
+                desde: desde === '' ? undefined : desde,
+                hasta: hasta === '' ? undefined : hasta,
+              })}`}
+              download
+            >
+              Descargar en CSV ({resultado.datos.filas.length} filas)
+            </a>
+          </p>
 
           {resultado.datos.filas.length === 0 ? (
             <Vacio>Este reporte no devolvio ninguna fila para ese periodo.</Vacio>

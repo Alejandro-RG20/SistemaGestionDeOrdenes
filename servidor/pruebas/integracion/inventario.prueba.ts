@@ -69,7 +69,42 @@ async function ordenAbierta(): Promise<string> {
       idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id,
       modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'No enfria, para prueba de inventario',
     }).expect(201);
+
+  /*
+   * Se le asigna al tecnico que va a consumir los repuestos.
+   *
+   * No es decoracion de la prueba: desde que existe el cerco por datos
+   * (§13), consumir repuestos contra la orden de otro responde 403, y con
+   * razon —le carga el costo de la pieza a la orden equivocada, y ese costo
+   * acaba en el expediente de cobro de otra persona—. Antes esta prueba
+   * levantaba la orden con el agente, la dejaba sin asignar, y el tecnico le
+   * cargaba repuestos igual.
+   *
+   * Se asigna por la base y no por la API porque el tecnico no tiene
+   * `ordenes.asignar` —y no debe tenerlo—, y montar una sesion de jefatura
+   * solo para asignar añade ruido a una prueba que es sobre inventario.
+   */
+  await entorno.piscina.query(
+    'UPDATE orden_servicio SET id_tecnico = $2 WHERE id = $1',
+    [creada.body.data.id, await idDelTecnicoDePlanta()],
+  );
+
   return creada.body.data.id;
+}
+
+/** El tecnico cuya sesion usan estas pruebas, por su ficha. */
+async function idDelTecnicoDePlanta(): Promise<string> {
+  const token = tecnicoPlanta.Authorization.replace('Bearer ', '');
+  const carga = JSON.parse(
+    Buffer.from(token.split('.')[1]!, 'base64url').toString('utf8'),
+  ) as { sub: string };
+  const { rows } = await entorno.piscina.query<{ id: string }>(
+    'SELECT id FROM tecnico WHERE id_usuario = $1 AND activo', [carga.sub],
+  );
+  if (rows[0] === undefined) {
+    throw new Error('La sesion de pruebas no es de un tecnico con ficha activa.');
+  }
+  return rows[0].id;
 }
 
 beforeAll(async () => {

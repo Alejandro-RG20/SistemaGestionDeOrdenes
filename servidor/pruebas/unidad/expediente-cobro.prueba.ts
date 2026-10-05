@@ -102,12 +102,60 @@ describe('maquina del expediente', () => {
     expect(destinosPosibles(ESTADO_EXPEDIENTE.RECHAZADO)).toContain(ESTADO_EXPEDIENTE.EN_CONFORMACION);
   });
 
-  it('un expediente pagado ya no se toca', () => {
-    const veredicto = evaluarTransicion(contexto({
+  /*
+   * ESTA PRUEBA CAMBIO AL AGREGAR 'cerrado' (§39).
+   *
+   * Antes el unico final era 'pagado' y la prueba decia «un expediente pagado
+   * ya no se toca». Eso dejaba sin final a los expedientes que se rechazan de
+   * verdad: se quedaban en 'rechazado' para siempre, mezclados con los que
+   * todavia se estaban rehaciendo.
+   *
+   * Ahora un expediente cobrado todavia se cierra, y ese cierre es el que
+   * separa la cartera viva de la archivada. Lo que ya no se toca es 'cerrado'.
+   */
+  it('un expediente pagado solo puede cerrarse, no volver atras', () => {
+    const atras = evaluarTransicion(contexto({
       estado: ESTADO_EXPEDIENTE.PAGADO, hacia: ESTADO_EXPEDIENTE.EN_CONFORMACION,
     }));
-    expect(veredicto.permitida).toBe(false);
-    expect(veredicto.codigo).toBe(CODIGO_EXPEDIENTE.EXPEDIENTE_CERRADO);
+    expect(atras.permitida).toBe(false);
+
+    const cierre = evaluarTransicion(contexto({
+      estado: ESTADO_EXPEDIENTE.PAGADO, hacia: ESTADO_EXPEDIENTE.CERRADO,
+    }));
+    expect(cierre.permitida).toBe(true);
+  });
+
+  it('un expediente cerrado ya no se toca', () => {
+    for (const hacia of [
+      ESTADO_EXPEDIENTE.EN_CONFORMACION, ESTADO_EXPEDIENTE.ENVIADO, ESTADO_EXPEDIENTE.PAGADO,
+    ]) {
+      const veredicto = evaluarTransicion(contexto({
+        estado: ESTADO_EXPEDIENTE.CERRADO, hacia,
+      }));
+      expect(veredicto.permitida).toBe(false);
+      expect(veredicto.codigo).toBe(CODIGO_EXPEDIENTE.EXPEDIENTE_CERRADO);
+    }
+  });
+
+  /*
+   * 'observado' no es un rechazo. El proveedor pidio algo —una foto mas
+   * nitida, la factura— y el expediente vuelve a prepararse para reenviarse.
+   * Contarlo como rechazo hacia que el indicador de recuperacion diera por
+   * perdido lo que solo esperaba un documento.
+   */
+  it('de observado se sale corrigiendo, no solo rechazando', () => {
+    const destinos = destinosPosibles(ESTADO_EXPEDIENTE.OBSERVADO);
+    expect(destinos).toContain(ESTADO_EXPEDIENTE.EN_CONFORMACION);
+    expect(destinos).toContain(ESTADO_EXPEDIENTE.LISTO_PARA_ENVIAR);
+    expect(destinos).toContain(ESTADO_EXPEDIENTE.RECHAZADO);
+  });
+
+  it('un expediente enviado puede ser observado por el proveedor', () => {
+    expect(destinosPosibles(ESTADO_EXPEDIENTE.ENVIADO)).toContain(ESTADO_EXPEDIENTE.OBSERVADO);
+  });
+
+  it('un rechazo tambien se puede cerrar asumiendo que no se cobra', () => {
+    expect(destinosPosibles(ESTADO_EXPEDIENTE.RECHAZADO)).toContain(ESTADO_EXPEDIENTE.CERRADO);
   });
 
   it('no se puede saltar del borrador al enviado', () => {

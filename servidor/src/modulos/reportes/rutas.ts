@@ -14,6 +14,9 @@ export function rutasDeReportes(): Router {
   const consultar: RequestHandler = exigirPermiso('reportes.consultar');
 
   router.get('/reportes', consultar, asincrono(controlador.catalogo));
+  // «exportar» antes que «:clave» no hace falta —son dos segmentos— pero el
+  // orden se mantiene de lo mas especifico a lo mas general por costumbre.
+  router.get('/reportes/:clave/exportar', consultar, asincrono(controlador.exportar));
   router.get('/reportes/:clave', consultar, asincrono(controlador.ejecutar));
 
   return router;

@@ -12,10 +12,17 @@
  * mirarla es quedarse sin aviso.
  */
 import { Link } from 'react-router-dom';
-import type { BandejaDeAvisos, IndicadoresDeOperacion } from '@servitotal/compartido';
+import type { BandejaDeAvisos, IndicadoresDeOperacion, Tablero } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
 import { Aviso, Cargando, Cifra, Fallo, Tarjeta } from '../componentes/piezas.js';
+
+/** El color de cada tono. Nunca es el unico indicador: la etiqueta va al lado. */
+const COLOR_DEL_TONO: Record<string, string | undefined> = {
+  normal: undefined,
+  atencion: 'var(--amber)',
+  critico: 'var(--red)',
+};
 
 const TONO_DE_GRAVEDAD: Record<string, 'warn' | 'info' | ''> = {
   critico: '',
@@ -29,6 +36,22 @@ export function PanelPrincipal(): JSX.Element {
   const bandeja = useRecurso<BandejaDeAvisos>(() => api.pedir<BandejaDeAvisos>('/avisos'), []);
   const operacion = useRecurso<IndicadoresDeOperacion>(
     () => api.pedir<IndicadoresDeOperacion>('/indicadores/operacion').catch(() => null as never),
+    [],
+  );
+
+  /*
+   * Las doce cifras del §42.
+   *
+   * Van en una peticion aparte de los indicadores y a proposito: los
+   * indicadores son el analisis —cumplimiento, permanencia, reincidencia— y
+   * esto es el estado de HOY. Juntarlos en un endpoint obligaria a calcular
+   * las dos cosas aunque la pantalla solo necesite una.
+   *
+   * Si falla, la bandeja se muestra igual: el tablero es util, la bandeja es
+   * el canal de aviso del sistema y no puede caerse con el.
+   */
+  const tablero = useRecurso<Tablero | null>(
+    () => api.pedir<Tablero>('/tablero').catch(() => null),
     [],
   );
 
@@ -52,29 +75,54 @@ export function PanelPrincipal(): JSX.Element {
         {hoy.charAt(0).toUpperCase() + hoy.slice(1)} · {usuario?.nombres ?? ''}
       </p>
 
+      {/*
+        * El tablero del §42: doce cifras, todas contadas sobre la base.
+        *
+        * El tono lo decide el SERVIDOR, no esta pantalla: que 40 ordenes
+        * atrasadas sean criticas y 0 no lo sean es una regla de negocio y
+        * tiene que ser la misma en cualquier pantalla que las muestre.
+        *
+        * Cada tarjeta con enlace es un boton de verdad: lleva a la lista que
+        * explica el numero. Un numero que no se puede abrir no sirve para
+        * actuar.
+        */}
+      {tablero.datos === null ? null : (
+        <div className="g g4" style={{ marginBottom: 12 }}>
+          {tablero.datos.cifras.map((cifra) => (
+            <Link
+              key={cifra.clave}
+              to={cifra.enlace ?? '#'}
+              style={{
+                textDecoration: 'none',
+                color: 'inherit',
+                pointerEvents: cifra.enlace === null ? 'none' : undefined,
+              }}
+              title={cifra.explicacion}
+            >
+              <Cifra
+                valor={cifra.valor}
+                etiqueta={cifra.etiqueta}
+                color={COLOR_DEL_TONO[cifra.tono]}
+              />
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {/* El cumplimiento de plazo viene del analisis, no del conteo de hoy. */}
       {cifras === null ? null : (
-        <div className="g g5" style={{ marginBottom: 12 }}>
-          <Cifra valor={cifras.ordenesVivas} etiqueta="Ordenes activas" />
+        <div className="g g3" style={{ marginBottom: 12 }}>
           <Cifra
-            valor={cifras.cumplimiento.vencidasAbiertas}
-            etiqueta="Plazo vencido"
-            color="var(--red)"
-          />
-          <Cifra
-            valor={porEstado('esperando_repuesto')}
-            etiqueta="Esperando repuesto"
-            color="var(--amber)"
+            valor={`${cifras.cumplimiento.porcentaje}%`}
+            etiqueta="Cumplimiento de plazo"
+            color="var(--blue)"
           />
           <Cifra
             valor={porEstado('en_diagnostico')}
             etiqueta="En diagnostico"
             color="var(--teal)"
           />
-          <Cifra
-            valor={`${cifras.cumplimiento.porcentaje}%`}
-            etiqueta="Cumplimiento de plazo"
-            color="var(--blue)"
-          />
+          <Cifra valor={cifras.ordenesVivas} etiqueta="Ordenes activas (analisis)" />
         </div>
       )}
 
@@ -119,6 +167,33 @@ export function PanelPrincipal(): JSX.Element {
           ) : null}
         </Tarjeta>
       ))}
+
+      {/*
+        * Actividad reciente (§42).
+        *
+        * Sale de la bitacora de auditoria, que ya registra toda operacion que
+        * cambia algo. Una tabla de «actividad» aparte seria un segundo lugar
+        * con lo mismo, y los dos se desincronizan.
+        */}
+      {tablero.datos === null || tablero.datos.actividad.length === 0 ? null : (
+        <Tarjeta titulo="Actividad reciente">
+          <table className="d">
+            <thead>
+              <tr><th>Cuando</th><th>Quien</th><th>Que</th><th /></tr>
+            </thead>
+            <tbody>
+              {tablero.datos.actividad.map((linea, indice) => (
+                <tr key={`${linea.momento}-${indice}`}>
+                  <td className="tenue">{new Date(linea.momento).toLocaleString('es-NI')}</td>
+                  <td>{linea.quien ?? 'el sistema'}</td>
+                  <td className="tenue">{linea.accion} · {linea.detalle}</td>
+                  <td>{linea.enlace === null ? null : <Link to={linea.enlace}>Abrir</Link>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Tarjeta>
+      )}
 
       <div className="tools">
         <Link className="btn pri" to="/ordenes/nueva">Nueva orden</Link>

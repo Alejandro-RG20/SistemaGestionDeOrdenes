@@ -24,6 +24,23 @@ export const TIPO_AVISO = {
   REPUESTO_BAJO_MINIMO: 'repuesto_bajo_minimo',
   SOLICITUD_REPUESTO_PENDIENTE: 'solicitud_repuesto_pendiente',
   EVIDENCIA_FALTANTE: 'evidencia_faltante',
+  /**
+   * Agotado es distinto de bajo minimo y por eso es su propio aviso.
+   *
+   * «Bajo minimo» quiere decir «reponga pronto»; agotado quiere decir «la
+   * proxima orden que necesite esta pieza se detiene». Mezclarlos hacia que
+   * lo urgente se perdiera entre lo que solo hay que ir pidiendo.
+   */
+  REPUESTO_AGOTADO: 'repuesto_agotado',
+  /**
+   * Una cotizacion hecha que el cliente no ha respondido.
+   *
+   * Es dinero esperando una llamada: la orden no avanza y nadie la esta
+   * persiguiendo porque, formalmente, no hay nada que hacer.
+   */
+  COTIZACION_PENDIENTE: 'cotizacion_pendiente',
+  /** Un pedido al proveedor que no ha llegado completo. */
+  COMPRA_PENDIENTE: 'compra_pendiente',
 } as const;
 export type TipoAviso = (typeof TIPO_AVISO)[keyof typeof TIPO_AVISO];
 

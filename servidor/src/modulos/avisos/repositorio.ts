@@ -283,3 +283,119 @@ export async function tecnicoDeUsuario(
   );
   return rows[0]?.id ?? null;
 }
+
+/**
+ * Repuestos AGOTADOS en una bodega que surte: existencia en cero.
+ *
+ * Es su propia consulta y no un filtro de la anterior porque la pregunta es
+ * distinta. «Bajo minimo» quiere decir «reponga pronto». Agotado quiere decir
+ * «la proxima orden que necesite esta pieza se detiene», y eso no puede
+ * aparecer mezclado con lo que solo hay que ir pidiendo.
+ *
+ * Se incluye el repuesto que NO tiene fila en `existencia`: un repuesto del
+ * catalogo que nunca entro a esa bodega esta igual de agotado que uno que se
+ * acabo, y filtrar por `cantidad = 0` solo encontraba el segundo.
+ */
+export async function repuestosAgotados(
+  ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<{ total: number; muestra: FilaRepuestoBajoMinimo[] }> {
+  const donde = `FROM repuesto r
+       CROSS JOIN bodega b
+       LEFT JOIN existencia e ON e.id_repuesto = r.id AND e.id_bodega = b.id
+      WHERE r.activo AND b.tipo = 'central' AND b.activa AND b.surte_repuestos
+        AND coalesce(e.cantidad, 0) = 0
+        -- Solo los que alguna vez se movieron: el catalogo completo en cero
+        -- seria una lista de cientos que nadie pidio nunca.
+        AND EXISTS (SELECT 1 FROM movimiento_repuesto m WHERE m.id_repuesto = r.id)`;
+  const conteo = await ejecutor.query<{ total: string }>(
+    `SELECT count(*)::text AS total ${donde}`,
+  );
+  const { rows } = await ejecutor.query<FilaRepuestoBajoMinimo>(
+    `SELECT r.id, r.codigo, r.descripcion, b.nombre AS bodega,
+            0 AS cantidad, r.stock_minimo
+     ${donde}
+     ORDER BY r.codigo
+     LIMIT $1`,
+    [MUESTRA],
+  );
+  return { total: Number(conteo.rows[0]?.total ?? 0), muestra: rows };
+}
+
+export interface FilaCotizacionPendiente {
+  readonly id: string;
+  readonly codigo: string | null;
+  readonly numero_orden: number;
+  readonly cliente: string;
+  readonly total: string;
+  readonly dias: number;
+}
+
+/**
+ * Cotizaciones entregadas al cliente que siguen sin respuesta.
+ *
+ * Es dinero esperando una llamada. La orden no avanza y nadie la esta
+ * persiguiendo porque, formalmente, no hay nada que hacer: la pelota esta
+ * del lado del cliente. Precisamente por eso hace falta el aviso.
+ */
+export async function cotizacionesPendientes(
+  ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<{ total: number; muestra: FilaCotizacionPendiente[] }> {
+  /*
+   * `aceptada` es NULL mientras el cliente no contesta, y pasa a true o false
+   * cuando contesta. NO es un booleano de dos valores.
+   *
+   * Importa porque `NOT c.aceptada` con NULL da NULL, y NULL no pasa el
+   * WHERE: la primera version de este aviso descartaba exactamente las 135
+   * cotizaciones que tenia que encontrar y devolvia cero. Pendiente es NULL;
+   * false es «el cliente dijo que no», que es otra cosa y no se avisa.
+   */
+  const donde = `FROM cotizacion c
+       JOIN orden_servicio o ON o.id = c.id_orden
+       JOIN cliente cl ON cl.id = o.id_cliente
+      WHERE c.aceptada IS NULL
+        AND o.estado IN ('cotizada', 'esperando_autorizacion')`;
+  const conteo = await ejecutor.query<{ total: string }>(
+    `SELECT count(*)::text AS total ${donde}`,
+  );
+  const { rows } = await ejecutor.query<FilaCotizacionPendiente>(
+    `SELECT o.id, o.codigo, o.numero AS numero_orden, trim(cl.nombres || ' ' || coalesce(cl.apellidos, '')) AS cliente,
+            c.total::text AS total,
+            EXTRACT(EPOCH FROM (now() - c.creado_en))/86400 AS dias
+     ${donde}
+     ORDER BY c.creado_en
+     LIMIT $1`,
+    [MUESTRA],
+  );
+  return { total: Number(conteo.rows[0]?.total ?? 0), muestra: rows };
+}
+
+export interface FilaCompraPendiente {
+  readonly id: string;
+  readonly numero: string;
+  readonly proveedor: string;
+  readonly estado: string;
+  readonly dias: number;
+}
+
+/** Pedidos al proveedor que no han llegado completos. */
+export async function comprasPendientes(
+  ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<{ total: number; muestra: FilaCompraPendiente[] }> {
+  // 'recibida_parcial' cuenta: parte de la mercaderia sigue sin llegar y
+  // alguien tiene que perseguirla.
+  const donde = `FROM compra c JOIN proveedor p ON p.id = c.id_proveedor
+      WHERE c.estado IN ('enviada', 'confirmada', 'recibida_parcial')`;
+  const conteo = await ejecutor.query<{ total: string }>(
+    `SELECT count(*)::text AS total ${donde}`,
+  );
+  const { rows } = await ejecutor.query<FilaCompraPendiente>(
+    `SELECT c.id, c.numero::text AS numero, p.nombre AS proveedor,
+            c.estado::text AS estado,
+            EXTRACT(EPOCH FROM (now() - c.creado_en))/86400 AS dias
+     ${donde}
+     ORDER BY c.creado_en
+     LIMIT $1`,
+    [MUESTRA],
+  );
+  return { total: Number(conteo.rows[0]?.total ?? 0), muestra: rows };
+}

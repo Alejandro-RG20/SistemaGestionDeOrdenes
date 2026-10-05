@@ -238,6 +238,86 @@ export async function bandejaDe(actor: Actor): Promise<BandejaDeAvisos> {
     }
   }
 
+  /*
+   * Repuestos AGOTADOS. Aparte de «bajo minimo» y con otra gravedad.
+   *
+   * Bajo minimo es informativo: reponga pronto. Agotado es critico: la
+   * proxima orden que necesite esa pieza se detiene. Mezclarlos hacia que lo
+   * urgente se perdiera entre lo que solo hay que ir pidiendo.
+   */
+  if (puede(actor, 'inventario.consultar')) {
+    const agotados = await repositorio.repuestosAgotados();
+    if (agotados.total > 0) {
+      grupos.push({
+        tipo: TIPO_AVISO.REPUESTO_AGOTADO,
+        gravedad: GRAVEDAD_AVISO.CRITICO,
+        titulo: 'Repuestos agotados en bodega',
+        porQue: 'No hay ninguno. La proxima orden que lo necesite se detiene.',
+        total: agotados.total,
+        muestra: agotados.muestra.map((fila): RenglonDeAviso => ({
+          id: `${fila.id}:${fila.bodega}`,
+          titulo: `${fila.codigo} · ${fila.descripcion}`,
+          detalle: `Cero en ${fila.bodega}; el minimo es ${fila.stock_minimo}`,
+          enlace: `/inventario/kardex/${fila.id}`,
+          magnitud: fila.stock_minimo,
+        })),
+        enlaceVerTodo: '/inventario?bajoMinimo=1',
+      });
+    }
+  }
+
+  /*
+   * Cotizaciones que el cliente no ha contestado.
+   *
+   * Es el unico aviso del sistema sobre algo que NO depende del taller, y por
+   * eso hace falta: nadie la persigue porque, formalmente, no hay nada que
+   * hacer de este lado. Mientras tanto la orden no avanza y el articulo ocupa
+   * espacio en el taller.
+   */
+  if (puede(actor, 'taller.cotizacion.autorizar')) {
+    const cotizaciones = await repositorio.cotizacionesPendientes();
+    if (cotizaciones.total > 0) {
+      grupos.push({
+        tipo: TIPO_AVISO.COTIZACION_PENDIENTE,
+        gravedad: GRAVEDAD_AVISO.ATENCION,
+        titulo: 'Cotizaciones sin respuesta del cliente',
+        porQue: 'La orden no avanza hasta que el cliente autorice. Hay que llamarlo.',
+        total: cotizaciones.total,
+        muestra: cotizaciones.muestra.map((fila): RenglonDeAviso => ({
+          id: fila.id,
+          titulo: `${fila.codigo ?? `Orden ${fila.numero_orden}`} · ${fila.cliente}`,
+          detalle: `C$ ${Number(fila.total).toLocaleString('es-NI')} · cotizada hace `
+            + `${Math.round(fila.dias)} dias`,
+          enlace: `/ordenes/${fila.id}`,
+          magnitud: redondear(fila.dias),
+        })),
+        enlaceVerTodo: '/ordenes?estado=esperando_autorizacion',
+      });
+    }
+  }
+
+  /** Pedidos al proveedor que no han llegado completos. */
+  if (puede(actor, 'compras.consultar')) {
+    const compras = await repositorio.comprasPendientes();
+    if (compras.total > 0) {
+      grupos.push({
+        tipo: TIPO_AVISO.COMPRA_PENDIENTE,
+        gravedad: GRAVEDAD_AVISO.INFORMATIVO,
+        titulo: 'Compras que no han llegado completas',
+        porQue: 'Pedidas al proveedor y pendientes de recibir. Varias sostienen ordenes detenidas.',
+        total: compras.total,
+        muestra: compras.muestra.map((fila): RenglonDeAviso => ({
+          id: fila.id,
+          titulo: `Compra ${fila.numero} · ${fila.proveedor}`,
+          detalle: `${fila.estado.replace(/_/g, ' ')} · pedida hace ${Math.round(fila.dias)} dias`,
+          enlace: `/compras/${fila.id}`,
+          magnitud: redondear(fila.dias),
+        })),
+        enlaceVerTodo: '/compras',
+      });
+    }
+  }
+
   // Lo critico primero; dentro de cada gravedad, lo mas numeroso.
   const orden = {
     [GRAVEDAD_AVISO.CRITICO]: 0,
