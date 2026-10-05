@@ -140,7 +140,15 @@ export async function actividad(
             -- tipada. Se une solo cuando la fila anotada ES una orden.
             LEFT JOIN orden_servicio o
                    ON b.tabla = 'orden_servicio' AND o.id = b.id_registro
-      WHERE (o.id IS NULL OR (${CERCO}))
+      -- Para quien NO esta cercado, toda la bitacora. Para quien si, solo las
+      -- lineas de SUS ordenes: una fila de bitacora que no sea de una orden
+      -- —un usuario, un repuesto, una regla— no es de su incumbencia, y
+      -- mostrarsela es a la vez ruido y una fuga pequeña de lo que pasa en el
+      -- centro. El cerco se reconoce por tener tienda o tecnico.
+      WHERE CASE
+              WHEN $1::uuid IS NULL AND $2::uuid IS NULL THEN true
+              ELSE o.id IS NOT NULL AND (${CERCO})
+            END
       ORDER BY b.momento DESC
       LIMIT $4`,
     [cerco.idTienda, cerco.idTecnico, cerco.idUsuario, limite],

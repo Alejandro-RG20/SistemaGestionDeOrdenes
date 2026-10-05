@@ -1583,6 +1583,14 @@ La actividad reciente sale de `bitacora`, que ya registra toda operación que
 cambia algo. Una tabla de «actividad» aparte sería un segundo lugar con lo
 mismo, y los dos se desincronizan.
 
+Y **también va cercada**. La primera versión le mostraba a quien está cercado
+las líneas de la bitácora que no son de ninguna orden —un usuario, un
+repuesto, una regla de cobertura—, con el argumento de que no identifican a
+nadie. Es ruido para el técnico y una fuga pequeña de lo que pasa en el
+centro, así que al cercado se le muestran sólo las líneas de sus propias
+órdenes. Comprobado: de las 15 líneas que ve un técnico de ruta, las 15 son de
+órdenes suyas.
+
 ## Exportar un reporte: por qué CSV y no PDF
 
 El CSV lo abre Excel con doble clic y no obliga a meter una biblioteca de
