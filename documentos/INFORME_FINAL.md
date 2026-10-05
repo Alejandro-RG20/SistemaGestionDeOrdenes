@@ -391,7 +391,31 @@ tabla aparte: dos tablas con lo mismo se desincronizan.
 
 ## 20. Pruebas
 
-Se completará con el resultado de la corrida final, más abajo.
+**605 pruebas, todas verdes.** 493 del servidor en 37 archivos y 112 del panel
+en 11. Corridas contra PostgreSQL real, con la base de pruebas sembrada desde
+cero en cada archivo —30 000 órdenes, 43 usuarios, 13 roles— y nunca contra la
+base de desarrollo: hay una guarda que aborta la corrida si el nombre de la
+base efectiva no es `servitotal_pruebas`.
+
+```
+Test Files  37 passed (37)
+     Tests  493 passed (493)          ← servidor
+Test Files  11 passed (11)
+     Tests  112 passed (112)          ← panel
+```
+
+**Cinco pruebas cambiaron en esta etapa porque afirmaban algo que ya no es
+cierto**, y las cinco se actualizaron sin debilitarlas:
+
+- Tres de inventario y kardex levantaban la orden con el agente, la dejaban sin
+  asignar, y el técnico le cargaba repuestos igual. Con el cerco eso responde
+  403, y con razón: le carga el costo de la pieza a la orden equivocada.
+- Dos del expediente de cobro decían «un expediente pagado ya no se toca». Al
+  agregar `cerrado`, un expediente cobrado todavía se cierra.
+
+Y una falló por **mi propia aserción mal escrita**: comprobaba que el aviso de
+cotizaciones «no suma las rechazadas», pero con cero rechazadas eso comparaba
+135 contra 135. El fallo era de la prueba, no del aviso.
 
 Lo que cubren, por si sirve más que el número:
 
@@ -410,6 +434,13 @@ Lo que cubren, por si sirve más que el número:
   desajuste de parámetros.
 - **El serializador CSV**, incluida la inyección de fórmulas.
 - **Las migraciones**, aplicadas desde cero.
+- **El cuerpo malformado**: que un JSON roto responda 400 y no 500, que traiga
+  identificador de correlación, que no filtre el mensaje del parseador, y que un
+  JSON válido al que le faltan campos siga respondiendo `DATOS_INVALIDOS` —son
+  dos problemas distintos—.
+- **Las tres alertas nuevas**, comparando el total del aviso contra la consulta
+  de la base: un aviso que cuenta distinto que la tabla deja de servir en cuanto
+  alguien lo verifica una vez.
 
 ## 21. Pendientes
 

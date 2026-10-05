@@ -29,7 +29,7 @@ y se queda como está.
 | Sincronización | UUID de operación por cada envío, idempotencia verificada contra la clave, excepciones de conflicto en bandeja |
 | Portal público | Consulta por código o número, sin datos sensibles |
 | Auditoría | Bitácora por operación, con identificador de correlación |
-| Pruebas | 445 del servidor en 32 archivos, 101 del panel |
+| Pruebas | 445 del servidor en 32 archivos, 101 del panel (el conteo **al momento de auditar**; al cerrar la etapa son 493 y 112) |
 
 El §44, §45 y §46 del pliego nuevo piden exactamente la capa offline que
 habíamos conservado. Queda validada: no hay nada que deshacer ahí.
