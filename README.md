@@ -1639,3 +1639,29 @@ Este último devolvía **cero** en la primera versión, y la causa vale contarla
 aceptada` con NULL da NULL, y NULL no pasa el WHERE: la condición descartaba
 exactamente las 135 cotizaciones que tenía que encontrar. Pendiente es NULL;
 `false` es «el cliente dijo que no», que es otra cosa y no se avisa.
+
+## Un cuerpo malformado no es culpa del servidor
+
+Esto salió de una sonda mal escrita. Al mandar basura por accidente a
+`POST /ordenes`, el servidor respondió **500** con
+`correlationId: "sin-correlacion"`.
+
+Dos cosas mal, y las dos le cuestan una tarde a quien integra con la API:
+
+Un **500** dice «el problema es nuestro». Un cuerpo que no es JSON es del
+cliente, y mandarlo a buscar un fallo del servidor que no existe es mentirle.
+Ahora `express.json()` lanza un error que el manejador reconoce y traduce a
+**400 CUERPO_INVALIDO**, o a **413** cuando lo que pasa es que el contenido
+excede los 256 kB —y ahí el mensaje dice por dónde se suben los archivos de
+verdad, que es la carga de evidencias por partes—.
+
+Y **sin identificador de correlación no se puede reportar nada**, porque no
+hay con qué buscarlo en la bitácora. `asignarCorrelacion` estaba registrado
+*después* de `express.json()`, así que los fallos que más lo necesitan eran
+justo los que no lo tenían. Ahora va primero.
+
+El mensaje del parseador no sale: nada de «Unexpected token» ni rutas de
+`node_modules`. Hay cuatro pruebas sobre esto, incluida una que comprueba que
+un cuerpo JSON **válido** al que le faltan campos siga respondiendo
+`DATOS_INVALIDOS` y no `CUERPO_INVALIDO` — son dos problemas distintos y el
+que integra necesita distinguirlos.

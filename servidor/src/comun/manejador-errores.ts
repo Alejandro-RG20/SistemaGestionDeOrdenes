@@ -19,7 +19,36 @@ const MENSAJE_GENERICO =
   'Ocurrio un problema al procesar la solicitud. Intente de nuevo; si persiste, ' +
   'reporte el identificador que aparece en este mensaje.';
 
+/**
+ * Un cuerpo que no es JSON valido, o que excede el limite.
+ *
+ * Los lanza `express.json()` antes de que la peticion llegue a ninguna ruta,
+ * asi que no pasan por `ErrorValidacion` y caian en el 500 generico. Un 500
+ * dice «el problema es nuestro», y aqui el problema es del cuerpo que llego:
+ * quien integra con la API se queda buscando un fallo del servidor que no
+ * existe.
+ */
+function esCuerpoMalformado(error: unknown): boolean {
+  if (!(error instanceof SyntaxError) && !(error instanceof Error)) return false;
+  const tipo = (error as { type?: string }).type;
+  return tipo === 'entity.parse.failed'
+    || tipo === 'entity.too.large'
+    || tipo === 'encoding.unsupported';
+}
+
+function mensajeDelCuerpo(error: unknown): string {
+  const tipo = (error as { type?: string }).type;
+  if (tipo === 'entity.too.large') {
+    return 'El contenido enviado es demasiado grande. Las fotos y documentos no se envian por '
+      + 'aqui: use la carga de evidencias, que sube por partes.';
+  }
+  return 'El cuerpo de la peticion no es JSON valido.';
+}
+
 function estadoDe(error: unknown): number {
+  if (esCuerpoMalformado(error)) {
+    return (error as { type?: string }).type === 'entity.too.large' ? 413 : 400;
+  }
   if (error instanceof ErrorValidacion) return 400;
   if (error instanceof ErrorAutenticacion) return 401;
   if (error instanceof ErrorAutorizacion) return 403;
@@ -49,7 +78,9 @@ export function manejarErrores(
   const registrar = esEsperado ? bitacora.advertencia : bitacora.error;
   registrar(`${peticion.method} ${peticion.originalUrl} termino en ${estado}`, {
     idCorrelacion,
-    codigo: error instanceof ErrorAplicacion ? error.codigo : 'ERROR_NO_CONTROLADO',
+    codigo: esCuerpoMalformado(error)
+      ? 'CUERPO_INVALIDO'
+      : error instanceof ErrorAplicacion ? error.codigo : 'ERROR_NO_CONTROLADO',
     detalle: error instanceof Error ? error.message : String(error),
     ...(esEsperado ? {} : { pila: error instanceof Error ? error.stack : undefined }),
   });
@@ -63,9 +94,15 @@ export function manejarErrores(
    * bitacora de arriba, localizable por el identificador de correlacion que
    * si viaja. Lo que el usuario lee es generico a proposito.
    */
+  const malformado = esCuerpoMalformado(error);
+
   const detalle: DetalleError = {
-    code: error instanceof ErrorAplicacion ? error.codigo : 'ERROR_INTERNO',
-    message: esEsperado && error instanceof ErrorAplicacion ? error.message : MENSAJE_GENERICO,
+    code: malformado
+      ? 'CUERPO_INVALIDO'
+      : error instanceof ErrorAplicacion ? error.codigo : 'ERROR_INTERNO',
+    message: malformado
+      ? mensajeDelCuerpo(error)
+      : esEsperado && error instanceof ErrorAplicacion ? error.message : MENSAJE_GENERICO,
     correlationId: idCorrelacion,
     ...(error instanceof ErrorValidacion && Object.keys(error.campos).length > 0
       ? { fields: error.campos }

@@ -49,8 +49,18 @@ export function construirAplicacion(): Express {
   const aplicacion = express();
 
   aplicacion.disable('x-powered-by');
-  aplicacion.use(express.json({ limit: LIMITE_CUERPO }));
+
+  /*
+   * EL IDENTIFICADOR DE CORRELACION VA PRIMERO, ANTES DEL PARSEO DEL CUERPO.
+   *
+   * Estaba despues, y eso dejaba sin identificador justo a los fallos que mas
+   * lo necesitan: un cuerpo JSON malformado lo rechaza `express.json()` antes
+   * de llegar a ninguna ruta, y el error salia con «sin-correlacion». Quien
+   * integra con la API recibia un 500 que no podia reportar porque no traia
+   * con que buscarlo en la bitacora.
+   */
   aplicacion.use(asignarCorrelacion);
+  aplicacion.use(express.json({ limit: LIMITE_CUERPO }));
 
   for (const raiz of RAICES_API) {
     aplicacion.get(`${raiz}/salud`, (_peticion, respuesta) => {
