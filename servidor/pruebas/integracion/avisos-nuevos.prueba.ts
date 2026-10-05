@@ -89,8 +89,16 @@ describe('cotizaciones sin respuesta del cliente', () => {
     const grupo = (await bandeja(admin))
       .find((g) => g.tipo === TIPO_AVISO.COTIZACION_PENDIENTE);
     expect(grupo?.total ?? 0).toBe(pendientes);
-    // Y no suma las rechazadas, aunque existan.
-    expect(grupo?.total ?? 0).not.toBe(pendientes + rechazadas);
+
+    /*
+     * La comprobacion de que no suma las rechazadas solo tiene sentido si hay
+     * alguna rechazada. Con cero, `pendientes + rechazadas` es `pendientes` y
+     * la asercion compara el numero contra si mismo: fallaba siempre, y el
+     * fallo era de la prueba, no del aviso.
+     */
+    if (rechazadas > 0) {
+      expect(grupo?.total ?? 0).not.toBe(pendientes + rechazadas);
+    }
   });
 });
 
