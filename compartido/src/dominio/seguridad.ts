@@ -1,8 +1,10 @@
 /**
  * Roles y permisos como datos (H12).
  *
- * No hay rol de administrador aparte: la jefatura de atencion al cliente
- * administra el sistema. Son 37 personas y ninguna cuenta sin dueno. El servidor autoriza consultando
+ * Hay un rol de administrador del sistema, con todo el catalogo. La
+ * jefatura de atencion al cliente gestiona al personal, pero el servidor le
+ * impide volverse administradora, tocar cuentas de administracion y
+ * conceder permisos que no tiene. Ninguna cuenta sin dueno. El servidor autoriza consultando
  * rol_permiso; este catalogo es la fuente unica de los codigos, compartida
  * por el backend, el panel y la aplicacion movil.
  */

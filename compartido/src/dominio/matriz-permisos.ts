@@ -29,7 +29,12 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
     // las marcas; la jefatura de atencion al cliente las versiona igual que
     // la de tecnicos.
     'garantias.regla.gestionar',
-    // Administra el sistema: no existe un rol de administrador aparte.
+    // Gestiona al personal del centro: altas, contrasenas, desbloqueos,
+    // dispositivos. NO es administradora: el servidor le impide asignar el
+    // rol de administrador, tocar cuentas de administracion y editar los
+    // permisos de su propio rol (seguridad/servicio-usuario.ts y
+    // servicio-rol.ts). El administrador del sistema es el rol aparte que
+    // se define mas abajo.
     'seguridad.usuario.gestionar', 'seguridad.rol.gestionar',
     'seguridad.dispositivo.vincular', 'seguridad.dispositivo.revocar',
     'seguridad.bitacora.consultar',

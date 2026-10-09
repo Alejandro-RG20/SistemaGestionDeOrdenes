@@ -42,7 +42,7 @@ describe('secciones del panel', () => {
   });
 
   it('la jefatura de atencion al cliente ve administracion', () => {
-    // No hay rol de administrador: esta jefatura administra el sistema.
+    // Gestiona al personal desde administracion, aunque no sea administradora.
     const jefatura = usuarioDePrueba(
       ['ordenes.consultar', 'seguridad.usuario.gestionar', 'reportes.consultar'],
       'jefe_atencion_cliente',

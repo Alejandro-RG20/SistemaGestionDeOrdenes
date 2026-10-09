@@ -7,11 +7,11 @@
 import type {
   Paginacion, PeticionAsignarPermisos, ResumenAsientoBitacora, ResumenPermiso, ResumenRol,
 } from '@servitotal/compartido';
-import { ACCION_BITACORA } from '@servitotal/compartido';
+import { ACCION_BITACORA, CODIGO_ROL } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import type { ParametrosPagina } from '../../comun/paginacion.js';
 import { construirPaginacion } from '../../comun/paginacion.js';
-import { ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
+import { ErrorAutorizacion, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import { auditar, type AsientoAuditoria } from '../../comun/auditoria.js';
 import { enTransaccion } from '../../comun/transacciones.js';
 import * as repositorio from './repositorio-rol.js';
@@ -72,6 +72,7 @@ export async function asignarPermisos(
     }
 
     const previos = await repositorio.listarPermisosDeRol(idRol, cliente);
+    exigirQuePuedaConceder(actor, rol.codigo, previos.map((p) => p.codigo), pedidos);
     await repositorio.reemplazarPermisosDeRol(cliente, idRol, encontrados.map((permiso) => permiso.id));
 
     const antes = new Set(previos.map((permiso) => permiso.codigo));
@@ -93,6 +94,38 @@ export async function asignarPermisos(
     const finales = await repositorio.listarPermisosDeRol(idRol, cliente);
     return finales.map(aResumenPermiso);
   });
+}
+
+/*
+ * Editar permisos sin escalar privilegios.
+ *
+ * Fuera del administrador, quien gestiona roles:
+ *   - no toca el rol de administrador;
+ *   - no edita su propio rol (seria darse lo que quiera);
+ *   - no concede un permiso que el mismo no tiene. Repartir lo que uno ya
+ *     puede hacer es delegar; repartir lo que no, es escalar. Retirar si
+ *     puede: quitar un permiso no da poder a nadie.
+ */
+function exigirQuePuedaConceder(
+  actor: Actor, codigoRol: string, previos: readonly string[], pedidos: readonly string[],
+): void {
+  if (actor.rol === CODIGO_ROL.ADMINISTRADOR) return;
+  if (codigoRol === CODIGO_ROL.ADMINISTRADOR) {
+    throw new ErrorAutorizacion('Solo la administracion del sistema puede cambiar los permisos del administrador.');
+  }
+  if (codigoRol === actor.rol) {
+    throw new ErrorAutorizacion(
+      'No puede cambiar los permisos de su propio rol. Pidaselo a la administracion del sistema.',
+    );
+  }
+  const propios = new Set<string>(actor.permisos);
+  const antes = new Set(previos);
+  const ajenos = pedidos.filter((codigo) => !antes.has(codigo) && !propios.has(codigo));
+  if (ajenos.length > 0) {
+    throw new ErrorAutorizacion(
+      `No puede conceder permisos que usted no tiene: ${ajenos.join(', ')}.`,
+    );
+  }
 }
 
 export async function listarBitacora(

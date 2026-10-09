@@ -1,21 +1,60 @@
 /**
- * Administracion: usuarios, dispositivos y bitacora.
+ * Administracion: usuarios, roles y permisos, y dispositivos de campo.
  *
- * No hay rol de administrador. La jefatura de atencion al cliente administra
- * el sistema, y esta pantalla es lo que eso significa en la practica.
+ * Existe un rol de administrador del sistema con todos los permisos. La
+ * jefatura de atencion al cliente gestiona al personal desde esta misma
+ * pantalla, con los limites que el servidor le impone (no se vuelve
+ * administradora ni toca cuentas de administracion). Cada pestaña aparece
+ * solo si el permiso que el servidor exige para ella esta presente.
  *
  * Lo que NO hay aqui es tan deliberado como lo que hay: no se borra un
  * usuario, se desactiva; no se ve ninguna contrasena; y la bitacora es de
  * solo lectura porque es inmutable por diseno.
  */
 import { useState } from 'react';
-import type { ResumenDispositivo, ResumenUsuario } from '@servitotal/compartido';
+import { CODIGO_ROL, type ResumenDispositivo, type ResumenUsuario } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
 import { Cargando, Fallo, Vacio } from '../componentes/piezas.js';
 import { ErrorDeApi, type PaginaDeDatos } from '../api/cliente.js';
+import { tienePermiso } from '../sesion/navegacion.js';
+import { GestionDeUsuarios, RolesYPermisos } from './AdministracionUsuarios.js';
+
+type Pestana = 'usuarios' | 'roles' | 'dispositivos';
 
 export function Administracion(): JSX.Element {
+  const { usuario } = useSesion();
+  const pestanas: { clave: Pestana; nombre: string; permiso: string }[] = [
+    { clave: 'usuarios', nombre: 'Usuarios', permiso: 'seguridad.usuario.gestionar' },
+    { clave: 'roles', nombre: 'Roles y permisos', permiso: 'seguridad.rol.gestionar' },
+    { clave: 'dispositivos', nombre: 'Dispositivos de campo', permiso: 'seguridad.dispositivo.vincular' },
+  ];
+  const visibles = pestanas.filter((una) => tienePermiso(usuario, una.permiso));
+  const [activa, setActiva] = useState<Pestana>(visibles[0]?.clave ?? 'usuarios');
+
+  return (
+    <>
+      <h2 className="scr">Administracion</h2>
+      <p className="sub">
+        {usuario?.rol === CODIGO_ROL.ADMINISTRADOR
+          ? 'Administracion del sistema: usuarios, roles, permisos y dispositivos.'
+          : 'Gestion del personal. Las cuentas y el rol de administracion solo los modifica la administracion del sistema.'}
+      </p>
+      <div className="tabs">
+        {visibles.map((una) => (
+          <span key={una.clave} className={activa === una.clave ? 'on' : ''} onClick={() => setActiva(una.clave)}>
+            {una.nombre}
+          </span>
+        ))}
+      </div>
+      {activa === 'usuarios' ? <GestionDeUsuarios /> : null}
+      {activa === 'roles' ? <RolesYPermisos /> : null}
+      {activa === 'dispositivos' ? <Dispositivos /> : null}
+    </>
+  );
+}
+
+function Dispositivos(): JSX.Element {
   const { api } = useSesion();
   const [error, setError] = useState<string | null>(null);
   const [trabajando, setTrabajando] = useState(false);
@@ -29,19 +68,6 @@ export function Administracion(): JSX.Element {
   const dispositivos = useRecurso<PaginaDeDatos<ResumenDispositivo>>(
     () => api.pedirPagina<ResumenDispositivo>('/dispositivos', { tamano: 100 }), [],
   );
-
-  async function desbloquear(id: string): Promise<void> {
-    setTrabajando(true);
-    setError(null);
-    try {
-      await api.pedir(`/usuarios/${id}/desbloquear`, { metodo: 'POST' });
-      usuarios.recargar();
-    } catch (problema) {
-      setError(problema instanceof ErrorDeApi ? problema.message : 'No se pudo desbloquear.');
-    } finally {
-      setTrabajando(false);
-    }
-  }
 
   /**
    * Autoriza un dispositivo. Desde que el sistema es web, «dispositivo» es
@@ -75,11 +101,18 @@ export function Administracion(): JSX.Element {
     }
   }
 
+  /** El servidor exige motivo para revocar; sin el, la llamada siempre fallaba. */
   async function revocar(id: string): Promise<void> {
+    const motivo = window.prompt('Motivo de la revocacion (minimo 10 caracteres; queda en la bitacora):');
+    if (motivo === null) return;
+    if (motivo.trim().length < 10) {
+      setError('Escriba el motivo de la revocacion: al menos 10 caracteres.');
+      return;
+    }
     setTrabajando(true);
     setError(null);
     try {
-      await api.pedir(`/dispositivos/${id}/revocar`, { metodo: 'POST' });
+      await api.pedir(`/dispositivos/${id}/revocar`, { metodo: 'POST', cuerpo: { motivo: motivo.trim() } });
       dispositivos.recargar();
     } catch (problema) {
       setError(problema instanceof ErrorDeApi ? problema.message : 'No se pudo revocar.');
@@ -90,55 +123,7 @@ export function Administracion(): JSX.Element {
 
   return (
     <>
-      <h2 className="scr">Administracion</h2>
-      <p className="sub">
-        No existe un rol de administrador aparte: esta jefatura administra el sistema.
-      </p>
-
       {error === null ? null : <div className="alert"><p>{error}</p></div>}
-
-      <h2>Usuarios</h2>
-      {usuarios.cargando ? <Cargando que="los usuarios" /> : null}
-      {usuarios.error !== null
-        ? <Fallo error={usuarios.error} alReintentar={usuarios.recargar} />
-        : null}
-      {usuarios.datos !== null && usuarios.error === null ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {usuarios.datos.datos.map((usuario) => (
-              <tr key={usuario.id}>
-                <td>{usuario.nombreUsuario}</td>
-                <td>{usuario.nombres}</td>
-                <td className="tenue">{usuario.rol.replace(/_/g, ' ')}</td>
-                <td>
-                  {usuario.bloqueado ? (
-                    <span className="tag t-r">bloqueado</span>
-                  ) : usuario.activo ? (
-                    <span className="tag t-t">activo</span>
-                  ) : (
-                    <span className="tag t-b">desactivado</span>
-                  )}
-                </td>
-                <td>
-                  {usuario.bloqueado ? (
-                    <button
-                      type="button" className="btn" disabled={trabajando}
-                      onClick={() => void desbloquear(usuario.id)}
-                    >
-                      Desbloquear
-                    </button>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : null}
 
       <h2>Dispositivos de campo</h2>
       <p className="tenue" style={{ marginTop: -6, fontSize: 13 }}>

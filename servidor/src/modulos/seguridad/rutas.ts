@@ -39,6 +39,7 @@ export function rutasPrivadasDeSeguridad(): Router {
   router.post('/usuarios/:id/desbloquear', gestionarUsuarios, asincrono(usuarios.desbloquear));
   // Nada se elimina: se desactiva, con motivo escrito.
   router.post('/usuarios/:id/desactivar', gestionarUsuarios, asincrono(usuarios.desactivar));
+  router.post('/usuarios/:id/activar', gestionarUsuarios, asincrono(usuarios.activar));
 
   const gestionarRoles: RequestHandler = exigirPermiso('seguridad.rol.gestionar');
   router.get('/roles', gestionarRoles, asincrono(roles.listarRoles));

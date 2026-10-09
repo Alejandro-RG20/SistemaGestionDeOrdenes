@@ -147,6 +147,14 @@ describe('alta y mantenimiento de usuarios', () => {
 
 describe('permisos de un rol', () => {
   it('reemplaza el conjunto de permisos y registra altas y bajas por separado', async () => {
+    // Lo hace el administrador: la restitucion vuelve a conceder
+    // inventario.ajuste.registrar, que la jefatura no tiene y por tanto no
+    // puede conceder (ver escalada-privilegios.prueba.ts).
+    const nombreAdmin = await usuarioConRol(entorno.piscina, CODIGO_ROL.ADMINISTRADOR);
+    const sesionAdmin = await peticion(entorno.aplicacion).post(`${RAIZ}/autenticacion/sesion`)
+      .send({ nombreUsuario: nombreAdmin, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
+    const cabecera = { Authorization: `Bearer ${sesionAdmin.body.data.tokenAcceso}` };
+
     const roles = await peticion(entorno.aplicacion).get(`${RAIZ}/roles?tamano=50`).set(cabecera).expect(200);
     const bodeguero = roles.body.data.find((r: { codigo: string }) => r.codigo === CODIGO_ROL.BODEGUERO);
 

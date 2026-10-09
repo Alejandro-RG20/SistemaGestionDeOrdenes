@@ -760,8 +760,19 @@ Todos los usuarios sembrados comparten la contraseña `ServiTotal.2026`,
 derivada con scrypt. **Son datos de prueba: no deben salir de un entorno de
 desarrollo.**
 
-No hay rol de administrador: **la jefatura de atención al cliente administra
-el sistema**. Son 37 personas y ninguna cuenta sin dueño.
+Hay **un rol de administrador del sistema** (`administrador`), con todos los
+permisos, y la siembra crea una cuenta con ese rol. La jefatura de atención al
+cliente gestiona al personal (altas, contraseñas, desbloqueos, dispositivos),
+pero **no es administradora**: el servidor le impide asignar el rol de
+administrador, modificar cuentas de administración, cambiarse su propio rol y
+conceder permisos que ella misma no tiene. Ninguna cuenta queda sin dueño.
+
+Para saber qué cuenta es la de administración en una base sembrada:
+
+```sql
+SELECT u.nombre_usuario FROM usuario u JOIN rol r ON r.id = u.id_rol
+ WHERE r.codigo = 'administrador';
+```
 
 ## Decisiones de la etapa 1
 
@@ -1156,7 +1167,7 @@ pantalla lleva en la miga de pan **su código del prototipo** — `W-03`, `W-05`
 | `W-13` | Ficha del cliente | **Datos vivos frente a datos congelados** |
 | `W-14` | Artículo | Los tres campos que cambian quién paga |
 | `W-15` | Reglas de cobertura | El motor es dirigido por datos, no por código |
-| `W-16` | Administración | No hay rol de administrador |
+| `W-16` | Administración | Usuarios, roles y permisos, dispositivos; la jefatura no es administradora |
 | `P-01` | Consulta pública | El cliente ve el mismo estado que ve el técnico |
 
 Las cinco pantallas móviles del prototipo (`M-01` a `M-07`) son la aplicación

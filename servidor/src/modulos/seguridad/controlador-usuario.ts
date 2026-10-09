@@ -54,3 +54,8 @@ export async function desactivar(peticion: Request, respuesta: Response): Promis
   await servicio.desactivar(actorDe(peticion), identificador(peticion), motivo);
   responderSinContenido(respuesta);
 }
+
+export async function activar(peticion: Request, respuesta: Response): Promise<void> {
+  const { motivo } = validar(esquemaMotivo, peticion.body);
+  responderDatos(respuesta, await servicio.activar(actorDe(peticion), identificador(peticion), motivo));
+}
