@@ -68,6 +68,33 @@ export interface ResultadoSincronizacion {
   readonly resultados: readonly ResultadoOperacion[];
 }
 
+/**
+ * La excepcion explicada para una persona: que se intento, cuando, y si los
+ * datos del registro cuadran entre si. La carga original sigue viajando
+ * aparte, intacta, para la auditoria.
+ */
+export interface LecturaExcepcion {
+  /** De que forma esta guardada la carga (ver lectura-excepcion.ts). */
+  readonly forma: 'operacion_rechazada' | 'aceptada_con_diferencia' | 'registro_resumido';
+  /** Nombre legible de la operacion. */
+  readonly operacion: string;
+  readonly codigoOperacion: string | null;
+  /** Si el tipo de operacion existe en esta version del sistema. */
+  readonly operacionReconocida: boolean;
+  /** Lo que el servidor exige para aplicar ese tipo de operacion. */
+  readonly condicion: string | null;
+  readonly momentoDispositivo: string | null;
+  readonly registradoSinConexion: boolean | null;
+  /** Estado de la orden que anota el registro, si lo anota. */
+  readonly estadoAnotado: string | null;
+  /** Estado de la orden hoy. */
+  readonly estadoActualOrden: string | null;
+  /** Los campos que envio el dispositivo, con nombre legible. */
+  readonly detalles: readonly { readonly etiqueta: string; readonly valor: string }[];
+  /** Contradicciones dentro del registro. Vacio si todo cuadra. */
+  readonly advertencias: readonly string[];
+}
+
 export interface ResumenExcepcion {
   readonly id: string;
   readonly idOperacion: string | null;
@@ -77,6 +104,9 @@ export interface ResumenExcepcion {
   readonly tecnico: string | null;
   readonly motivo: string;
   readonly cargaOriginal: Record<string, unknown>;
+  readonly lectura: LecturaExcepcion;
+  /** Codigo legible de la orden (OS-AAAA-NNNNNN), si apunta a una. */
+  readonly codigoOrden: string | null;
   readonly estado: string;
   readonly resueltaPor: string | null;
   readonly resueltaEn: string | null;

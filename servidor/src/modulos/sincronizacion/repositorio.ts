@@ -87,6 +87,8 @@ export interface FilaExcepcion {
   readonly id_operacion: string | null;
   readonly id_orden: string | null;
   readonly numero_orden: number | null;
+  readonly codigo_orden: string | null;
+  readonly estado_orden: string | null;
   readonly id_tecnico: string | null;
   readonly tecnico: string | null;
   readonly motivo: string;
@@ -99,7 +101,8 @@ export interface FilaExcepcion {
 }
 
 const CAMPOS_EXCEPCION = `
-  e.id, e.id_operacion, e.id_orden, o.numero AS numero_orden, e.id_tecnico,
+  e.id, e.id_operacion, e.id_orden, o.numero AS numero_orden, o.codigo AS codigo_orden,
+  o.estado::text AS estado_orden, e.id_tecnico,
   ut.nombres AS tecnico, e.motivo, e.carga_original, e.estado,
   ur.nombres AS resuelta_por, e.resuelta_en, e.resolucion, e.creado_en`;
 

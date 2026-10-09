@@ -14,6 +14,7 @@ import { construirPaginacion } from '../../comun/paginacion.js';
 import { ErrorDominio, ErrorNoEncontrado } from '../../comun/errores.js';
 import { enTransaccion } from '../../comun/transacciones.js';
 import * as repositorio from './repositorio.js';
+import { leerExcepcion } from '../../dominio/sincronizacion/lectura-excepcion.js';
 
 function aResumen(fila: repositorio.FilaExcepcion): ResumenExcepcion {
   return {
@@ -25,6 +26,10 @@ function aResumen(fila: repositorio.FilaExcepcion): ResumenExcepcion {
     tecnico: fila.tecnico,
     motivo: fila.motivo,
     cargaOriginal: fila.carga_original,
+    lectura: leerExcepcion({
+      motivo: fila.motivo, cargaOriginal: fila.carga_original, estadoActualOrden: fila.estado_orden,
+    }),
+    codigoOrden: fila.codigo_orden,
     estado: fila.estado,
     resueltaPor: fila.resuelta_por,
     resueltaEn: fila.resuelta_en?.toISOString() ?? null,
