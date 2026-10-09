@@ -33,10 +33,19 @@ export interface DefinicionDeReporte {
   readonly titulo: string;
   /** Que pregunta contesta. Un reporte sin esto nadie sabe cuando usarlo. */
   readonly proposito: string;
-  readonly grupo: 'operacion' | 'tecnico' | 'inventario' | 'dinero';
+  readonly grupo: 'operacion' | 'tecnico' | 'inventario';
   /** Si admite el filtro de fechas. Los de existencia son una foto de hoy. */
   readonly admiteRango: boolean;
+  /** Los filtros que su consulta aplica, ademas de las fechas. */
+  readonly filtros: readonly FiltroDeReporte[];
 }
+
+/** Filtros que un reporte puede aceptar, ademas del rango de fechas. */
+export const FILTROS_DE_REPORTE = ['estado', 'tecnico', 'tienda', 'repuesto', 'bodega'] as const;
+export type FiltroDeReporte = (typeof FILTROS_DE_REPORTE)[number];
+
+/** Los valores elegidos para cada filtro. Ausente = sin filtrar. */
+export type ValoresDeFiltro = Partial<Record<FiltroDeReporte, string>>;
 
 export interface ResultadoDeReporte {
   readonly clave: string;

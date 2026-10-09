@@ -16,8 +16,6 @@ export const CODIGO_ROL = {
   JEFE_TECNICOS: 'jefe_tecnicos',
   BODEGUERO: 'bodeguero',
   JEFE_COMPRAS: 'jefe_compras',
-  GESTOR_COBROS: 'gestor_cobros',
-  JEFE_COBROS: 'jefe_cobros',
   /**
    * El personal de mostrador de una sucursal. Levanta ordenes de los
    * clientes que llegan a su tienda y ve las de su tienda; nada mas.
@@ -44,7 +42,6 @@ export const MODULO = {
   AGENDA: 'agenda',
   GARANTIAS: 'garantias',
   INVENTARIO: 'inventario',
-  COBROS: 'cobros',
   COMPRAS: 'compras',
   REPORTES: 'reportes',
   PORTAL: 'portal',
@@ -110,20 +107,14 @@ export const CATALOGO_PERMISOS = [
   { codigo: 'inventario.consumo.registrar', modulo: MODULO.INVENTARIO, descripcion: 'Consumir repuestos contra una orden' },
   { codigo: 'inventario.devolucion.registrar', modulo: MODULO.INVENTARIO, descripcion: 'Devolver repuestos a la bodega central y entregar piezas sustituidas' },
   { codigo: 'inventario.ajuste.registrar', modulo: MODULO.INVENTARIO, descripcion: 'Registrar un ajuste justificado' },
-  { codigo: 'inventario.solicitud.gestionar', modulo: MODULO.INVENTARIO, descripcion: 'Crear y dar seguimiento a solicitudes de repuesto' },
-
-  { codigo: 'cobros.expediente.conformar', modulo: MODULO.COBROS, descripcion: 'Conformar el expediente de cobro' },
-  { codigo: 'cobros.expediente.enviar', modulo: MODULO.COBROS, descripcion: 'Enviar el expediente al proveedor o a la poliza' },
-  { codigo: 'cobros.pago.registrar', modulo: MODULO.COBROS, descripcion: 'Registrar el pago del cliente' },
-  { codigo: 'cobros.indicadores.consultar', modulo: MODULO.COBROS, descripcion: 'Ver los indicadores de recuperacion' },
+  { codigo: 'inventario.solicitud.gestionar', modulo: MODULO.INVENTARIO, descripcion: 'Revisar, aprobar, rechazar y preparar solicitudes de repuesto' },
+  { codigo: 'inventario.solicitud.crear', modulo: MODULO.INVENTARIO, descripcion: 'Solicitar repuestos para una orden asignada' },
 
   { codigo: 'portal.configurar', modulo: MODULO.PORTAL, descripcion: 'Configurar los mensajes del portal publico' },
 
   { codigo: 'taller.validacion.registrar', modulo: MODULO.TALLER, descripcion: 'Aprobar o rechazar el trabajo del tecnico' },
 
   { codigo: 'ordenes.entregar', modulo: MODULO.ORDENES, descripcion: 'Registrar la entrega del articulo al cliente' },
-
-  { codigo: 'cobros.pago.confirmar', modulo: MODULO.COBROS, descripcion: 'Confirmar que el dinero entro, y anular pagos' },
 
   { codigo: 'compras.consultar', modulo: MODULO.COMPRAS, descripcion: 'Ver compras y proveedores' },
   { codigo: 'compras.gestionar', modulo: MODULO.COMPRAS, descripcion: 'Crear y enviar pedidos al proveedor' },

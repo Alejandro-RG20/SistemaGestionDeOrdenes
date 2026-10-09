@@ -77,13 +77,13 @@ describe('alta y mantenimiento de usuarios', () => {
     const id = rows[0]!.id;
 
     await peticion(entorno.aplicacion).patch(`${RAIZ}/usuarios/${id}`).set(cabecera)
-      .send({ codigoRol: CODIGO_ROL.GESTOR_COBROS }).expect(200);
+      .send({ codigoRol: CODIGO_ROL.BODEGUERO }).expect(200);
 
     const asientos = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/bitacora?tabla=usuario&idRegistro=${id}`).set(cabecera).expect(200);
     const cambioDeRol = asientos.body.data.find((a: { campo: string }) => a.campo === 'rol');
     expect(cambioDeRol.valorAnterior).toBe(CODIGO_ROL.AGENTE_TELEFONIA);
-    expect(cambioDeRol.valorNuevo).toBe(CODIGO_ROL.GESTOR_COBROS);
+    expect(cambioDeRol.valorNuevo).toBe(CODIGO_ROL.BODEGUERO);
   });
 
   it('desbloquea una cuenta bloqueada, exigiendo motivo escrito', async () => {

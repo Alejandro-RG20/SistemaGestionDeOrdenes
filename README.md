@@ -3,12 +3,20 @@
 Taller ServiTotal del distrito VI de Managua, centro de servicio postventa de
 Grupo Unicomer (La Curacao, Almacenes Tropigas, RadioShack).
 
-**Sistema completo: las nueve etapas construidas.** Cuatro piezas —la API, el
-panel web, la aplicación móvil de los técnicos y el portal público del
-cliente— sobre una base de datos con doce meses de operación sembrados.
+**Sistema de gestión de órdenes de reparación e inventario de repuestos.**
+Controla el trabajo del taller —recepción, asignación, diagnóstico,
+repuestos, reparación, pruebas, evidencias, entrega y cierre— y mantiene un
+inventario de repuestos confiable, con trazabilidad completa de cada orden y
+de cada pieza.
 
-**441 pruebas en verde:** 373 del servidor (unidad e integración contra
-PostgreSQL real), 46 de la aplicación móvil y 22 del panel.
+> **Reestructuración (migración 0023).** El sistema dejó de gestionar dinero:
+> se retiraron los expedientes de cobro, los pagos de clientes y sus
+> indicadores. Una orden se completa y se entrega sin registrar pagos. Los
+> datos históricos de `pago` y `expediente_cobro` se conservan de solo
+> lectura. El detalle —auditoría, plan, cambios, verificación— está en
+> **[documentos/REESTRUCTURACION.md](documentos/REESTRUCTURACION.md)**. Las
+> secciones de este documento que describen cobros y pagos quedan como
+> historia del diseño y están marcadas como retiradas.
 
 El panel implementa el **prototipo de presentación aprobado**: sus 21
 pantallas, su lenguaje visual y sus códigos (`W-03`, `P-01`…).
@@ -22,8 +30,9 @@ pantallas, su lenguaje visual y sus códigos (`W-03`, `P-01`…).
 | Agenda | visitas sin doble programación |
 | Inventario | movimientos como fuente de verdad, bodegas móviles, liberación automática |
 | Sincronización | cola idempotente, dos colas, nada se descarta |
-| Cobros | expedientes contra marca y póliza, bloqueo por evidencia (RF-57) |
-| Panel y portal | bandeja de avisos, indicadores y consulta pública del cliente |
+| Solicitudes de repuesto | solicitar, reservar, entregar, consumir y devolver, cada paso auditado |
+| Trazabilidad | historial completo de la orden; registros históricos de solo agregar |
+| Panel y portal | tablero operativo, bandeja de avisos, reportes filtrables y consulta pública del cliente |
 
 ## Puesta en marcha
 
@@ -115,7 +124,7 @@ servidor/src/comun/           errores, transacciones, autorización, bitácora,
                               paginación, tokens, respuesta uniforme
 servidor/src/infraestructura/ conexión, ejecutor de migraciones, siembra
 servidor/src/modulos/         seguridad · clientes · articulos · garantias · ordenes
-                              agenda · inventario · sincronizacion · campo · cobros
+                              agenda · inventario · sincronizacion · campo
                               validaciones · entregas · compras · tiendas · reportes
                               cada uno: controlador · servicio · repositorio · dto · esquemas
 servidor/src/dominio/garantias/  motor de garantías (Especificación y Estrategia)
@@ -123,7 +132,6 @@ servidor/src/dominio/ordenes/    máquina de estados (patrón Estado)
 servidor/src/dominio/plazos/     cálculo en horas laborables
 servidor/src/dominio/inventario/ reglas de los movimientos
 servidor/src/dominio/sincronizacion/ resolución de conflictos
-servidor/src/dominio/cobros/     expediente, destinatario y monto reclamable
 servidor/src/modulos/reportes/catalogo.ts  los 17 reportes, cada uno con su consulta
 panel/src/api/                cliente de la API
 panel/src/sesion/             tokens, contexto, identidad del navegador como
@@ -132,7 +140,7 @@ panel/src/campo/              la capa sin conexion: puertos, las dos colas, el
                               motor, el espejo, los adaptadores de IndexedDB,
                               la captura de evidencia y el coordinador
 panel/src/pantallas/          bandeja, ordenes, clientes, inventario,
-                              excepciones, cobros, indicadores, administracion
+                              excepciones, indicadores, administracion
                               y el portal publico del cliente
 panel/src/pantallas/campo/    las pantallas del tecnico (M-01 a M-07)
 panel/public/sw.js            service worker: la web abre sin red
@@ -197,11 +205,9 @@ servidor, localizable por ese identificador.
 | `POST /evidencias/cargas/:idCarga/cerrar` | `campo.evidencia.cargar` |
 | `GET /ordenes/:id/evidencias` | `ordenes.consultar` |
 | `GET /campo/jornada` | `campo.sincronizar` |
-| `GET /expedientes`, `/expedientes/:id` | `cobros.expediente.conformar` |
-| `POST /ordenes/:id/expediente`, `POST /expedientes/:id/verificar` | `cobros.expediente.conformar` |
-| `POST /expedientes/:id/estado` | `cobros.expediente.enviar` |
-| `GET /pagos`, `POST /ordenes/:id/pagos` | `cobros.pago.registrar` |
-| `GET /cobros/indicadores` | `cobros.indicadores.consultar` |
+| `GET /ordenes/:id/historial` | `ordenes.consultar`, con el cerco por datos |
+| `POST /ordenes/:id/solicitudes-repuesto` | `inventario.solicitud.crear` o `inventario.solicitud.gestionar` |
+| `GET /disponibilidad` | `inventario.consultar` |
 | `GET /avisos` | sesión válida; el contenido lo deciden sus permisos |
 | `GET /indicadores/operacion` | `ordenes.consultar` |
 | `GET /portal/ordenes/:numero?telefono=` | **público**, con límite de peticiones |
@@ -210,7 +216,6 @@ servidor, localizable por ese identificador.
 | `POST /ordenes/:id/validaciones` | `taller.validacion.registrar` |
 | `GET /ordenes/:id/validaciones` | `ordenes.consultar` |
 | `GET POST /ordenes/:id/entrega` | `ordenes.entregar` |
-| `POST /pagos/:id/estado` | `cobros.pago.confirmar` |
 | `GET /compras`, `/compras/:id`, `/proveedores` | `compras.consultar` |
 | `POST /compras`, `POST /compras/:id/estado` | `compras.gestionar` |
 | `POST /compras/:id/recepcion` | `compras.recibir` |
@@ -231,9 +236,9 @@ burocracia:
   (`compras.recibir`) son permisos distintos. El jefe de compras arma el
   pedido; bodega cuenta lo que llegó. Una sola persona haciendo las dos cosas
   es como se pierde inventario sin que nadie lo note.
-- **Registrar** un pago (`cobros.pago.registrar`) y **confirmarlo**
-  (`cobros.pago.confirmar`) también. Quien anota el pago en el mostrador no
-  debería ser quien declara que el banco lo acreditó.
+- **Pedir** un repuesto (`inventario.solicitud.crear`, el técnico) y
+  **aprobarlo** (`inventario.solicitud.gestionar`, bodega) también. Aprobar
+  reserva la pieza, y solo se aprueba lo disponible.
 - **Nadie valida su propio trabajo.** Lo impide el servicio, con un mensaje
   que lo explica, y además un disparador en la base por si alguien llega por
   otra vía.
@@ -490,6 +495,11 @@ sobreviva a un reinicio del servidor. Si viviera en memoria, «reanudable»
 sería mentira en cuanto el proceso reiniciara.
 
 ## El tramo final: validar, cobrar, entregar
+
+> **Retirado en la reestructuración (migración 0023).** Lo que sigue sobre
+> cobros, pagos o expedientes describe el diseño anterior y ya no está en
+> funcionamiento; la validación técnica y la entrega se conservan, sin
+> requisito de pago. Ver [documentos/REESTRUCTURACION.md](documentos/REESTRUCTURACION.md).
 
 Las tres cosas que el pliego pide antes de que un artículo salga del centro, y
 que estaban implícitas en el estado de la orden.
@@ -973,6 +983,11 @@ perder el trabajo del técnico es la cola, no un botón mal alineado.
   sería cambiar algo útil por algo accesorio.
 
 ## Cobros: recuperarle a la marca lo que el cliente no pagó
+
+> **Retirado en la reestructuración (migración 0023).** Lo que sigue sobre
+> cobros, pagos o expedientes describe el diseño anterior y ya no está en
+> funcionamiento; la validación técnica y la entrega se conservan, sin
+> requisito de pago. Ver [documentos/REESTRUCTURACION.md](documentos/REESTRUCTURACION.md).
 
 Es la etapa 8. El taller repara miles de artículos al año que el cliente no
 paga; lo que decide si eso es un servicio o una sangría es cuánto se le
@@ -1528,6 +1543,11 @@ sistema: no hay pantallas duplicadas para el técnico, solo otra puerta de
 entrada.
 
 ## El expediente de cobro: observado y cerrado
+
+> **Retirado en la reestructuración (migración 0023).** Lo que sigue sobre
+> cobros, pagos o expedientes describe el diseño anterior y ya no está en
+> funcionamiento; la validación técnica y la entrega se conservan, sin
+> requisito de pago. Ver [documentos/REESTRUCTURACION.md](documentos/REESTRUCTURACION.md).
 
 El pliego §39 enumera ocho estados y el sistema tenía siete. Faltaban dos, y
 los dos nombran situaciones reales que se estaban forzando dentro de otro

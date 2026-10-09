@@ -26,9 +26,6 @@ import {
 import type { Actor } from '../../comun/contexto-peticion.js';
 import * as repositorio from './repositorio.js';
 
-/** A partir de cuantos dias sin respuesta se avisa de un expediente enviado. */
-const DIAS_SIN_RESPUESTA = 30;
-
 /** Permisos que dan mando sobre el taller entero. */
 const MANDO_SOBRE_ORDENES = ['ordenes.asignar', 'ordenes.anular', 'ordenes.cerrar'] as const;
 
@@ -121,71 +118,6 @@ export async function bandejaDe(actor: Actor): Promise<BandejaDeAvisos> {
           magnitud: redondear(fila.dias),
         })),
         enlaceVerTodo: '/excepciones',
-      });
-    }
-  }
-
-  // ── cobros ──
-  if (puede(actor, 'cobros.expediente.conformar')) {
-    const bloqueados = await repositorio.expedientesBloqueados();
-    if (bloqueados.total > 0) {
-      grupos.push({
-        tipo: TIPO_AVISO.EXPEDIENTE_BLOQUEADO,
-        gravedad: GRAVEDAD_AVISO.ATENCION,
-        titulo: 'Expedientes que no pueden salir',
-        porQue: 'A su orden le falta evidencia obligatoria. Mientras no aparezca, ' +
-          'ese dinero no se le puede reclamar a nadie.',
-        total: bloqueados.total,
-        muestra: bloqueados.muestra.map((fila): RenglonDeAviso => ({
-          id: fila.id,
-          titulo: `Orden ${fila.numero_orden} · ${fila.marca ?? 'Poliza'}`,
-          detalle: `C$ ${Number(fila.monto_reclamado).toFixed(2)} sin reclamar`,
-          enlace: `/cobros/${fila.id}`,
-          magnitud: Number(fila.monto_reclamado),
-        })),
-        enlaceVerTodo: '/cobros?estado=bloqueado_por_evidencia',
-      });
-    }
-
-    const sinExpediente = await repositorio.ordenesCobrablesSinExpediente();
-    if (sinExpediente.total > 0) {
-      grupos.push({
-        tipo: TIPO_AVISO.ORDEN_COBRABLE_SIN_EXPEDIENTE,
-        gravedad: GRAVEDAD_AVISO.ATENCION,
-        titulo: 'Ordenes entregadas sin expediente',
-        porQue: 'El taller ya gasto en estas reparaciones y todavia no las ha reclamado. ' +
-          'Cuanto mas viejas, mas cuesta conseguir lo que el fabricante pida.',
-        total: sinExpediente.total,
-        muestra: sinExpediente.muestra.map((fila): RenglonDeAviso => ({
-          id: fila.id,
-          titulo: `Orden ${fila.numero} · ${fila.cliente}`,
-          detalle: `Garantia ${fila.tipo_garantia} · entregada hace ${Math.round(fila.dias)} dias`,
-          enlace: `/ordenes/${fila.id}`,
-          magnitud: redondear(fila.dias),
-        })),
-        enlaceVerTodo: '/cobros?pendientes=1',
-      });
-    }
-  }
-
-  if (puede(actor, 'cobros.expediente.enviar')) {
-    const sinRespuesta = await repositorio.expedientesSinRespuesta(DIAS_SIN_RESPUESTA);
-    if (sinRespuesta.total > 0) {
-      grupos.push({
-        tipo: TIPO_AVISO.EXPEDIENTE_SIN_RESPUESTA,
-        gravedad: GRAVEDAD_AVISO.ATENCION,
-        titulo: `Expedientes enviados hace mas de ${DIAS_SIN_RESPUESTA} dias`,
-        porQue: 'El tercero no ha contestado. Conviene insistir antes de que se enfrie.',
-        total: sinRespuesta.total,
-        muestra: sinRespuesta.muestra.map((fila): RenglonDeAviso => ({
-          id: fila.id,
-          titulo: `Orden ${fila.numero_orden} · ${fila.marca ?? 'Poliza'}`,
-          detalle: `C$ ${Number(fila.monto_reclamado).toFixed(2)} · ` +
-            `${Math.round(fila.dias ?? 0)} dias sin respuesta`,
-          enlace: `/cobros/${fila.id}`,
-          magnitud: redondear(fila.dias),
-        })),
-        enlaceVerTodo: '/cobros?estado=enviado',
       });
     }
   }

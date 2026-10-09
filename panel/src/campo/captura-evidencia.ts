@@ -75,7 +75,7 @@ function aHexadecimal(resumen: ArrayBuffer): string {
  * HTTP plano no esta, y por eso el servidor del centro tiene que servir el
  * panel por HTTPS si los tecnicos van a cargar evidencia desde la calle.
  */
-async function huellaDe(contenido: Blob): Promise<string> {
+export async function huellaDe(contenido: Blob): Promise<string> {
   if (globalThis.crypto?.subtle === undefined) {
     throw new Error(
       'Este navegador no puede calcular la huella de la evidencia porque la pagina no se '

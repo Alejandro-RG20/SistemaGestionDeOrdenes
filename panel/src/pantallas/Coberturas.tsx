@@ -103,8 +103,8 @@ export function Coberturas(): JSX.Element {
             </tbody>
           </table>
           <p style={{ fontSize: 11.5, color: 'var(--soft)', margin: '10px 0 0' }}>
-            Estas versiones no se borran: hay ordenes que las congelaron y expedientes de cobro
-            que se presentaron con ellas.
+            Estas versiones no se borran: hay ordenes que las congelaron y su cobertura se
+            explica con la version vigente cuando se registraron.
           </p>
         </Tarjeta>
       )}

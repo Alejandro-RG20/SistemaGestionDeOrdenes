@@ -12,7 +12,7 @@
  *     la orden pasa a `en_reparacion` o se queda en `esperando_repuesto`, y
  *     eso mueve el plazo que se le prometio al cliente.
  *  2. QUE SE LE RECLAMA A LA MARCA. Un repuesto de marca identifica al
- *     fabricante en el expediente de cobro. Uno universal —un capacitor, una
+ *     fabricante en el reclamo de garantia. Uno universal —un capacitor, una
  *     manguera— no lo identifica, y ahi la marca la pone el articulo.
  *  3. CUANTO SE INMOVILIZA EN BODEGA. El minimo de una tarjeta importada de
  *     C$7000 no puede ser el mismo que el de un empaque de C$300.

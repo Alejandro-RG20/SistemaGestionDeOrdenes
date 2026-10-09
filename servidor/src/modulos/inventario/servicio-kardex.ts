@@ -7,7 +7,8 @@
  * deja al criterio de cada consulta.
  */
 import {
-  CODIGO_ROL, ETIQUETA_ESTADO_SOLICITUD, destinosDeSolicitud,
+  CODIGO_ROL, ETIQUETA_ESTADO_SOLICITUD, RESPONSABLE_DEL_PASO, destinosDeSolicitud,
+  type EstadoSolicitud,
   type Kardex, type LineaKardex, type Paginacion, type SolicitudConRecorrido,
 } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
@@ -78,8 +79,23 @@ export async function obtenerKardex(
   };
 }
 
+/**
+ * Los pasos que ESTA persona puede dar. La maquina dice cuales existen; el
+ * permiso, cuales le tocan. Ofrecerle a un tecnico el boton «aprobar» que el
+ * servidor le va a rechazar es una invitacion a intentarlo.
+ */
+function pasosPara(estado: EstadoSolicitud, permisos: readonly string[] | undefined): readonly string[] {
+  const posibles = destinosDeSolicitud(estado);
+  if (permisos === undefined) return posibles;
+  return posibles.filter((paso) => {
+    const requerido = RESPONSABLE_DEL_PASO[paso as keyof typeof RESPONSABLE_DEL_PASO];
+    return requerido !== undefined && permisos.includes(requerido);
+  });
+}
+
 function aSolicitud(
   fila: repositorioSolicitudes.FilaSolicitudDetallada,
+  permisos?: readonly string[],
 ): SolicitudConRecorrido {
   const comoFecha = (valor: Date | null): string | null => valor?.toISOString() ?? null;
   const comoDia = (valor: Date | null): string | null => valor?.toISOString().slice(0, 10) ?? null;
@@ -109,7 +125,8 @@ function aSolicitud(
     entregadaPor: fila.entregada_por,
     entregadaEn: comoFecha(fila.entregada_en),
     recibidaEn: comoFecha(fila.recibida_en),
-    pasosPosibles: destinosDeSolicitud(fila.estado),
+    disponible: Number(fila.disponible),
+    pasosPosibles: pasosPara(fila.estado, permisos),
   };
 }
 
@@ -127,13 +144,13 @@ export async function listarRecorrido(
   const filas = await repositorioSolicitudes.listar(filtro, pagina.tamano, pagina.desplazamiento);
 
   return {
-    datos: filas.map(aSolicitud),
+    datos: filas.map((fila) => aSolicitud(fila, actor.permisos)),
     paginacion: construirPaginacion(pagina, total),
   };
 }
 
 export function aSolicitudPublica(
-  fila: repositorioSolicitudes.FilaSolicitudDetallada,
+  fila: repositorioSolicitudes.FilaSolicitudDetallada, permisos?: readonly string[],
 ): SolicitudConRecorrido {
-  return aSolicitud(fila);
+  return aSolicitud(fila, permisos);
 }

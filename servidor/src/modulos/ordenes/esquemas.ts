@@ -36,6 +36,8 @@ export const esquemaCrearOrden = z.object({
 
 export const esquemaAsignarTecnico = z.object({
   idTecnico: z.string().uuid('El tecnico indicado no es valido.'),
+  /** Obligatorio cuando la orden ya tenia tecnico: es una reasignacion. */
+  motivo: z.string().trim().max(500).optional(),
 });
 
 export const esquemaTransicion = z.object({

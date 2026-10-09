@@ -1,7 +1,7 @@
 /**
  * Los reportes del pliego (RF-51), cada uno con su consulta.
  *
- * UN SOLO ENDPOINT PARA LOS DIECISIETE. Todos devuelven lo mismo —columnas
+ * UN SOLO ENDPOINT PARA TODOS. Todos devuelven lo mismo —columnas
  * tipadas y filas— asi que el panel tiene UNA pantalla que los dibuja
  * todos, y agregar un reporte es agregar una entrada a esta lista, no una
  * pantalla nueva. Diecisiete endpoints y diecisiete pantallas para
@@ -22,23 +22,42 @@
  */
 import { TIPO_COLUMNA, type ColumnaDeReporte, type DefinicionDeReporte } from '@servitotal/compartido';
 
-export interface Reporte extends DefinicionDeReporte {
+export interface Reporte extends Omit<DefinicionDeReporte, 'filtros'> {
   readonly columnas: readonly ColumnaDeReporte[];
-  /** `$1` = desde, `$2` = hasta. Ambos pueden venir nulos. */
+  /** `$1` = desde, `$2` = hasta (si admite rango); luego las marcas `{{filtro}}`. */
   readonly consulta: string;
   /** Columnas que se suman en la fila de totales. */
   readonly sumar?: readonly string[];
   readonly advertencia?: string;
 }
 
-const { TEXTO, NUMERO, DINERO, PORCENTAJE, HORAS } = TIPO_COLUMNA;
+const { TEXTO, NUMERO, PORCENTAJE, HORAS } = TIPO_COLUMNA;
 
 const col = (clave: string, etiqueta: string, tipo: ColumnaDeReporte['tipo']): ColumnaDeReporte =>
   ({ clave, etiqueta, tipo });
 
-/** Filtro de rango comun. Con rango nulo, el reporte cubre todo. */
+/*
+ * FILTROS
+ *
+ * `$1` y `$2` son siempre el rango de fechas. Los demas filtros se escriben
+ * como marcas `{{estado}}`, `{{tecnico}}`, `{{tienda}}`, `{{repuesto}}` y
+ * `{{bodega}}`: el servicio las numera en el momento de ejecutar y declara
+ * al panel que filtros admite cada reporte segun las marcas que contiene.
+ * Asi un reporte no puede ofrecer un filtro que su consulta no aplica.
+ */
+const FILTRO_ORDEN = `({{estado}}::text IS NULL OR o.estado::text = {{estado}}::text)
+                  AND ({{tecnico}}::uuid IS NULL OR o.id_tecnico = {{tecnico}}::uuid)
+                  AND ({{tienda}}::uuid IS NULL OR o.id_tienda = {{tienda}}::uuid)`;
+
+/** Rango sobre la recepcion de la orden, mas los filtros de orden. */
 const EN_RANGO = `($1::timestamptz IS NULL OR o.fecha_recepcion >= $1)
-                  AND ($2::timestamptz IS NULL OR o.fecha_recepcion < $2)`;
+                  AND ($2::timestamptz IS NULL OR o.fecha_recepcion < $2)
+                  AND ${FILTRO_ORDEN}`;
+
+/** Filtros de inventario sobre un movimiento `m`. */
+const FILTRO_MOVIMIENTO = `({{repuesto}}::uuid IS NULL OR m.id_repuesto = {{repuesto}}::uuid)
+                  AND ({{bodega}}::uuid IS NULL OR m.id_bodega_origen = {{bodega}}::uuid
+                       OR m.id_bodega_destino = {{bodega}}::uuid)`;
 
 export const REPORTES: readonly Reporte[] = [
   {
@@ -97,16 +116,19 @@ export const REPORTES: readonly Reporte[] = [
   {
     clave: 'ordenes_por_garantia',
     titulo: 'Ordenes por tipo de garantia',
-    proposito: 'Quien paga el trabajo del centro.',
-    grupo: 'dinero',
+    proposito: 'Que cobertura tiene el trabajo que entra al centro.',
+    grupo: 'operacion',
     admiteRango: true,
     columnas: [
       col('garantia', 'Garantia', TEXTO), col('ordenes', 'Ordenes', NUMERO),
-      col('monto', 'Monto facturado', DINERO),
+      col('abiertas', 'Abiertas', NUMERO),
     ],
-    sumar: ['ordenes', 'monto'],
+    sumar: ['ordenes', 'abiertas'],
     consulta: `SELECT replace(o.tipo_garantia::text, '_', ' ') AS garantia,
-                      count(*)::int AS ordenes, coalesce(sum(o.total), 0) AS monto
+                      count(*)::int AS ordenes,
+                      count(*) FILTER (
+                        WHERE o.estado NOT IN ('entregada','cerrada_sin_reparar','anulada')
+                      )::int AS abiertas
                  FROM orden_servicio o WHERE ${EN_RANGO}
                 GROUP BY o.tipo_garantia ORDER BY count(*) DESC`,
   },
@@ -244,15 +266,15 @@ export const REPORTES: readonly Reporte[] = [
     admiteRango: true,
     columnas: [
       col('codigo', 'Codigo', TEXTO), col('descripcion', 'Repuesto', TEXTO),
-      col('piezas', 'Piezas', NUMERO), col('monto', 'Costo', DINERO),
+      col('piezas', 'Piezas', NUMERO), col('ordenes', 'Ordenes', NUMERO),
     ],
-    sumar: ['piezas', 'monto'],
+    sumar: ['piezas'],
     consulta: `SELECT r.codigo, r.descripcion, sum(m.cantidad)::int AS piezas,
-                      sum(m.cantidad * m.precio_unitario) AS monto
+                      count(DISTINCT m.id_orden)::int AS ordenes
                  FROM movimiento_repuesto m
                  JOIN repuesto r ON r.id = m.id_repuesto
                  JOIN orden_servicio o ON o.id = m.id_orden
-                WHERE m.tipo = 'consumo' AND ${EN_RANGO}
+                WHERE m.tipo = 'consumo' AND ${EN_RANGO} AND ${FILTRO_MOVIMIENTO}
                 GROUP BY r.codigo, r.descripcion ORDER BY sum(m.cantidad) DESC LIMIT 50`,
   },
   {
@@ -273,6 +295,8 @@ export const REPORTES: readonly Reporte[] = [
                       v.cantidad::int AS existencia, v.stock_minimo::int AS minimo
                  FROM v_repuesto_bajo_minimo v
                  JOIN bodega b ON b.id = v.id_bodega
+                WHERE ({{repuesto}}::uuid IS NULL OR v.id = {{repuesto}}::uuid)
+                  AND ({{bodega}}::uuid IS NULL OR v.id_bodega = {{bodega}}::uuid)
                 ORDER BY (v.stock_minimo - v.cantidad) DESC, v.codigo LIMIT 100`,
   },
   {
@@ -291,67 +315,28 @@ export const REPORTES: readonly Reporte[] = [
                  FROM movimiento_repuesto m
                 WHERE ($1::timestamptz IS NULL OR m.creado_en >= $1)
                   AND ($2::timestamptz IS NULL OR m.creado_en < $2)
+                  AND ${FILTRO_MOVIMIENTO}
                 GROUP BY m.tipo ORDER BY count(*) DESC`,
   },
   {
     clave: 'compras_por_proveedor',
-    titulo: 'Compras por proveedor',
-    proposito: 'A quien se le compra y cuanto queda sin llegar.',
+    titulo: 'Reposicion por proveedor',
+    proposito: 'A quien se le piden repuestos y cuantos pedidos siguen sin llegar a bodega.',
     grupo: 'inventario',
     admiteRango: true,
     columnas: [
-      col('proveedor', 'Proveedor', TEXTO), col('compras', 'Compras', NUMERO),
-      col('monto', 'Monto', DINERO), col('pendientes', 'Sin recibir', NUMERO),
+      col('proveedor', 'Proveedor', TEXTO), col('compras', 'Pedidos', NUMERO),
+      col('pendientes', 'Sin recibir', NUMERO),
     ],
-    sumar: ['compras', 'monto', 'pendientes'],
+    sumar: ['compras', 'pendientes'],
     consulta: `SELECT p.nombre AS proveedor, count(*)::int AS compras,
-                      coalesce(sum(c.total), 0) AS monto,
                       count(*) FILTER (
                         WHERE c.estado IN ('enviada','confirmada','recibida_parcial')
                       )::int AS pendientes
                  FROM compra c JOIN proveedor p ON p.id = c.id_proveedor
                 WHERE ($1::timestamptz IS NULL OR c.fecha_pedido >= $1::date)
                   AND ($2::timestamptz IS NULL OR c.fecha_pedido < $2::date)
-                GROUP BY p.nombre ORDER BY sum(c.total) DESC NULLS LAST`,
-  },
-  {
-    clave: 'cobros_a_proveedores',
-    titulo: 'Expedientes de cobro',
-    proposito: 'Cuanto se reclamo, cuanto se recupero y cuanto sigue trabado.',
-    grupo: 'dinero',
-    admiteRango: true,
-    columnas: [
-      col('estado', 'Estado', TEXTO), col('expedientes', 'Expedientes', NUMERO),
-      col('reclamado', 'Reclamado', DINERO), col('cobrado', 'Cobrado', DINERO),
-    ],
-    sumar: ['expedientes', 'reclamado', 'cobrado'],
-    advertencia: 'Lo bloqueado por evidencia es plata que el centro ya gasto y todavia no '
-      + 'puede reclamar. Es la fila que hay que mirar primero.',
-    consulta: `SELECT replace(e.estado::text, '_', ' ') AS estado, count(*)::int AS expedientes,
-                      coalesce(sum(e.monto_reclamado), 0) AS reclamado,
-                      coalesce(sum(e.monto_cobrado), 0) AS cobrado
-                 FROM expediente_cobro e
-                 JOIN orden_servicio o ON o.id = e.id_orden
-                WHERE ${EN_RANGO}
-                GROUP BY e.estado ORDER BY count(*) DESC`,
-  },
-  {
-    clave: 'pagos_de_clientes',
-    titulo: 'Pagos de clientes',
-    proposito: 'Que entro por caja y por que via.',
-    grupo: 'dinero',
-    admiteRango: true,
-    columnas: [
-      col('forma_pago', 'Forma de pago', TEXTO), col('estado', 'Estado', TEXTO),
-      col('pagos', 'Pagos', NUMERO), col('monto', 'Monto', DINERO),
-    ],
-    sumar: ['pagos', 'monto'],
-    consulta: `SELECT p.forma_pago, p.estado::text AS estado, count(*)::int AS pagos,
-                      coalesce(sum(p.monto), 0) AS monto
-                 FROM pago p
-                WHERE ($1::timestamptz IS NULL OR p.creado_en >= $1)
-                  AND ($2::timestamptz IS NULL OR p.creado_en < $2)
-                GROUP BY p.forma_pago, p.estado ORDER BY sum(p.monto) DESC`,
+                GROUP BY p.nombre ORDER BY count(*) DESC`,
   },
   {
     clave: 'validaciones_tecnicas',
@@ -372,6 +357,88 @@ export const REPORTES: readonly Reporte[] = [
                  JOIN orden_servicio o ON o.id = v.id_orden
                 WHERE ${EN_RANGO}
                 GROUP BY v.resultado ORDER BY count(*) DESC`,
+  },
+  {
+    clave: 'ordenes_retrasadas',
+    titulo: 'Ordenes retrasadas y por que',
+    proposito: 'Que ordenes abiertas ya vencieron, donde estan detenidas y quien las tiene.',
+    grupo: 'operacion',
+    admiteRango: true,
+    columnas: [
+      col('orden', 'Orden', TEXTO), col('estado', 'Estado', TEXTO),
+      col('tecnico', 'Tecnico', TEXTO), col('tienda', 'Tienda', TEXTO),
+      col('dias_de_retraso', 'Dias de retraso', NUMERO), col('motivo', 'Por que esta detenida', TEXTO),
+    ],
+    sumar: [],
+    advertencia: 'El motivo se deduce del estado y de lo que la orden espera. Si dice «sin tecnico», '
+      + 'el retraso es de asignacion, no de reparacion.',
+    consulta: `SELECT coalesce(o.codigo, o.numero::text) AS orden,
+                      replace(o.estado::text, '_', ' ') AS estado,
+                      coalesce(trim(u.nombres), 'sin tecnico') AS tecnico,
+                      coalesce(t.nombre, '—') AS tienda,
+                      floor(EXTRACT(EPOCH FROM (now() - o.plazo_vence_en)) / 86400)::int AS dias_de_retraso,
+                      CASE
+                        WHEN o.id_tecnico IS NULL THEN 'Sin tecnico asignado'
+                        WHEN o.estado = 'esperando_repuesto' THEN 'Espera repuesto: ' || coalesce((
+                          SELECT string_agg(r.codigo || ' x' || s.cantidad || ' (' || s.estado::text || ')', ', ')
+                            FROM solicitud_repuesto s JOIN repuesto r ON r.id = s.id_repuesto
+                           WHERE s.id_orden = o.id AND s.estado NOT IN ('recibida', 'anulada')
+                        ), 'sin solicitud registrada')
+                        WHEN o.estado = 'esperando_autorizacion' THEN 'Espera la autorizacion del cliente'
+                        WHEN o.estado = 'finalizada' THEN 'Reparada; falta validar o entregar'
+                        WHEN o.estado IN ('registrada', 'asignada', 'en_cola_taller') THEN 'No ha empezado el diagnostico'
+                        ELSE 'En trabajo tecnico'
+                      END AS motivo
+                 FROM orden_servicio o
+                 LEFT JOIN tecnico tc ON tc.id = o.id_tecnico
+                 LEFT JOIN usuario u ON u.id = tc.id_usuario
+                 LEFT JOIN tienda_origen t ON t.id = o.id_tienda
+                WHERE o.estado NOT IN ('entregada','cerrada_sin_reparar','anulada')
+                  AND o.plazo_vence_en < now() AND ${EN_RANGO}
+                ORDER BY o.plazo_vence_en LIMIT 300`,
+  },
+  {
+    clave: 'solicitudes_de_repuesto',
+    titulo: 'Solicitudes de repuesto',
+    proposito: 'Que se pidio, en que paso esta cada pedido y cuantas unidades representa.',
+    grupo: 'inventario',
+    admiteRango: true,
+    columnas: [
+      col('estado', 'Estado', TEXTO), col('solicitudes', 'Solicitudes', NUMERO),
+      col('unidades', 'Unidades', NUMERO),
+    ],
+    sumar: ['solicitudes', 'unidades'],
+    consulta: `SELECT replace(s.estado::text, '_', ' ') AS estado, count(*)::int AS solicitudes,
+                      sum(s.cantidad)::int AS unidades
+                 FROM solicitud_repuesto s
+                 JOIN orden_servicio o ON o.id = s.id_orden
+                WHERE ($1::timestamptz IS NULL OR s.fecha_solicitud >= $1::date)
+                  AND ($2::timestamptz IS NULL OR s.fecha_solicitud < $2::date)
+                  AND ${FILTRO_ORDEN}
+                  AND ({{repuesto}}::uuid IS NULL OR s.id_repuesto = {{repuesto}}::uuid)
+                GROUP BY s.estado ORDER BY count(*) DESC`,
+  },
+  {
+    clave: 'disponibilidad_repuestos',
+    titulo: 'Disponibilidad de repuestos',
+    proposito: 'Cuanto hay, cuanto esta reservado o pedido y cuanto se puede prometer. Foto de hoy.',
+    grupo: 'inventario',
+    admiteRango: false,
+    columnas: [
+      col('codigo', 'Codigo', TEXTO), col('descripcion', 'Repuesto', TEXTO),
+      col('existencia', 'En bodega', NUMERO), col('en_tecnicos', 'Con tecnicos', NUMERO),
+      col('reservado', 'Reservado', NUMERO), col('comprometido', 'Pedido sin revisar', NUMERO),
+      col('disponible', 'Disponible', NUMERO),
+    ],
+    consulta: `SELECT r.codigo, r.descripcion, d.existencia_bodegas AS existencia, d.en_tecnicos,
+                      d.reservado, d.comprometido, d.disponible
+                 FROM v_disponibilidad_repuesto d JOIN repuesto r ON r.id = d.id_repuesto
+                WHERE r.activo
+                  AND ({{repuesto}}::uuid IS NULL OR r.id = {{repuesto}}::uuid)
+                  AND ({{bodega}}::uuid IS NULL OR EXISTS (
+                        SELECT 1 FROM existencia e WHERE e.id_repuesto = r.id
+                           AND e.id_bodega = {{bodega}}::uuid AND e.cantidad > 0))
+                ORDER BY (d.reservado + d.comprometido) DESC, d.disponible, r.codigo LIMIT 300`,
   },
 ];
 

@@ -8,7 +8,7 @@
 import type {
   OrdenLiberada, PeticionMovimientoInventario, ResultadoMovimiento,
 } from '@servitotal/compartido';
-import { PERMISO_DEL_MOVIMIENTO, TIPO_MOVIMIENTO } from '@servitotal/compartido';
+import { CODIGO_ROL, PERMISO_DEL_MOVIMIENTO, TIPO_MOVIMIENTO } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import type { Ejecutor } from '../../comun/transacciones.js';
 import { enTransaccion } from '../../comun/transacciones.js';
@@ -23,6 +23,9 @@ import { anotarAvisos, type AvisoDeOrden } from '../ordenes/servicio-avisos.js';
 import * as repositorio from './repositorio.js';
 import * as repositorioMovimientos from './repositorio-movimientos.js';
 import { aResumenMovimiento } from './dto.js';
+
+/** Roles que solo operan su bodega personal. */
+const ROLES_TECNICO: readonly string[] = [CODIGO_ROL.TECNICO_RUTA, CODIGO_ROL.TECNICO_PLANTA];
 
 /** Movimientos que meten unidades al centro y por tanto pueden liberar ordenes. */
 const LIBERAN_ORDENES: readonly string[] = [TIPO_MOVIMIENTO.INGRESO];
@@ -80,6 +83,25 @@ async function aplicarMovimiento(
   if (!veredicto.valido) {
     throw new ErrorValidacion(veredicto.motivo ?? 'El movimiento no es valido.',
       veredicto.campo === undefined ? {} : { [veredicto.campo]: veredicto.motivo ?? '' });
+  }
+
+  /*
+   * EL TECNICO SOLO MUEVE LO QUE TIENE EN SU BODEGA.
+   *
+   * Consume y devuelve desde su bodega personal, nunca desde la central ni
+   * desde la de un compañero. Lo que esta en la central le llega por el
+   * recorrido de la solicitud —bodega aprueba y entrega—: si el tecnico
+   * pudiera descontar la central directamente, se saltaria la reserva y la
+   * autorizacion, y la existencia cambiaria sin que nadie de bodega lo sepa.
+   */
+  if (ROLES_TECNICO.includes(actor.rol) && bodegas.origen !== null) {
+    const suya = await repositorio.esBodegaDelUsuario(ejecutor, bodegas.origen.id, actor.id);
+    if (!suya) {
+      throw new ErrorAutorizacion(
+        `Un tecnico solo mueve repuestos desde su propia bodega. «${bodegas.origen.nombre}» no es suya: `
+        + 'pida el repuesto con una solicitud y bodega se lo entrega.',
+      );
+    }
   }
 
   // Todo repuesto esta siempre en una bodega concreta: si sale de algun
@@ -265,8 +287,7 @@ export async function registrarConsumosDeOrden(
     /*
      * El cerco por datos. Consumir repuestos contra la orden de otro tecnico
      * no es solo mirar donde no toca: le carga el costo de la pieza a la
-     * orden equivocada, y ese costo acaba en el expediente de cobro de otra
-     * persona.
+     * orden equivocada, y el kardex cuenta una reparacion que no ocurrio.
      */
     await exigirCercoSobreOrden(actor, idOrden, cliente);
 

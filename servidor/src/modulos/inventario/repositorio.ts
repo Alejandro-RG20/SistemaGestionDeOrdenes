@@ -15,7 +15,7 @@ import type {
 // ── bodegas ──────────────────────────────────────────────────────────────
 
 const CAMPOS_BODEGA = `
-  b.id, b.tipo, b.nombre, b.id_tecnico, u.nombres AS tecnico, b.activa,
+  b.id, b.tipo, b.nombre, b.id_tecnico, u.nombres AS tecnico, b.activa, b.surte_repuestos,
   coalesce(e.renglones, 0)::text AS renglones, coalesce(e.unidades, 0)::text AS unidades`;
 
 const DESDE_BODEGA = `
@@ -44,6 +44,20 @@ export async function buscarBodega(
     'SELECT id, tipo::text AS tipo, nombre, activa FROM bodega WHERE id = $1', [id],
   );
   return rows[0] ?? null;
+}
+
+/** Si la bodega es la bodega personal del tecnico que es ese usuario. */
+export async function esBodegaDelUsuario(
+  ejecutor: Ejecutor, idBodega: string, idUsuario: string,
+): Promise<boolean> {
+  const { rows } = await ejecutor.query<{ suya: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM bodega b JOIN tecnico t ON t.id = b.id_tecnico
+        WHERE b.id = $1 AND t.id_usuario = $2
+     ) AS suya`,
+    [idBodega, idUsuario],
+  );
+  return rows[0]?.suya ?? false;
 }
 
 // ── catalogo de repuestos ────────────────────────────────────────────────

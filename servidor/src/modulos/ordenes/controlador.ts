@@ -22,6 +22,7 @@ export async function listar(peticion: Request, respuesta: Response): Promise<vo
   const buscado = textoDeConsulta(peticion, 'numero');
   const idTecnico = textoDeConsulta(peticion, 'idTecnico');
   const idCliente = textoDeConsulta(peticion, 'idCliente');
+  const idTienda = textoDeConsulta(peticion, 'idTienda');
 
   /*
    * `numero` acepta las dos formas en que la gente nombra una orden: el
@@ -36,6 +37,9 @@ export async function listar(peticion: Request, respuesta: Response): Promise<vo
     estado: textoDeConsulta(peticion, 'estado'),
     idTecnico: idTecnico === undefined ? undefined : validar(esquemaIdentificador, idTecnico),
     idCliente: idCliente === undefined ? undefined : validar(esquemaIdentificador, idCliente),
+    // Para quien esta cercado a su tienda, el cerco la reemplaza: no puede
+    // pedir la de otra.
+    idTienda: idTienda === undefined ? undefined : validar(esquemaIdentificador, idTienda),
     numero: esNumero ? Number(buscado) : undefined,
     codigo: esCodigo ? buscado.toUpperCase() : undefined,
     soloActivas: peticion.query['soloActivas'] === 'true',
@@ -49,6 +53,10 @@ export async function alertas(peticion: Request, respuesta: Response): Promise<v
   const pagina = leerParametrosPagina(peticion.query as Record<string, unknown>);
   const resultado = await servicio.listarAlertas(actorDe(peticion), pagina);
   responderListado(respuesta, resultado.datos, resultado.paginacion);
+}
+
+export async function historial(peticion: Request, respuesta: Response): Promise<void> {
+  responderDatos(respuesta, await servicio.historial(actorDe(peticion), identificador(peticion)));
 }
 
 export async function obtener(peticion: Request, respuesta: Response): Promise<void> {

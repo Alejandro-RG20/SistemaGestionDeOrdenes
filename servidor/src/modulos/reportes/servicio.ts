@@ -1,21 +1,44 @@
 /**
  * Ejecucion de los reportes.
  *
- * Una sola funcion corre los diecisiete. Lo unico que cambia entre ellos
+ * Una sola funcion corre todos. Lo unico que cambia entre ellos
  * es la consulta y sus columnas, y ambas cosas viven en el catalogo.
  */
 import {
-  TIPO_COLUMNA,
-  type DefinicionDeReporte, type ResultadoDeReporte,
+  FILTROS_DE_REPORTE, TIPO_COLUMNA,
+  type DefinicionDeReporte, type FiltroDeReporte, type ResultadoDeReporte, type ValoresDeFiltro,
 } from '@servitotal/compartido';
 import { ejecutorPorDefecto } from '../../comun/transacciones.js';
 import { ErrorNoEncontrado } from '../../comun/errores.js';
 import { REPORTES, reportePorClave } from './catalogo.js';
 
+/** Los filtros que una consulta aplica: los que tienen su marca `{{nombre}}`. */
+function filtrosDe(consulta: string): readonly FiltroDeReporte[] {
+  return FILTROS_DE_REPORTE.filter((filtro) => consulta.includes(`{{${filtro}}}`));
+}
+
 export function catalogo(): readonly DefinicionDeReporte[] {
-  return REPORTES.map(({ clave, titulo, proposito, grupo, admiteRango }) => ({
-    clave, titulo, proposito, grupo, admiteRango,
+  return REPORTES.map(({ clave, titulo, proposito, grupo, admiteRango, consulta }) => ({
+    clave, titulo, proposito, grupo, admiteRango, filtros: filtrosDe(consulta),
   }));
+}
+
+/**
+ * Numera las marcas de filtro despues del rango y arma los parametros.
+ *
+ * Los valores nunca se pegan al texto: cada marca se vuelve `$n` y el valor
+ * viaja como parametro. Una marca repetida usa el mismo `$n`.
+ */
+function compilar(
+  consulta: string, rango: readonly (string | null)[], valores: ValoresDeFiltro,
+): { sql: string; parametros: (string | null)[] } {
+  let sql = consulta;
+  const parametros: (string | null)[] = [...rango];
+  for (const filtro of filtrosDe(consulta)) {
+    parametros.push(valores[filtro] ?? null);
+    sql = sql.split(`{{${filtro}}}`).join(`$${parametros.length}`);
+  }
+  return { sql, parametros };
 }
 
 /** Los tipos que se suman. Sumar una fecha o un texto no significa nada. */
@@ -23,6 +46,7 @@ const SUMABLES: readonly string[] = [TIPO_COLUMNA.NUMERO, TIPO_COLUMNA.DINERO];
 
 export async function ejecutar(
   clave: string, desde: string | undefined, hasta: string | undefined,
+  filtros: ValoresDeFiltro = {},
 ): Promise<ResultadoDeReporte> {
   const reporte = reportePorClave(clave);
   if (reporte === undefined) {
@@ -40,8 +64,9 @@ export async function ejecutar(
    */
   const rango = reporte.admiteRango ? [desde ?? null, hasta ?? null] : [];
 
+  const { sql, parametros } = compilar(reporte.consulta, rango, filtros);
   const { rows } = await ejecutorPorDefecto()
-    .query<Record<string, unknown>>(reporte.consulta, rango);
+    .query<Record<string, unknown>>(sql, parametros);
 
   // Los numeros llegan de PostgreSQL como texto cuando son numeric. Se
   // convierten aqui y no en el panel: el panel no tiene por que saber que

@@ -79,8 +79,7 @@ export function momentosExigiblesEn(estado: string): readonly MomentoEvidencia[]
       );
     default:
       // Entregada y los estados finales: ya paso todo el proceso, asi que
-      // se exige el expediente completo. Es lo que mira el cobro al
-      // proveedor, que ocurre despues de la entrega.
+      // se exige la evidencia completa de todo el recorrido.
       return hasta(
         MOMENTO_EVIDENCIA.RECEPCION, MOMENTO_EVIDENCIA.VALIDACION_GARANTIA,
         MOMENTO_EVIDENCIA.DIAGNOSTICO, MOMENTO_EVIDENCIA.REPARACION,

@@ -274,8 +274,8 @@ describe('ordenes: el usuario de tienda sigue cercado a su sucursal', () => {
  *
  * Esta prueba existe porque el cerco se puso primero en la ficha, y despues
  * fueron apareciendo una a una las demas puertas: la bandeja de alertas, las
- * evidencias, las visitas, los consumos, las solicitudes, el expediente de
- * cobro, el pago, la entrega. Cada una era el mismo agujero por otro lado.
+ * evidencias, las visitas, los consumos, las solicitudes, la entrega y el
+ * historial completo. Cada una era el mismo agujero por otro lado.
  *
  * Se escribe como una tabla y no como ocho pruebas sueltas a proposito:
  * agregar una ruta nueva que lleve a la orden y olvidarse de cercarla es el
@@ -293,6 +293,7 @@ describe('el cerco cubre todas las puertas a la orden', () => {
     { nombre: 'la ficha', metodo: 'get', ruta: (id) => `/ordenes/${id}` },
     { nombre: 'las evidencias', metodo: 'get', ruta: (id) => `/ordenes/${id}/evidencias` },
     { nombre: 'las visitas', metodo: 'get', ruta: (id) => `/ordenes/${id}/visitas` },
+    { nombre: 'el historial', metodo: 'get', ruta: (id) => `/ordenes/${id}/historial` },
     {
       nombre: 'mover el estado',
       metodo: 'post',
@@ -358,12 +359,13 @@ describe('el cerco cubre todas las puertas a la orden', () => {
     if (ajenas[0] === undefined) return;
     const idAjena = ajenas[0].id;
 
-    // El pago y la entrega son las dos que un usuario de tienda si alcanza
-    // por permisos, y por tanto las dos que importan aqui.
+    // La entrega es la que un usuario de tienda si alcanza por permisos, y
+    // por tanto la que importa aqui. (La ruta de pagos ya no existe: el
+    // sistema no registra dinero desde la migracion 0023.)
     const pago = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/ordenes/${idAjena}/pagos`).set('Authorization', `Bearer ${token}`)
       .send({ monto: 100, formaPago: 'efectivo' });
-    expect(pago.status).toBeGreaterThanOrEqual(400);
+    expect(pago.status).toBe(404);
 
     const entrega = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${idAjena}/entrega`).set('Authorization', `Bearer ${token}`);

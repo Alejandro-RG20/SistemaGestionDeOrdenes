@@ -4,7 +4,7 @@
  */
 import type { Express } from 'express';
 import type { Pool } from 'pg';
-import { prepararBaseDePruebas } from './base-de-pruebas.js';
+import { prepararBaseSembrada } from './base-de-pruebas.js';
 import { CONTRASENA_DE_PRUEBA } from '../../src/infraestructura/semillas/paso-seguridad.js';
 
 export { CONTRASENA_DE_PRUEBA };
@@ -23,15 +23,11 @@ export async function montarApi(): Promise<EntornoApi> {
   process.env['JWT_SECRET'] ??= 'clave-de-pruebas-suficientemente-larga-para-hs256';
   process.env['JWT_SECRETO'] ??= process.env['JWT_SECRET'];
   process.env['SEGURIDAD_INTENTOS_PARA_BLOQUEO'] ??= '5';
-  await prepararBaseDePruebas();
+  // Copia de la base ya migrada y sembrada (ver `prepararBaseSembrada`).
+  await prepararBaseSembrada(20260913);
 
-  const { aplicarMigraciones } = await import('../../src/infraestructura/migraciones/ejecutor.js');
   const conexion = await import('../../src/infraestructura/conexion.js');
-  const { sembrar } = await import('../../src/infraestructura/semillas/sembrador.js');
   const { construirAplicacion } = await import('../../src/aplicacion.js');
-
-  await aplicarMigraciones();
-  await sembrar({ semilla: 20260913 });
 
   return {
     aplicacion: construirAplicacion(),

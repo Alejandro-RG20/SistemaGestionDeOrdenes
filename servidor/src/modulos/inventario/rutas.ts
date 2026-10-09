@@ -5,7 +5,7 @@
  * edita, se corrige con un ajuste justificado, que es otro movimiento.
  */
 import { Router, type RequestHandler } from 'express';
-import { asincrono, exigirPermiso } from '../../comun/autorizacion.js';
+import { asincrono, exigirAlgunPermiso, exigirPermiso } from '../../comun/autorizacion.js';
 import * as controlador from './controlador.js';
 
 export function rutasDeInventario(): Router {
@@ -45,8 +45,15 @@ export function rutasDeInventario(): Router {
 
   router.post('/ordenes/:id/consumos',
     exigirPermiso('inventario.consumo.registrar'), asincrono(controlador.registrarConsumos));
+  // Pide el tecnico de la orden (o bodega en su nombre). El cerco por datos
+  // del servicio impide pedir para la orden de otro.
   router.post('/ordenes/:id/solicitudes-repuesto',
-    exigirPermiso('inventario.solicitud.gestionar'), asincrono(controlador.solicitarRepuesto));
+    exigirAlgunPermiso('inventario.solicitud.crear', 'inventario.solicitud.gestionar'),
+    asincrono(controlador.solicitarRepuesto));
+
+  // Lo que se puede prometer de cada repuesto: existente, reservado,
+  // comprometido y disponible.
+  router.get('/disponibilidad', consultar, asincrono(controlador.listarDisponibilidad));
 
   return router;
 }

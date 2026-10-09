@@ -245,6 +245,41 @@ export class ClienteApi {
     });
   }
 
+  /**
+   * Descarga un archivo de la API con la sesion del usuario.
+   *
+   * Un `<a href>` no sirve: el navegador no manda la cabecera Authorization
+   * y el servidor responde 401. Se trae con el token y se entrega al
+   * navegador como archivo.
+   */
+  async descargar(ruta: string, nombrePorDefecto: string): Promise<void> {
+    const acceso = this.tokens.acceso();
+    const respuesta = await fetch(`${this.raiz}${ruta}`, {
+      headers: acceso === null ? {} : { Authorization: `Bearer ${acceso}` },
+    }).catch(() => null);
+    if (respuesta === null) {
+      throw new ErrorDeApi('SIN_CONEXION', 'No se pudo contactar al servidor.', 0);
+    }
+    if (!respuesta.ok) {
+      const cuerpo = (await respuesta.json().catch(() => ({}))) as CuerpoError;
+      throw new ErrorDeApi(
+        cuerpo.error?.code ?? 'ERROR_DESCONOCIDO',
+        cuerpo.error?.message ?? 'No se pudo descargar el archivo.',
+        respuesta.status,
+      );
+    }
+    const disposicion = respuesta.headers.get('Content-Disposition') ?? '';
+    const nombre = /filename="([^"]+)"/.exec(disposicion)?.[1] ?? nombrePorDefecto;
+    const url = URL.createObjectURL(await respuesta.blob());
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = nombre;
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async iniciarCarga(
     peticion: PeticionIniciarCarga,
   ): Promise<EstadoDeCarga & { idEvidencia: string }> {

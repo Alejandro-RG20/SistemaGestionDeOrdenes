@@ -1,16 +1,15 @@
 /**
- * Indicadores de operacion y de cobro.
+ * Indicadores de operacion: estados, plazos, tecnicos y reincidencias.
  *
  * Sin graficos, a proposito. Estos numeros se leen para decidir y para
  * discutirlos con una marca; una tabla se compara, se ordena y se copia a un
  * correo, y una barra de colores no. Si algun dia hace falta un grafico,
  * sera para una presentacion, no para esta pantalla.
  */
-import type { IndicadoresDeCobro, IndicadoresDeOperacion } from '@servitotal/compartido';
+import type { IndicadoresDeOperacion } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
 import { Cargando, Fallo } from '../componentes/piezas.js';
-import { tienePermiso } from '../sesion/navegacion.js';
 
 function claseDePorcentaje(valor: number): string {
   if (valor >= 85) return 'cifra cifra-buena';
@@ -19,17 +18,10 @@ function claseDePorcentaje(valor: number): string {
 }
 
 export function Indicadores(): JSX.Element {
-  const { api, usuario } = useSesion();
-  const puedeVerCobros = tienePermiso(usuario, 'cobros.indicadores.consultar');
+  const { api } = useSesion();
 
   const operacion = useRecurso<IndicadoresDeOperacion>(
     () => api.pedir<IndicadoresDeOperacion>('/indicadores/operacion'), [],
-  );
-  const cobros = useRecurso<IndicadoresDeCobro | null>(
-    () => (puedeVerCobros
-      ? api.pedir<IndicadoresDeCobro>('/cobros/indicadores')
-      : Promise.resolve(null)),
-    [puedeVerCobros],
   );
 
   if (operacion.cargando) return <Cargando que="los indicadores" />;
@@ -164,66 +156,6 @@ export function Indicadores(): JSX.Element {
         </tbody>
       </table>
 
-      {puedeVerCobros && cobros.datos !== null && cobros.datos !== undefined ? (
-        <>
-          <h2>Recuperacion de garantias</h2>
-          <div className="g g4">
-            <div className="card">
-              <p className="etiqueta-cifra">Reclamado</p>
-              <p className="cifra">C$ {cobros.datos.totalReclamado.toFixed(2)}</p>
-            </div>
-            <div className="card">
-              <p className="etiqueta-cifra">Cobrado</p>
-              <p className="cifra cifra-buena">C$ {cobros.datos.totalCobrado.toFixed(2)}</p>
-            </div>
-            <div className="card">
-              <p className="etiqueta-cifra">Tasa de recuperacion</p>
-              <p className={claseDePorcentaje(cobros.datos.tasaRecuperacion)}>
-                {cobros.datos.tasaRecuperacion}%
-              </p>
-            </div>
-            <div className="card">
-              <p className="etiqueta-cifra">Expuesto</p>
-              <p className="cifra cifra-alerta">C$ {cobros.datos.expuesto.toFixed(2)}</p>
-              <p className="tenue" style={{ margin: 0, fontSize: 13 }}>
-                Reclamado que no ha entrado ni fue rechazado
-              </p>
-            </div>
-          </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Marca</th>
-                <th className="numero">Expedientes</th>
-                <th className="numero">Reclamado</th>
-                <th className="numero">Cobrado</th>
-                <th className="numero">Recupera</th>
-                <th className="numero">Rechazos</th>
-                <th className="numero">Dias en responder</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cobros.datos.porMarca.map((fila) => (
-                <tr key={fila.idMarca ?? 'poliza'}>
-                  <td>{fila.marca}</td>
-                  <td className="numero">{fila.expedientes}</td>
-                  <td className="numero">C$ {fila.reclamado.toFixed(2)}</td>
-                  <td className="numero">C$ {fila.cobrado.toFixed(2)}</td>
-                  <td className="numero">
-                    {/* El numero con el que se negocia con la marca. */}
-                    <span className={fila.tasaRecuperacion < 60 ? 'estado estado-critico' : 'estado'}>
-                      {fila.tasaRecuperacion}%
-                    </span>
-                  </td>
-                  <td className="numero tenue">{fila.rechazados}</td>
-                  <td className="numero tenue">{fila.diasPromedioRespuesta ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      ) : null}
     </>
   );
 }

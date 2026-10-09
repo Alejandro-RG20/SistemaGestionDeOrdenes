@@ -64,8 +64,8 @@ export async function iniciarCarga(
      * Se agrego cuando una prueba dejo ver la incoherencia: el tecnico no
      * podia listar las evidencias de una orden ajena pero si subirle fotos.
      * Dejar abierta la de escritura es peor que la de lectura: una foto
-     * colgada de la orden de otro acaba en el expediente de cobro de ese
-     * otro, y nadie la va a encontrar buscando donde la tomaron.
+     * colgada de la orden de otro acaba en el historial de ese otro, y nadie
+     * la va a encontrar buscando donde la tomaron.
      */
     await exigirCercoSobreOrden(actor, peticion.idOrden, cliente);
     // Si la ficha ya llego por la cola de operaciones, el archivo se cuelga
@@ -133,8 +133,8 @@ export async function agregarParte(
 
 /**
  * Cierra la carga y deja la evidencia marcada como sincronizada. La huella
- * se verifica antes: una evidencia que no casa con la suya no sirve para
- * reclamarle a un fabricante.
+ * se verifica antes: una evidencia que no casa con la suya no demuestra
+ * nada.
  */
 export async function cerrarCarga(idEvidencia: string, idCarga: string): Promise<EvidenciaListada> {
   const guardado = await almacen.cerrarCarga(idCarga);

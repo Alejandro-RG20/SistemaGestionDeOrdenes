@@ -35,19 +35,23 @@ afterAll(async () => { await cerrarPiscina(); });
 
 describe('volumenes sembrados', () => {
   /**
-   * Las 37 personas del centro de servicio que declara el pliego, mas las
-   * seis cuentas que exige su lista de roles (§5 y §6): el administrador,
-   * la jefatura de cobros, el usuario de consulta y el mostrador de las
-   * tres sucursales del grupo.
+   * Las personas del centro de servicio, mas las cuentas que exige la lista
+   * de roles: el administrador, el usuario de consulta y el mostrador de las
+   * tres sucursales del grupo. Desde la migracion 0023 no se siembran los
+   * cinco puestos de cobros: el sistema ya no gestiona dinero.
    */
   it('siembra la plantilla completa, sin cuentas sin dueno', async () => {
-    expect(await escalar('SELECT count(*) FROM usuario')).toBe(43);
+    expect(await escalar('SELECT count(*) FROM usuario')).toBe(38);
     expect(await escalar("SELECT count(*) FROM tecnico WHERE tipo = 'ruta'")).toBe(8);
     expect(await escalar("SELECT count(*) FROM tecnico WHERE tipo = 'planta'")).toBe(8);
 
-    // Los 13 roles del pliego, cada uno con alguien dentro: un rol vacio
+    // Los 11 roles operativos, cada uno con alguien dentro: un rol vacio
     // es un permiso que nadie ejerce y que nadie nota si se rompe.
-    expect(await escalar('SELECT count(*) FROM rol')).toBe(13);
+    expect(await escalar('SELECT count(*) FROM rol')).toBe(11);
+    expect(await escalar("SELECT count(*) FROM permiso WHERE codigo LIKE 'cobros.%'")).toBe(0);
+    // Cada tecnico, de ruta o de planta, tiene su bodega personal.
+    expect(await escalar(`SELECT count(*) FROM tecnico t WHERE NOT EXISTS (
+      SELECT 1 FROM bodega b WHERE b.id_tecnico = t.id AND b.tipo = 'movil' AND b.activa)`)).toBe(0);
     expect(await escalar(
       'SELECT count(*) FROM rol r WHERE NOT EXISTS (SELECT 1 FROM usuario u WHERE u.id_rol = r.id)',
     )).toBe(0);
@@ -166,16 +170,11 @@ describe('invariantes de agenda, evidencia e inventario', () => {
          GROUP BY id_tecnico, fecha_programada, franja_horaria HAVING count(*) > 1) AS choques`)).toBe(0);
   });
 
-  it('deja ordenes con evidencia obligatoria faltante, que es lo que bloquea el cobro', async () => {
+  it('deja ordenes con evidencia obligatoria faltante, que es lo que bloquea el avance', async () => {
     expect(await escalar('SELECT count(DISTINCT id_orden) FROM v_evidencia_faltante')).toBeGreaterThan(0);
-    expect(await escalar(
-      "SELECT count(*) FROM expediente_cobro WHERE estado = 'bloqueado_por_evidencia'",
-    )).toBeGreaterThan(0);
-    // Ningun expediente marcado completo tiene evidencia faltante.
-    expect(await escalar(`
-      SELECT count(*) FROM expediente_cobro e
-       WHERE e.evidencia_completa
-         AND EXISTS (SELECT 1 FROM v_evidencia_faltante f WHERE f.id_orden = e.id_orden)`)).toBe(0);
+    // La siembra ya no inventa pagos ni expedientes de cobro.
+    expect(await escalar('SELECT count(*) FROM pago')).toBe(0);
+    expect(await escalar('SELECT count(*) FROM expediente_cobro')).toBe(0);
   });
 
   it('la existencia se puede reconstruir desde los movimientos', async () => {

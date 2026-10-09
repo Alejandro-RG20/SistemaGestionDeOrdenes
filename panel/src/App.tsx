@@ -28,10 +28,10 @@ import { Taller } from './pantallas/Taller.js';
 import { Inventario, SolicitudesDeRepuesto } from './pantallas/Inventario.js';
 import { BuscarKardex, Kardex } from './pantallas/Kardex.js';
 import { Movimientos } from './pantallas/Movimientos.js';
+import { Disponibilidad } from './pantallas/Disponibilidad.js';
 import { Solicitudes } from './pantallas/Solicitudes.js';
 import { Coberturas } from './pantallas/Coberturas.js';
 import { Excepciones } from './pantallas/Excepciones.js';
-import { Cobros, DetalleExpediente } from './pantallas/Cobros.js';
 import { Indicadores } from './pantallas/Indicadores.js';
 import { Administracion } from './pantallas/Administracion.js';
 import { ConsultaPublica } from './pantallas/ConsultaPublica.js';
@@ -39,7 +39,6 @@ import { RevisarOrden, Validaciones } from './pantallas/Validaciones.js';
 import { Compras, DetalleCompra, NuevaCompra, Proveedores } from './pantallas/Compras.js';
 import { Tiendas } from './pantallas/Tiendas.js';
 import { Entrega } from './pantallas/Entrega.js';
-import { Pagos } from './pantallas/Pagos.js';
 import { Reportes } from './pantallas/Reportes.js';
 import { ProveedorDeCampo } from './campo/contexto.js';
 import { ArmazonCampo, type DatosDePantallaDeCampo } from './componentes/ArmazonCampo.js';
@@ -181,6 +180,9 @@ function Privado(): JSX.Element {
       <Route path="/inventario/recorrido" element={
         <Pantalla codigo="W-27" miga="Inventario › Solicitudes del tecnico"><Solicitudes /></Pantalla>
       } />
+      <Route path="/inventario/disponibilidad" element={
+        <Pantalla codigo="W-30" miga="Inventario › Disponibilidad"><Disponibilidad /></Pantalla>
+      } />
       <Route path="/inventario/movimientos" element={
         <Pantalla codigo="W-28" miga="Inventario › Movimientos"><Movimientos /></Pantalla>
       } />
@@ -204,9 +206,6 @@ function Privado(): JSX.Element {
       <Route path="/proveedores" element={
         <Pantalla codigo="W-22" miga="Proveedores"><Proveedores /></Pantalla>
       } />
-      <Route path="/pagos" element={
-        <Pantalla codigo="W-24" miga="Pagos de clientes"><Pagos /></Pantalla>
-      } />
       <Route path="/reportes" element={
         <Pantalla codigo="W-26" miga="Reportes"><Reportes /></Pantalla>
       } />
@@ -216,12 +215,6 @@ function Privado(): JSX.Element {
 
       <Route path="/coberturas" element={
         <Pantalla codigo="W-15" miga="Garantias › Reglas de cobertura"><Coberturas /></Pantalla>
-      } />
-      <Route path="/cobros" element={
-        <Pantalla codigo="W-09" miga="Expedientes de cobro"><Cobros /></Pantalla>
-      } />
-      <Route path="/cobros/:id" element={
-        <Pantalla codigo="W-09" miga="Cobros › Expediente"><DetalleExpediente /></Pantalla>
       } />
       <Route path="/excepciones" element={
         <Pantalla codigo="W-10" miga="Excepciones de sincronizacion"><Excepciones /></Pantalla>

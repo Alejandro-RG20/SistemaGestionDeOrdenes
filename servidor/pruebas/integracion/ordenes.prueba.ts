@@ -262,17 +262,35 @@ describe('maquina de estados sobre la API', () => {
     expect(finalizada.status).toBe(200);
 
     await cargarEvidenciaPendiente(creada.id, 'entrega');
-    const entregada = await mover(agente, creada.id, ESTADO_ORDEN.ENTREGADA);
-    expect(entregada.status).toBe(200);
-    expect(entregada.body.data.estadoNuevo).toBe(ESTADO_ORDEN.ENTREGADA);
-    // El plazo de una orden entregada YA NO CORRE, pero no se borra: se
-    // conserva el ultimo vigente porque es el registro de lo que se le
-    // prometio al cliente, y es contra el que se mide el cumplimiento.
-    // Borrarlo dejaba el indicador en 0 de 0 para siempre.
-    expect(entregada.body.data.plazoVenceEn).toBeTypeOf('string');
+
+    // Mover el estado a «entregada» a pelo ya no se puede: hace falta el
+    // acta, y el acta exige la revision tecnica. Era la puerta de atras.
+    const atajo = await mover(agente, creada.id, ESTADO_ORDEN.ENTREGADA);
+    expect(atajo.status).toBe(422);
+    expect(atajo.body.error.message).toMatch(/Entregar el articulo/);
+
+    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${creada.id}/validaciones`)
+      .set(jefeTecnicos).send({
+        resultado: 'aprobada', observacion: 'Compresor sustituido y probado: enfria a -18 C.',
+        revisoDiagnostico: true, revisoReparacion: true, revisoEvidencias: true, revisoRepuestos: true,
+      }).expect(201);
+
+    // Y se entrega sin registrar ningun pago: el sistema no gestiona dinero.
+    const entregada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${creada.id}/entrega`)
+      .set(jefatura).send({ recibidoPor: 'El titular de la orden', esElCliente: true });
+    expect(entregada.status).toBe(201);
+    const { rows: pagos } = await entorno.piscina.query(
+      'SELECT 1 FROM pago WHERE id_orden = $1', [creada.id],
+    );
+    expect(pagos).toHaveLength(0);
 
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${creada.id}`).set(agente).expect(200);
+    expect(ficha.body.data.estado).toBe(ESTADO_ORDEN.ENTREGADA);
+    // El plazo de una orden entregada YA NO CORRE, pero no se borra: se
+    // conserva el ultimo vigente porque es el registro de lo que se le
+    // prometio al cliente, y es contra el que se mide el cumplimiento.
+    expect(ficha.body.data.plazoVenceEn).toBeTypeOf('string');
     expect(ficha.body.data.fechaEntrega).toBeTypeOf('string');
     expect(ficha.body.data.destinosPosibles).toHaveLength(0);
     // Y aunque tenga plazo grabado, no aparece como vencida: todo lo que

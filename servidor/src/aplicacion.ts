@@ -17,7 +17,6 @@ import { rutasDeAgenda } from './modulos/agenda/rutas.js';
 import { rutasDeInventario } from './modulos/inventario/rutas.js';
 import { rutasDeSincronizacion } from './modulos/sincronizacion/rutas.js';
 import { rutasDeCampo } from './modulos/campo/rutas.js';
-import { rutasDeCobros } from './modulos/cobros/rutas.js';
 import { rutasDeAvisos } from './modulos/avisos/rutas.js';
 import { rutasDeIndicadores } from './modulos/indicadores/rutas.js';
 import { rutasDelPortal } from './modulos/portal/rutas.js';
@@ -84,7 +83,6 @@ export function construirAplicacion(): Express {
     aplicacion.use(raiz, exigirSesion, rutasDeInventario());
     aplicacion.use(raiz, exigirSesion, rutasDeSincronizacion());
     aplicacion.use(raiz, exigirSesion, rutasDeCampo());
-    aplicacion.use(raiz, exigirSesion, rutasDeCobros());
     aplicacion.use(raiz, exigirSesion, rutasDeAvisos());
     aplicacion.use(raiz, exigirSesion, rutasDeIndicadores());
     aplicacion.use(raiz, exigirSesion, rutasDeCatalogos());

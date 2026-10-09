@@ -1,7 +1,7 @@
 /**
  * Contratos de validacion tecnica, entrega, compras, proveedores y tiendas.
  */
-import type { EstadoCompra, EstadoPago, FormaPago, ResultadoValidacion } from '../dominio/proceso-final.js';
+import type { EstadoCompra, ResultadoValidacion } from '../dominio/proceso-final.js';
 
 // ── validacion tecnica ────────────────────────────────────────────────
 
@@ -93,22 +93,6 @@ export interface VerificacionDeEntrega {
   readonly puedeEntregarse: boolean;
   readonly requisitos: readonly RequisitoDeEntrega[];
   readonly entrega: Entrega | null;
-}
-
-// ── pagos ─────────────────────────────────────────────────────────────
-
-export interface PagoRegistrado {
-  readonly id: string;
-  readonly idOrden: string;
-  readonly numeroOrden: number;
-  readonly codigoOrden: string;
-  readonly monto: number;
-  readonly formaPago: FormaPago;
-  readonly referencia: string | null;
-  readonly estado: EstadoPago;
-  readonly motivoAnulacion: string | null;
-  readonly registradoPor: string | null;
-  readonly momento: string;
 }
 
 // ── proveedores ───────────────────────────────────────────────────────

@@ -49,7 +49,7 @@ describe('inicio de sesion', () => {
   });
 
   it('bloquea la cuenta tras cinco intentos fallidos y no la abre ni con la contrasena correcta', async () => {
-    const victima = await usuarioConRol(entorno.piscina, CODIGO_ROL.GESTOR_COBROS);
+    const victima = await usuarioConRol(entorno.piscina, CODIGO_ROL.TECNICO_PLANTA);
 
     for (let intento = 0; intento < 5; intento += 1) {
       const fallo = await peticion(entorno.aplicacion)

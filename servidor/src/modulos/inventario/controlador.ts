@@ -125,5 +125,16 @@ export async function listarRecorrido(peticion: Request, respuesta: Response): P
 export async function darPasoDeSolicitud(peticion: Request, respuesta: Response): Promise<void> {
   const datos = validar(esquemaPasoSolicitud, peticion.body);
   const fila = await solicitudes.darPaso(actorDe(peticion), identificador(peticion), datos);
-  responderDatos(respuesta, kardex.aSolicitudPublica(fila));
+  responderDatos(respuesta, kardex.aSolicitudPublica(fila, actorDe(peticion).permisos));
+}
+
+export async function listarDisponibilidad(peticion: Request, respuesta: Response): Promise<void> {
+  const pagina = leerParametrosPagina(peticion.query as Record<string, unknown>);
+  const resultado = await catalogo.listarDisponibilidad({
+    texto: textoDeConsulta(peticion, 'texto'),
+    idRepuesto: uuidDeConsulta(peticion, 'idRepuesto'),
+    soloConMovimiento: peticion.query['soloConMovimiento'] === 'true',
+    soloBajoMinimo: peticion.query['soloBajoMinimo'] === 'true',
+  }, pagina);
+  responderListado(respuesta, resultado.datos, resultado.paginacion);
 }

@@ -1,5 +1,6 @@
 /** Consultas de inventario: bodegas, catalogo, existencias y solicitudes. */
 import type {
+  DisponibilidadRepuesto,
   ExistenciaEnBodega, Paginacion, PeticionSolicitudRepuesto, ResumenBodega,
   ResumenMovimiento, ResumenRepuesto, ResumenSolicitudRepuesto,
 } from '@servitotal/compartido';
@@ -8,9 +9,12 @@ import type { ParametrosPagina } from '../../comun/paginacion.js';
 import { construirPaginacion } from '../../comun/paginacion.js';
 import { ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import { enTransaccion } from '../../comun/transacciones.js';
+import { auditar } from '../../comun/auditoria.js';
+import { ACCION_BITACORA } from '@servitotal/compartido';
 import { exigirCercoSobreOrden } from '../ordenes/alcance.js';
 import * as repositorio from './repositorio.js';
 import * as repositorioMovimientos from './repositorio-movimientos.js';
+import * as repositorioDisponibilidad from './repositorio-disponibilidad.js';
 import {
   aExistencia, aResumenBodega, aResumenMovimiento, aResumenRepuesto, aResumenSolicitud,
 } from './dto.js';
@@ -94,7 +98,7 @@ export async function solicitarRepuesto(
         { idRepuesto: 'Repuesto no valido.' });
     }
 
-    return repositorioMovimientos.insertarSolicitud(cliente, {
+    const idSolicitud = await repositorioMovimientos.insertarSolicitud(cliente, {
       idOrden,
       idRepuesto: peticion.idRepuesto,
       cantidad: peticion.cantidad,
@@ -103,10 +107,45 @@ export async function solicitarRepuesto(
       fechaEstimada: peticion.fechaEstimada ?? null,
       creadoPor: actor.id,
     });
+    // `solicitud_repuesto` solo guarda la fecha; la bitacora, el instante y
+    // quien la pidio. Es lo que el historial de la orden muestra.
+    await auditar(cliente, [{
+      tabla: 'solicitud_repuesto',
+      idRegistro: idSolicitud,
+      accion: ACCION_BITACORA.CREAR,
+      campo: 'estado',
+      valorAnterior: null,
+      valorNuevo: 'solicitada',
+      motivo: `${peticion.cantidad} x ${repuesto.codigo} ${repuesto.descripcion}`,
+      idUsuario: actor.id,
+    }]);
+    return idSolicitud;
   });
 
   const filas = await repositorioMovimientos.listarSolicitudes(
     { idOrden, soloPendientes: false }, 100, 0,
   );
   return aResumenSolicitud(filas.find((fila) => fila.id === id)!);
+}
+
+export async function listarDisponibilidad(
+  filtro: repositorioDisponibilidad.FiltroDisponibilidad, pagina: ParametrosPagina,
+): Promise<Listado<DisponibilidadRepuesto>> {
+  const total = await repositorioDisponibilidad.contar(filtro);
+  const filas = await repositorioDisponibilidad.listar(filtro, pagina.tamano, pagina.desplazamiento);
+  return {
+    datos: filas.map((fila): DisponibilidadRepuesto => ({
+      idRepuesto: fila.id_repuesto,
+      codigo: fila.codigo,
+      descripcion: fila.descripcion,
+      stockMinimo: Number(fila.stock_minimo),
+      existenciaBodegas: Number(fila.existencia_bodegas),
+      enTecnicos: Number(fila.en_tecnicos),
+      reservado: Number(fila.reservado),
+      comprometido: Number(fila.comprometido),
+      disponible: Number(fila.disponible),
+      bajoMinimo: Number(fila.disponible) <= Number(fila.stock_minimo),
+    })),
+    paginacion: construirPaginacion(pagina, total),
+  };
 }

@@ -1,5 +1,6 @@
 /** Validacion de lo que entra al modulo de reportes. */
 import { z } from 'zod';
+import { ESTADO_ORDEN } from '@servitotal/compartido';
 
 /**
  * La clave se valida contra un patron estrecho, no contra la lista, para
@@ -14,4 +15,11 @@ export const esquemaConsultaReporte = z.object({
     .or(z.string().date().transform((fecha) => `${fecha}T00:00:00.000Z`)).optional(),
   hasta: z.string().datetime({ offset: true }).optional()
     .or(z.string().date().transform((fecha) => `${fecha}T00:00:00.000Z`)).optional(),
+  estado: z.enum(Object.values(ESTADO_ORDEN) as [string, ...string[]], {
+    errorMap: () => ({ message: 'Ese estado de orden no existe.' }),
+  }).optional(),
+  tecnico: z.string().uuid('El tecnico indicado no es valido.').optional(),
+  tienda: z.string().uuid('La tienda indicada no es valida.').optional(),
+  repuesto: z.string().uuid('El repuesto indicado no es valido.').optional(),
+  bodega: z.string().uuid('La bodega indicada no es valida.').optional(),
 });

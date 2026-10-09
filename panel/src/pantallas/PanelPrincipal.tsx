@@ -15,7 +15,14 @@ import { Link } from 'react-router-dom';
 import type { BandejaDeAvisos, IndicadoresDeOperacion, Tablero } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
-import { Aviso, Cargando, Cifra, Fallo, Tarjeta } from '../componentes/piezas.js';
+import { Aviso, Cargando, Cifra, Fallo, Tarjeta, Vacio, fechaHora } from '../componentes/piezas.js';
+
+/** Los encabezados del tablero, en el orden en que se leen. */
+const GRUPOS_DEL_TABLERO: readonly (readonly [string, string])[] = [
+  ['ordenes', 'Ordenes de reparacion'],
+  ['inventario', 'Inventario de repuestos'],
+  ['campo', 'Trabajo de campo'],
+];
 
 /** El color de cada tono. Nunca es el unico indicador: la etiqueta va al lado. */
 const COLOR_DEL_TONO: Record<string, string | undefined> = {
@@ -65,9 +72,6 @@ export function PanelPrincipal(): JSX.Element {
     weekday: 'long', day: 'numeric', month: 'long',
   });
 
-  const porEstado = (estado: string): number =>
-    cifras?.porEstado.find((fila) => fila.estado === estado)?.ordenes ?? 0;
-
   return (
     <>
       <h2 className="scr">Panel principal</h2>
@@ -87,29 +91,41 @@ export function PanelPrincipal(): JSX.Element {
         * actuar.
         */}
       {tablero.datos === null ? null : (
-        <div className="g g4" style={{ marginBottom: 12 }}>
-          {tablero.datos.cifras.map((cifra) => (
-            <Link
-              key={cifra.clave}
-              to={cifra.enlace ?? '#'}
-              style={{
-                textDecoration: 'none',
-                color: 'inherit',
-                pointerEvents: cifra.enlace === null ? 'none' : undefined,
-              }}
-              title={cifra.explicacion}
-            >
-              <Cifra
-                valor={cifra.valor}
-                etiqueta={cifra.etiqueta}
-                color={COLOR_DEL_TONO[cifra.tono]}
-              />
-            </Link>
-          ))}
-        </div>
+        <>
+          {GRUPOS_DEL_TABLERO.map(([grupo, titulo]) => {
+            const delGrupo = tablero.datos!.cifras.filter((cifra) => cifra.grupo === grupo);
+            if (delGrupo.length === 0) return null;
+            return (
+              <div key={grupo} style={{ marginBottom: 12 }}>
+                <h3 className="seccion-tablero">{titulo}</h3>
+                <div className="g g5">
+                  {delGrupo.map((cifra) => (
+                    <Link
+                      key={cifra.clave}
+                      to={cifra.enlace ?? '#'}
+                      style={{
+                        textDecoration: 'none',
+                        color: 'inherit',
+                        pointerEvents: cifra.enlace === null ? 'none' : undefined,
+                      }}
+                      title={cifra.explicacion}
+                    >
+                      <Cifra
+                        valor={cifra.unidad === 'dias'
+                          ? `${cifra.valor.toLocaleString('es-NI')} d`
+                          : cifra.valor.toLocaleString('es-NI')}
+                        etiqueta={cifra.etiqueta}
+                        color={COLOR_DEL_TONO[cifra.tono]}
+                      />
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </>
       )}
 
-      {/* El cumplimiento de plazo viene del analisis, no del conteo de hoy. */}
       {cifras === null ? null : (
         <div className="g g3" style={{ marginBottom: 12 }}>
           <Cifra
@@ -117,12 +133,8 @@ export function PanelPrincipal(): JSX.Element {
             etiqueta="Cumplimiento de plazo"
             color="var(--blue)"
           />
-          <Cifra
-            valor={porEstado('en_diagnostico')}
-            etiqueta="En diagnostico"
-            color="var(--teal)"
-          />
-          <Cifra valor={cifras.ordenesVivas} etiqueta="Ordenes activas (analisis)" />
+          <Cifra valor={cifras.cumplimiento.cerradas} etiqueta="Cerradas con plazo medido" />
+          <Cifra valor={cifras.cumplimiento.vencidasAbiertas} etiqueta="Abiertas con plazo vencido" />
         </div>
       )}
 
@@ -167,6 +179,83 @@ export function PanelPrincipal(): JSX.Element {
           ) : null}
         </Tarjeta>
       ))}
+
+      {tablero.datos === null || tablero.datos.cargaPorTecnico.length === 0 ? null : (
+        <Tarjeta titulo="Carga de trabajo por tecnico" extra="ordenes abiertas">
+          <table className="d">
+            <thead>
+              <tr>
+                <th>Tecnico</th><th>Tipo</th><th className="numero">Abiertas</th>
+                <th className="numero">Vencidas</th><th className="numero">En reparacion</th>
+                <th className="numero">Esperando repuesto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tablero.datos.cargaPorTecnico.map((fila) => (
+                <tr key={fila.idTecnico}>
+                  <td>
+                    <Link to={`/ordenes?idTecnico=${fila.idTecnico}&soloActivas=true`}>{fila.tecnico}</Link>
+                  </td>
+                  <td className="tenue">{fila.tipo}</td>
+                  <td className="numero">{fila.abiertas}</td>
+                  <td className="numero">
+                    {fila.vencidas > 0
+                      ? <span className="estado estado-critico">{fila.vencidas}</span>
+                      : 0}
+                  </td>
+                  <td className="numero">{fila.enReparacion}</td>
+                  <td className="numero">{fila.esperandoRepuesto}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Tarjeta>
+      )}
+
+      {tablero.datos === null ? null : (
+        <div className="g g2">
+          <Tarjeta titulo="Repuestos con mayor consumo" extra="ultimos 90 dias">
+            {tablero.datos.masConsumidos.length === 0 ? (
+              <Vacio>No se ha consumido ningun repuesto en los ultimos 90 dias.</Vacio>
+            ) : (
+              <table className="d">
+                <thead><tr><th>Repuesto</th><th className="numero">Piezas</th></tr></thead>
+                <tbody>
+                  {tablero.datos.masConsumidos.map((fila) => (
+                    <tr key={fila.idRepuesto}>
+                      <td>
+                        <Link to={`/inventario/kardex/${fila.idRepuesto}`}>{fila.codigo}</Link>
+                        {' '}<span className="tenue">{fila.descripcion}</span>
+                      </td>
+                      <td className="numero">{fila.piezas}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Tarjeta>
+          {tablero.datos.movimientosRecientes.length === 0 ? null : (
+            <Tarjeta titulo="Movimientos de inventario recientes">
+              <table className="d">
+                <thead><tr><th>Cuando</th><th>Movimiento</th><th>Orden</th><th>Quien</th></tr></thead>
+                <tbody>
+                  {tablero.datos.movimientosRecientes.map((fila) => (
+                    <tr key={fila.id}>
+                      <td className="tenue">{fechaHora(fila.momento)}</td>
+                      <td>{fila.tipo.replace(/_/g, ' ')} · {fila.cantidad} x {fila.codigo}</td>
+                      <td>
+                        {fila.idOrden === null ? '—'
+                          : <Link to={`/ordenes/${fila.idOrden}`}>{fila.codigoOrden ?? 'orden'}</Link>}
+                      </td>
+                      <td className="tenue">{fila.responsable}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Tarjeta>
+          )}
+        </div>
+      )}
 
       {/*
         * Actividad reciente (§42).

@@ -10,8 +10,8 @@
  * un formulario: es el veredicto del motor de garantias, consultado contra
  * el servidor con el articulo real. Que sea el servidor quien lo diga no es
  * un detalle de arquitectura — es lo que hace que el numero que se le
- * promete al cliente por telefono sea el mismo que va a salir en el
- * expediente de cobro tres semanas despues.
+ * promete al cliente por telefono sea el mismo que se aplica al cerrar la
+ * orden tres semanas despues.
  *
  * El numero correlativo lo asigna el servidor al guardar. Aqui no se
  * inventa ninguno.
@@ -101,9 +101,9 @@ export function NuevaOrden(): JSX.Element {
 
   /**
    * Pregunta al servidor quién paga. NO se calcula aquí: el motor de
-   * garantías vive en el servidor y es el mismo que decidirá el expediente
-   * de cobro. Dos motores darían dos respuestas, y la mala saldría a la luz
-   * semanas después.
+   * garantías vive en el servidor y es el mismo que reevalúa la cobertura
+   * tras el diagnóstico. Dos motores darían dos respuestas, y la mala saldría
+   * a la luz semanas después.
    */
   async function evaluarCobertura(id: string): Promise<void> {
     if (id === '' || cliente === null) return;
@@ -420,11 +420,9 @@ export function NuevaOrden(): JSX.Element {
                 <b>El sistema determino: garantia {cobertura.tipo.replace(/_/g, ' ')}.</b>{' '}
                 {cobertura.motivo}{' '}
                 <b>
-                  Costo para el cliente:{' '}
                   {cobertura.tipo === 'particular'
-                    ? 'lo que resulte de la cotizacion'
-                    : `${cordobas(0)}, se reclama al responsable`}
-                  .
+                    ? 'La reparacion necesitara la autorizacion del cliente tras el diagnostico.'
+                    : 'La reparacion esta cubierta por la garantia.'}
                 </b>
               </Aviso>
               {/* El desglose es lo que hace auditable el veredicto: no dice
@@ -449,7 +447,7 @@ export function NuevaOrden(): JSX.Element {
               <p style={{ fontSize: 11.5, color: 'var(--soft)', margin: '10px 0 0' }}>
                 La cobertura se reevalua tras el diagnostico: si la falla resulta excluida, la
                 orden se detiene y pasa a particular (RN-04, RN-05). Este veredicto lo emite el
-                mismo motor que decidira el expediente de cobro.
+                mismo motor que reevalua la cobertura tras el diagnostico.
               </p>
             </>
           )}

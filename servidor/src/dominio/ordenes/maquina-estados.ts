@@ -41,6 +41,9 @@ function actorPuedeMover(contexto: ContextoTransicion, definicion: DefinicionEst
 
   if (contexto.hacia === ESTADO_ORDEN.ANULADA && actor.puedeAnular) return true;
   if (contexto.hacia === ESTADO_ORDEN.CERRADA_SIN_REPARAR && actor.puedeCerrar) return true;
+  // El requisito del acta impide que esto sea un atajo: solo se llega por la
+  // entrega registrada, que antes comprueba revision y autorizacion.
+  if (contexto.hacia === ESTADO_ORDEN.ENTREGADA && actor.puedeEntregar) return true;
   if (orden.idResponsableActual !== null && orden.idResponsableActual === actor.id) return true;
 
   if (definicion.responsable === TECNICO_ASIGNADO) {

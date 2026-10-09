@@ -20,7 +20,7 @@ import { sembrarVisitas } from './paso-visitas.js';
 import { sembrarDiagnosticos } from './paso-diagnosticos.js';
 import { sembrarEvidencias } from './paso-evidencias.js';
 import { sembrarMovimientos } from './paso-inventario-movimientos.js';
-import { sembrarCobros } from './paso-cobros.js';
+import { sembrarNotasYBitacora } from './paso-notas-bitacora.js';
 import { sembrarSincronizacion } from './paso-sincronizacion.js';
 import { sembrarComprasYEntregas } from './paso-compras-entregas.js';
 
@@ -100,7 +100,7 @@ export async function sembrar(opciones: OpcionesSiembra = {}): Promise<void> {
       ['diagnosticos y cotizaciones', () => sembrarDiagnosticos(cliente, contexto, ordenes)],
       ['evidencias', () => sembrarEvidencias(cliente, contexto, ordenes)],
       ['movimientos de inventario', () => sembrarMovimientos(cliente, contexto, ordenes)],
-      ['pagos, expedientes y bitacora', () => sembrarCobros(cliente, contexto, ordenes)],
+      ['notas de correccion y bitacora', () => sembrarNotasYBitacora(cliente, contexto, ordenes)],
       ['proveedores, compras, validaciones y entregas',
         () => sembrarComprasYEntregas(cliente, contexto, ordenes)],
       ['rastro de sincronizacion', () => sembrarSincronizacion(cliente, contexto, ordenes)],

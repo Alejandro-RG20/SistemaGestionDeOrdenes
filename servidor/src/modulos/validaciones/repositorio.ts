@@ -87,7 +87,7 @@ export async function evidenciasPresentes(
 /**
  * Lo que falta Y YA SE PODIA HABER TOMADO.
  *
- * Se parte de la misma vista que usa cobros —para que las dos pantallas no
+ * Se parte de la misma vista que usa la maquina de estados —para que no
  * digan cosas distintas de la misma orden— pero se acota a los momentos
  * que corresponden al estado actual.
  *

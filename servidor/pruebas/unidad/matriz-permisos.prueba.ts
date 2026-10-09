@@ -76,7 +76,7 @@ describe('matriz de roles', () => {
   it('ningun rol operativo puede administrar usuarios por descuido', () => {
     const operativos = [
       CODIGO_ROL.TECNICO_RUTA, CODIGO_ROL.TECNICO_PLANTA, CODIGO_ROL.BODEGUERO,
-      CODIGO_ROL.AGENTE_TELEFONIA, CODIGO_ROL.GESTOR_COBROS, CODIGO_ROL.GESTOR_TECNICOS,
+      CODIGO_ROL.AGENTE_TELEFONIA, CODIGO_ROL.GESTOR_TECNICOS,
       CODIGO_ROL.JEFE_COMPRAS,
     ];
     for (const rol of operativos) {

@@ -35,7 +35,7 @@ function contexto(desde: EstadoOrden, hacia: EstadoOrden, ajustes: Ajustes = {})
     },
     actor: {
       id: ID_USUARIO_TECNICO, rol: CODIGO_ROL.JEFE_TECNICOS, idTecnico: ID_TECNICO,
-      puedeAnular: true, puedeCerrar: true,
+      puedeAnular: true, puedeCerrar: true, puedeEntregar: false,
       ...ajustes.actor,
     },
     evidenciasFaltantes: ajustes.evidenciasFaltantes ?? [],
@@ -44,6 +44,9 @@ function contexto(desde: EstadoOrden, hacia: EstadoOrden, ajustes: Ajustes = {})
     tieneCotizacion: ajustes.tieneCotizacion ?? true,
     cotizacionAceptada: ajustes.cotizacionAceptada ?? true,
     solicitudesSinLiberar: ajustes.solicitudesSinLiberar ?? 0,
+    solicitudesAbiertas: ajustes.solicitudesAbiertas ?? 0,
+    piezasSinConciliar: ajustes.piezasSinConciliar ?? 0,
+    tieneEntrega: ajustes.tieneEntrega ?? true,
     motivo: ajustes.motivo ?? 'Motivo suficientemente largo para la prueba',
   };
 }
@@ -269,7 +272,7 @@ describe('responsable unico del estado', () => {
     expect(evaluarTransicion(contexto(ESTADO_ORDEN.ESPERANDO_REPUESTO, ESTADO_ORDEN.EN_REPARACION, {
       orden: { idResponsableActual: 'usuario-x' },
       actor: {
-        id: 'usuario-x', rol: CODIGO_ROL.GESTOR_COBROS, idTecnico: null,
+        id: 'usuario-x', rol: CODIGO_ROL.JEFE_COMPRAS, idTecnico: null,
         puedeAnular: false, puedeCerrar: false,
       },
     })).permitida).toBe(true);
@@ -287,7 +290,7 @@ describe('responsable unico del estado', () => {
   it('pero sin ese permiso, no', () => {
     expect(evaluarTransicion(contexto(ESTADO_ORDEN.ESPERANDO_REPUESTO, ESTADO_ORDEN.ANULADA, {
       actor: {
-        rol: CODIGO_ROL.GESTOR_COBROS, idTecnico: null,
+        rol: CODIGO_ROL.JEFE_COMPRAS, idTecnico: null,
         puedeAnular: false, puedeCerrar: false,
       },
     })).permitida).toBe(false);
@@ -314,5 +317,69 @@ describe('el camino completo de una orden de taller', () => {
       }));
       expect(veredicto.permitida, `${desde} -> ${hacia}: ${veredicto.motivo ?? ''}`).toBe(true);
     }
+  });
+});
+
+/**
+ * Controles agregados en la reestructuracion (migracion 0023): ninguna orden
+ * se cierra con algo operativo pendiente.
+ */
+describe('nada se cierra con requisitos pendientes', () => {
+  it('quien tiene permiso de entregar mueve la orden a entregada, con acta', () => {
+    const base = { actor: { rol: CODIGO_ROL.USUARIO_TIENDA, puedeEntregar: true } } as const;
+    expect(evaluarTransicion(contexto(ESTADO_ORDEN.FINALIZADA, ESTADO_ORDEN.ENTREGADA, base))
+      .permitida).toBe(true);
+    expect(evaluarTransicion(contexto(ESTADO_ORDEN.FINALIZADA, ESTADO_ORDEN.ENTREGADA, {
+      ...base, tieneEntrega: false,
+    })).permitida).toBe(false);
+  });
+
+  it('una reparacion particular no empieza sin la autorizacion del cliente', () => {
+    const veredicto = evaluarTransicion(contexto(ESTADO_ORDEN.EN_DIAGNOSTICO, ESTADO_ORDEN.EN_REPARACION, {
+      orden: { tipoGarantia: TIPO_GARANTIA.PARTICULAR, idResponsableActual: ID_USUARIO_TECNICO },
+      cotizacionAceptada: false,
+    }));
+    expect(veredicto.permitida).toBe(false);
+    expect(veredicto.motivo).toMatch(/autoriz/);
+  });
+
+  it('desde cotizada tampoco se salta la autorizacion', () => {
+    const veredicto = evaluarTransicion(contexto(ESTADO_ORDEN.COTIZADA, ESTADO_ORDEN.EN_REPARACION, {
+      orden: { tipoGarantia: TIPO_GARANTIA.PARTICULAR },
+      cotizacionAceptada: false,
+    }));
+    expect(veredicto.permitida).toBe(false);
+  });
+
+  it('una orden de garantia no necesita autorizacion del cliente', () => {
+    const veredicto = evaluarTransicion(contexto(ESTADO_ORDEN.EN_DIAGNOSTICO, ESTADO_ORDEN.EN_REPARACION, {
+      cotizacionAceptada: false,
+    }));
+    expect(veredicto.permitida).toBe(true);
+  });
+
+  it('no se finaliza con solicitudes de repuesto abiertas', () => {
+    const veredicto = evaluarTransicion(contexto(ESTADO_ORDEN.EN_REPARACION, ESTADO_ORDEN.FINALIZADA, {
+      solicitudesAbiertas: 1,
+    }));
+    expect(veredicto.permitida).toBe(false);
+    expect(veredicto.motivo).toMatch(/solicitud/);
+  });
+
+  it('no se finaliza con piezas entregadas sin uso ni devolucion', () => {
+    const veredicto = evaluarTransicion(contexto(ESTADO_ORDEN.EN_REPARACION, ESTADO_ORDEN.FINALIZADA, {
+      piezasSinConciliar: 2,
+    }));
+    expect(veredicto.permitida).toBe(false);
+    expect(veredicto.motivo).toMatch(/devolucion/);
+  });
+
+  it('no se pasa a entregada sin acta de entrega', () => {
+    const veredicto = evaluarTransicion(contexto(ESTADO_ORDEN.FINALIZADA, ESTADO_ORDEN.ENTREGADA, {
+      actor: { rol: CODIGO_ROL.AGENTE_TELEFONIA },
+      tieneEntrega: false,
+    }));
+    expect(veredicto.permitida).toBe(false);
+    expect(veredicto.motivo).toMatch(/Entregar el articulo/);
   });
 });

@@ -7,9 +7,11 @@
  * de dominio con el mensaje que la maquina escribio.
  */
 import type {
+  EventoDeHistorial,
   FichaOrden, Paginacion, PeticionAsignarTecnico, PeticionCrearOrden, ResumenOrden,
 } from '@servitotal/compartido';
-import { ESTADO_ORDEN, MODALIDAD_SERVICIO } from '@servitotal/compartido';
+import { ACCION_BITACORA, ESTADO_ORDEN, MODALIDAD_SERVICIO } from '@servitotal/compartido';
+import { auditar } from '../../comun/auditoria.js';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import type { Ejecutor } from '../../comun/transacciones.js';
 import { enTransaccion } from '../../comun/transacciones.js';
@@ -21,6 +23,7 @@ import { horasParaVencer, sumarHorasLaborables, type CalendarioLaboral } from '.
 import * as servicioAgenda from '../agenda/servicio.js';
 import * as servicioGarantias from '../garantias/servicio.js';
 import * as repositorio from './repositorio.js';
+import * as repositorioHistorial from './repositorio-historial.js';
 import { alcanceDe, conCerco, exigirCerco } from './alcance.js';
 import { aEvento, aNota, aResumenOrden, type FilaOrden } from './dto.js';
 
@@ -77,6 +80,27 @@ export async function listarAlertas(
     .filter((orden) => orden.vencida || orden.enAlerta);
 
   return { datos: enRiesgo, paginacion: construirPaginacion(pagina, total) };
+}
+
+/**
+ * Todo lo que le paso a la orden, en orden cronologico. Mismo cerco que la
+ * ficha: quien no puede ver la orden tampoco ve su historia.
+ */
+export async function historial(actor: Actor, idOrden: string): Promise<readonly EventoDeHistorial[]> {
+  const fila = await repositorio.buscarPorId(idOrden);
+  if (fila === null) throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
+  exigirCerco(await alcanceDe(actor), fila);
+
+  const filas = await repositorioHistorial.deOrden(idOrden);
+  return filas.map((evento) => ({
+    id: evento.id,
+    momento: evento.momento.toISOString(),
+    tipo: evento.tipo as EventoDeHistorial['tipo'],
+    titulo: evento.titulo,
+    detalle: evento.detalle,
+    responsable: evento.responsable === null ? null : evento.responsable.trim(),
+    registradoSinConexion: evento.sin_conexion,
+  }));
 }
 
 export async function obtenerFicha(actor: Actor, idOrden: string): Promise<FichaOrden> {
@@ -239,7 +263,41 @@ export async function asignarTecnico(
         `La orden ${contexto.numero} ya esta ${contexto.estado} y no se edita.`,
       );
     }
+    /*
+     * LA ASIGNACION QUEDA EN LA BITACORA, CON NOMBRES.
+     *
+     * Antes se sobrescribia `id_tecnico` sin dejar rastro: la orden decia
+     * quien la tenia ahora, pero no quien la tuvo ni quien la cambio. Una
+     * reasignacion exige motivo escrito —es lo que contesta «¿por que se le
+     * quito a Juan?» semanas despues—; la primera asignacion no.
+     */
+    const anterior = await repositorio.tecnicoDeLaOrden(cliente, idOrden);
+    const nuevo = await repositorio.tecnicoActivo(cliente, peticion.idTecnico);
+    if (nuevo === null) {
+      throw new ErrorValidacion('El tecnico indicado no existe o esta inactivo.',
+        { idTecnico: 'Tecnico no valido.' });
+    }
+    if (anterior?.id === nuevo.id) return;
+
+    const motivo = peticion.motivo?.trim() ?? '';
+    if (anterior !== null && motivo === '') {
+      throw new ErrorValidacion(
+        `La orden ya esta asignada a ${anterior.nombre}. Para reasignarla escriba el motivo.`,
+        { motivo: 'Obligatorio al reasignar.' },
+      );
+    }
+
     await repositorio.asignarTecnico(cliente, idOrden, peticion.idTecnico, actor.id);
+    await auditar(cliente, [{
+      tabla: 'orden_servicio',
+      idRegistro: idOrden,
+      accion: ACCION_BITACORA.MODIFICAR,
+      campo: 'tecnico',
+      valorAnterior: anterior?.nombre ?? null,
+      valorNuevo: nuevo.nombre,
+      motivo: motivo === '' ? 'Asignacion inicial' : motivo,
+      idUsuario: actor.id,
+    }]);
   });
 
   const fila = await repositorio.buscarPorId(idOrden);

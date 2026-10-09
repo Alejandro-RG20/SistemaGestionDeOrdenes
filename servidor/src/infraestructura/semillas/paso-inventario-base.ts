@@ -28,23 +28,36 @@ export async function sembrarInventarioBase(cliente: PoolClient, contexto: Conte
   const bodegas: ReferenciaBodega[] = [
     { id: contexto.idBodegaCentral, tipo: TIPO_BODEGA.CENTRAL, idTecnico: null },
     { id: contexto.idBodegaPiezasSustituidas, tipo: TIPO_BODEGA.CENTRAL, idTecnico: null },
+    // Cada tecnico tiene su bodega personal: la movil del vehiculo para el
+    // de ruta y la de banco para el de planta (migracion 0023). Es lo que
+    // permite que entregar, consumir y devolver sean movimientos reales en
+    // los dos casos, y saber en todo momento que piezas tiene cada uno.
     ...contexto.tecnicos
-      .filter((tecnico) => tecnico.tipo === 'ruta')
       .map((tecnico) => ({ id: azar.uuid(), tipo: TIPO_BODEGA.MOVIL, idTecnico: tecnico.id })),
   ];
 
-  const nombreDeBodega = (bodega: ReferenciaBodega, indice: number): string => {
+  const tecnicosDePlanta = new Set(
+    contexto.tecnicos.filter((tecnico) => tecnico.tipo !== 'ruta').map((tecnico) => tecnico.id),
+  );
+  let moviles = 0;
+  let bancos = 0;
+  const nombreDeBodega = (bodega: ReferenciaBodega): string => {
     if (bodega.id === contexto.idBodegaCentral) return NOMBRE_BODEGA_CENTRAL;
     if (bodega.id === contexto.idBodegaPiezasSustituidas) return NOMBRE_BODEGA_PIEZAS;
-    return `Bodega movil ${String(indice - 1).padStart(2, '0')}`;
+    if (bodega.idTecnico !== null && tecnicosDePlanta.has(bodega.idTecnico)) {
+      bancos += 1;
+      return `Banco de taller ${String(bancos).padStart(2, '0')}`;
+    }
+    moviles += 1;
+    return `Bodega movil ${String(moviles).padStart(2, '0')}`;
   };
 
   await copiarFilas(
     cliente,
     'bodega',
     ['id', 'id_centro', 'tipo', 'nombre', 'id_tecnico', 'activa', 'surte_repuestos'],
-    bodegas.map((bodega, indice) => [
-      bodega.id, contexto.idCentro, bodega.tipo, nombreDeBodega(bodega, indice),
+    bodegas.map((bodega) => [
+      bodega.id, contexto.idCentro, bodega.tipo, nombreDeBodega(bodega),
       bodega.idTecnico, true,
       // La de piezas sustituidas guarda lo que se RETIRA de los aparatos:
       // no surte nada, y avisar de que «le faltan» piezas dañadas es ruido

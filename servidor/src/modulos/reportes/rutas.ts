@@ -2,7 +2,7 @@
  * Rutas de reportes. Un endpoint para los diecisiete.
  *
  * Todos exigen el mismo permiso porque un reporte de tiempos y uno de
- * cobros son la misma clase de informacion: la operacion agregada del
+ * inventario son la misma clase de informacion: la operacion agregada del
  * centro. Quien puede ver una, puede ver la otra.
  */
 import { Router, type RequestHandler } from 'express';

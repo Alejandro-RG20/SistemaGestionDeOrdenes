@@ -7,7 +7,7 @@
  * sincronizar es peor que ninguno.
  *
  * La falla real se escribe SIEMPRE, aunque coincida con lo que reporto el
- * cliente. Es lo que despues sostiene el expediente de cobro al proveedor:
+ * cliente. Es lo que despues sostiene la reparacion y el reclamo de garantia:
  * «no enfria» no le sirve de nada a LG; «compresor con baja presion de
  * succion» si.
  */
@@ -124,13 +124,13 @@ export function Diagnostico(): JSX.Element {
             rows={4}
             value={fallaReal}
             onChange={(evento) => setFallaReal(evento.target.value)}
-            placeholder="Lo tecnico, no lo que dijo el cliente. Esto sustenta el cobro al proveedor."
+            placeholder="Lo tecnico, no lo que dijo el cliente. Esto sustenta la reparacion."
           />
         </div>
         {fallaReal.trim().length > 0 && fallaReal.trim().length < 10
           ? (
             <p style={{ fontSize: 11, color: 'var(--amber)', margin: '5px 0 0' }}>
-              Escriba un poco mas: con dos palabras el expediente de cobro no se sostiene.
+              Escriba un poco mas: con dos palabras el diagnostico no explica la reparacion.
             </p>
           )
           : null}

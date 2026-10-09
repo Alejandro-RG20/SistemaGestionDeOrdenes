@@ -8,7 +8,7 @@
  *
  * La lista de requisitos la calcula el servidor contra los datos —no es
  * una casilla de «todo revisado»— y depende de la orden: una garantia de
- * proveedor no necesita cotizacion ni pago, y pedirselos seria inventar un
+ * proveedor no necesita autorizacion del cliente, y pedirsela seria inventar un
  * tramite que el negocio no tiene.
  */
 import { useState } from 'react';
@@ -39,6 +39,8 @@ export function Entrega(): JSX.Element {
   if (datos === null) return <Vacio>No se encontro la orden.</Vacio>;
 
   async function entregar(): Promise<void> {
+    // La entrega cierra la orden y no se reescribe: se confirma.
+    if (!window.confirm(`Registrar la entrega a ${recibidoPor.trim()} y cerrar la orden?`)) return;
     setGuardando(true);
     setFallo(null);
     try {

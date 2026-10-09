@@ -4,7 +4,7 @@
  * El tecnico NO cierra la orden. La mueve a terminada o la manda al taller,
  * y la jefatura cierra. Tomar una decision de cierre solo, en la casa del
  * cliente y sin señal para consultar, es justo lo que no debe pasar: es
- * donde se regalan garantias y se pierden cobros.
+ * donde se regalan garantias y se pierde la trazabilidad.
  *
  * Lo que si hace esta pantalla es enseñarle, antes de irse, QUE QUEDA SIN
  * ENVIAR y con nombre propio. Un contador que dice «3 pendientes» no le

@@ -86,6 +86,7 @@ export async function mover(
         idTecnico: tecnicoDelActor?.id ?? null,
         puedeAnular: actor.permisos.includes('ordenes.anular'),
         puedeCerrar: actor.permisos.includes('ordenes.cerrar'),
+        puedeEntregar: actor.permisos.includes('ordenes.entregar'),
       },
       evidenciasFaltantes: faltantes,
       tieneVisitaVigente: fila.tiene_visita,
@@ -93,6 +94,9 @@ export async function mover(
       tieneCotizacion: fila.tiene_cotizacion,
       cotizacionAceptada: fila.cotizacion_aceptada,
       solicitudesSinLiberar: fila.solicitudes_sin_liberar,
+      solicitudesAbiertas: fila.solicitudes_abiertas,
+      piezasSinConciliar: fila.piezas_sin_conciliar,
+      tieneEntrega: fila.tiene_entrega,
       motivo: peticion.motivo ?? null,
     };
 

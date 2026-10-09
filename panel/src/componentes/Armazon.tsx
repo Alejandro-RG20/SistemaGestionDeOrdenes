@@ -10,7 +10,7 @@
  * por cada puesto del centro, si.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import type { BandejaDeAvisos } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { menuDe, rolLegible } from '../sesion/navegacion.js';
@@ -18,8 +18,9 @@ import { menuDe, rolLegible } from '../sesion/navegacion.js';
 const REFRESCO_MS = 3 * 60_000;
 
 const TITULO_DE_GRUPO: Record<string, string> = {
-  operacion: 'OPERACION',
-  control: 'CONTROL',
+  ordenes: 'ORDENES DE REPARACION',
+  inventario: 'INVENTARIO DE REPUESTOS',
+  control: 'CONTROL Y ADMINISTRACION',
 };
 
 export interface DatosDePantalla {
@@ -54,6 +55,7 @@ export function Armazon(
   }, [api]);
 
   const secciones = menuDe(usuario);
+  const ubicacion = useLocation();
   let grupoDibujado = '';
 
   return (
@@ -76,8 +78,21 @@ export function Armazon(
                 : <div className="sep">{encabezado}</div>}
               <NavLink
                 to={seccion.ruta}
-                end={seccion.ruta === '/'}
-                className={({ isActive }) => (isActive ? 'on' : '')}
+                // Exacto cuando otra seccion cuelga de esta ruta: «Ordenes»
+                // no se marca estando en «Nueva orden».
+                end={seccion.ruta === '/'
+                  || secciones.some((otra) => otra !== seccion && otra.ruta.startsWith(`${seccion.ruta}/`))}
+                // Una seccion con consulta («entregas pendientes») solo se
+                // marca con esa misma consulta: NavLink compara la ruta sin
+                // ella y la marcaria en cualquier pantalla de ordenes.
+                className={({ isActive }) => {
+                  const conConsulta = seccion.ruta.includes('?');
+                  const activa = conConsulta
+                    ? `${ubicacion.pathname}${ubicacion.search}` === seccion.ruta
+                    : isActive && !secciones.some((otra) => otra.ruta.includes('?')
+                      && `${ubicacion.pathname}${ubicacion.search}` === otra.ruta);
+                  return activa ? 'on' : '';
+                }}
               >
                 {seccion.etiqueta}
                 {seccion.ruta === '/excepciones' && pendientes > 0

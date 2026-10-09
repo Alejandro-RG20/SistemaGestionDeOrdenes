@@ -223,6 +223,16 @@ describe('el recorrido de la solicitud de repuesto', () => {
     const { rows: repuestos } = await entorno.piscina.query<{ id: string }>(
       'SELECT id FROM repuesto WHERE activo LIMIT 1',
     );
+    // Aprobar reserva, y solo se aprueba lo disponible (migracion 0023): cada
+    // solicitud de prueba trae su unidad a la bodega, para no depender de lo
+    // que reservaron las anteriores.
+    const { rows: central } = await entorno.piscina.query<{ id: string }>(
+      "SELECT id FROM bodega WHERE tipo = 'central' AND surte_repuestos AND activa LIMIT 1",
+    );
+    await peticion(entorno.aplicacion).post(`${RAIZ}/movimientos`).set(bodeguero).send({
+      tipo: TIPO_MOVIMIENTO.INGRESO, idRepuesto: repuestos[0]!.id,
+      idBodegaDestino: central[0]!.id, cantidad: 1,
+    }).expect(201);
     const creada = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/ordenes/${orden.body.data.id}/solicitudes-repuesto`).set(bodeguero)
       .send({ idRepuesto: repuestos[0]!.id, cantidad: 1 }).expect(201);

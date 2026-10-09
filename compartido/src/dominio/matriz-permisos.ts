@@ -11,7 +11,7 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
   [CODIGO_ROL.AGENTE_TELEFONIA]: [
     ...CONSULTA_BASE, 'clientes.crear', 'clientes.editar', 'articulos.crear', 'articulos.editar',
     'ordenes.crear', 'ordenes.cerrar', 'agenda.consultar', 'agenda.programar',
-    'garantias.evaluar', 'taller.cotizacion.autorizar', 'cobros.pago.registrar',
+    'garantias.evaluar', 'taller.cotizacion.autorizar',
   ],
 
   [CODIGO_ROL.JEFE_ATENCION_CLIENTE]: [
@@ -19,8 +19,11 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
     'articulos.crear', 'articulos.editar', 'articulos.editar_datos_sensibles',
     'ordenes.crear', 'ordenes.anular', 'ordenes.cerrar', 'ordenes.nota_correccion',
     'agenda.consultar', 'agenda.programar', 'garantias.evaluar', 'garantias.reclasificar',
-    'taller.cotizacion.autorizar', 'cobros.pago.registrar', 'cobros.indicadores.consultar',
+    'taller.cotizacion.autorizar',
     'portal.configurar', 'inventario.consultar', 'ordenes.entregar', 'reportes.consultar',
+    // Recibe y entrega en el mostrador del centro: fotografia lo que entra
+    // y la firma de quien retira.
+    'campo.evidencia.cargar',
     'tiendas.gestionar', 'compras.consultar',
     // Las reglas de cobertura son un parametro comercial que se negocia con
     // las marcas; la jefatura de atencion al cliente las versiona igual que
@@ -36,7 +39,7 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
     ...CONSULTA_BASE, 'campo.visita.registrar', 'campo.evidencia.cargar', 'campo.sincronizar',
     'taller.diagnostico.registrar', 'taller.cotizacion.registrar', 'taller.reparacion.registrar',
     'ordenes.crear', 'ordenes.cambiar_modalidad',
-    'inventario.consultar', 'inventario.consumo.registrar',
+    'inventario.consultar', 'inventario.consumo.registrar', 'inventario.solicitud.crear',
     'inventario.devolucion.registrar', 'agenda.consultar',
   ],
 
@@ -47,7 +50,8 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
   [CODIGO_ROL.TECNICO_PLANTA]: [
     ...CONSULTA_BASE, 'campo.evidencia.cargar', 'campo.sincronizar',
     'taller.diagnostico.registrar', 'taller.cotizacion.registrar', 'taller.reparacion.registrar',
-    'inventario.consultar', 'inventario.consumo.registrar', 'inventario.solicitud.gestionar',
+    // Pide repuestos pero no se los aprueba: eso es de bodega (migracion 0023).
+    'inventario.consultar', 'inventario.consumo.registrar', 'inventario.solicitud.crear',
     'inventario.devolucion.registrar',
   ],
 
@@ -66,7 +70,7 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
     'inventario.devolucion.registrar',
     'seguridad.bitacora.consultar',
     // La validacion tecnica es suya: es el control que impide que una
-    // reparacion sin revisar llegue a un expediente de cobro.
+    // reparacion sin revisar salga del centro.
     'taller.validacion.registrar', 'reportes.consultar',
   ],
 
@@ -82,28 +86,12 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
   [CODIGO_ROL.JEFE_COMPRAS]: [
     'ordenes.consultar', 'articulos.consultar', 'inventario.consultar',
     'inventario.ingreso.registrar', 'inventario.ajuste.registrar',
-    'inventario.solicitud.gestionar', 'cobros.indicadores.consultar',
+    'inventario.solicitud.gestionar',
     // Pide al proveedor y administra su catalogo. NO recibe la mercaderia:
     // eso lo cuenta bodega, y separar las dos manos es lo que evita que
     // quien pide sea tambien quien declara que llego.
     'compras.consultar', 'compras.gestionar', 'compras.proveedor.gestionar',
     'reportes.consultar',
-  ],
-
-  [CODIGO_ROL.GESTOR_COBROS]: [
-    ...CONSULTA_BASE, 'cobros.expediente.conformar', 'cobros.expediente.enviar',
-    'cobros.pago.registrar', 'cobros.indicadores.consultar', 'inventario.consultar',
-  ],
-
-  /**
-   * Jefe de cobros: lo del gestor, mas confirmar que el dinero entro y ver
-   * los reportes. Confirmar no es registrar — quien anota el pago en el
-   * mostrador no deberia ser quien declara que el banco lo acredito.
-   */
-  [CODIGO_ROL.JEFE_COBROS]: [
-    ...CONSULTA_BASE, 'cobros.expediente.conformar', 'cobros.expediente.enviar',
-    'cobros.pago.registrar', 'cobros.pago.confirmar', 'cobros.indicadores.consultar',
-    'inventario.consultar', 'reportes.consultar', 'ordenes.entregar',
   ],
 
   /**
@@ -119,7 +107,7 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
     ...CONSULTA_BASE, 'clientes.crear', 'clientes.editar',
     'articulos.crear', 'articulos.editar',
     'ordenes.crear', 'garantias.evaluar', 'campo.evidencia.cargar',
-    'cobros.pago.registrar', 'ordenes.entregar',
+    'ordenes.entregar',
   ],
 
   /**
@@ -141,6 +129,6 @@ export const MATRIZ_ROL_PERMISO: Readonly<Record<CodigoRol, readonly CodigoPermi
    */
   [CODIGO_ROL.USUARIO_CONSULTA]: [
     ...CONSULTA_BASE, 'agenda.consultar', 'inventario.consultar',
-    'cobros.indicadores.consultar', 'compras.consultar', 'reportes.consultar',
+    'compras.consultar', 'reportes.consultar',
   ],
 };

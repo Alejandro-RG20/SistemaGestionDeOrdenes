@@ -15,8 +15,9 @@ import {
 } from '@servitotal/compartido';
 import type { Requisito } from './requisitos.js';
 import {
-  cotizacionFueAceptada, esOrdenDeRuta, evidenciaObligatoriaCompleta, laPagaElCliente,
-  repuestosLiberados, tieneCotizacionRegistrada, tieneDiagnosticoRegistrado,
+  autorizadaSiLaPagaElCliente, cotizacionFueAceptada, esOrdenDeRuta, evidenciaObligatoriaCompleta,
+  laPagaElCliente, repuestosConciliados, repuestosLiberados, sinSolicitudesAbiertas,
+  tieneActaDeEntrega, tieneCotizacionRegistrada, tieneDiagnosticoRegistrado,
   tieneMotivoEscrito, tieneTecnicoAsignado, tieneVisitaProgramada,
 } from './requisitos.js';
 
@@ -109,11 +110,11 @@ const DEFINICIONES: readonly DefinicionEstado[] = [
       },
       {
         hacia: ESTADO_ORDEN.ESPERANDO_REPUESTO,
-        requisitos: [tieneDiagnosticoRegistrado, evidenciaObligatoriaCompleta],
+        requisitos: [tieneDiagnosticoRegistrado, evidenciaObligatoriaCompleta, autorizadaSiLaPagaElCliente],
       },
       {
         hacia: ESTADO_ORDEN.EN_REPARACION,
-        requisitos: [tieneDiagnosticoRegistrado, evidenciaObligatoriaCompleta],
+        requisitos: [tieneDiagnosticoRegistrado, evidenciaObligatoriaCompleta, autorizadaSiLaPagaElCliente],
       },
       CERRAR_SIN_REPARAR,
       ANULAR,
@@ -129,9 +130,10 @@ const DEFINICIONES: readonly DefinicionEstado[] = [
         hacia: ESTADO_ORDEN.ESPERANDO_AUTORIZACION,
         requisitos: [tieneCotizacionRegistrada, laPagaElCliente],
       },
-      // Si la cubre la garantia, no hay nada que autorizar.
-      { hacia: ESTADO_ORDEN.EN_REPARACION, requisitos: [tieneCotizacionRegistrada] },
-      { hacia: ESTADO_ORDEN.ESPERANDO_REPUESTO, requisitos: [tieneCotizacionRegistrada] },
+      // Si la cubre la garantia, no hay nada que autorizar; si es
+      // particular, el cliente tiene que haberla aceptado.
+      { hacia: ESTADO_ORDEN.EN_REPARACION, requisitos: [tieneCotizacionRegistrada, autorizadaSiLaPagaElCliente] },
+      { hacia: ESTADO_ORDEN.ESPERANDO_REPUESTO, requisitos: [tieneCotizacionRegistrada, autorizadaSiLaPagaElCliente] },
       CERRAR_SIN_REPARAR,
       ANULAR,
     ],
@@ -165,7 +167,10 @@ const DEFINICIONES: readonly DefinicionEstado[] = [
     momentoEvidencia: MOMENTO_EVIDENCIA.REPARACION,
     responsable: TECNICO_ASIGNADO,
     transiciones: [
-      { hacia: ESTADO_ORDEN.FINALIZADA, requisitos: [evidenciaObligatoriaCompleta] },
+      {
+        hacia: ESTADO_ORDEN.FINALIZADA,
+        requisitos: [evidenciaObligatoriaCompleta, sinSolicitudesAbiertas, repuestosConciliados],
+      },
       // Apareció otra falla y hace falta otro repuesto.
       { hacia: ESTADO_ORDEN.ESPERANDO_REPUESTO, requisitos: [] },
       CERRAR_SIN_REPARAR,
@@ -178,7 +183,7 @@ const DEFINICIONES: readonly DefinicionEstado[] = [
     momentoEvidencia: MOMENTO_EVIDENCIA.ENTREGA,
     responsable: CODIGO_ROL.AGENTE_TELEFONIA,
     transiciones: [
-      { hacia: ESTADO_ORDEN.ENTREGADA, requisitos: [evidenciaObligatoriaCompleta] },
+      { hacia: ESTADO_ORDEN.ENTREGADA, requisitos: [evidenciaObligatoriaCompleta, tieneActaDeEntrega] },
       ANULAR,
     ],
   },

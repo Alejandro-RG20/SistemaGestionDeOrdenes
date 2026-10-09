@@ -631,7 +631,7 @@ export function Proveedores(): JSX.Element {
               onChange={(e) => setNuevo({ ...nuevo, atiendeGarantias: e.target.checked })}
             />
             <span style={{ fontSize: 12.5 }}>
-              Atiende reclamos de garantia (aparece al conformar expedientes de cobro)
+              Atiende reclamos de garantia del fabricante
             </span>
           </label>
           <button

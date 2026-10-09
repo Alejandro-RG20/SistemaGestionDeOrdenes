@@ -97,6 +97,17 @@ async function sesionDeDispositivo(): Promise<{ Authorization: string }> {
   return { Authorization: `Bearer ${sesion.body.data.tokenAcceso}` };
 }
 
+/**
+ * Bytes que el servidor reconoce como JPEG: la firma del formato y relleno al
+ * azar. Desde la migracion 0023 el servidor rechaza lo que no es imagen ni
+ * PDF, asi que un bloque de bytes aleatorios ya no pasa por fotografia.
+ */
+function fotoDePrueba(bytes: number): Buffer {
+  const contenido = randomBytes(bytes);
+  contenido[0] = 0xff; contenido[1] = 0xd8; contenido[2] = 0xff; contenido[3] = 0xe0;
+  return contenido;
+}
+
 /** Sube el archivo por trozos, como haria el movil con mala senal. */
 async function subirPorPartes(
   idCarga: string, contenido: Buffer, tamanoDeParte: number,
@@ -123,10 +134,60 @@ beforeAll(async () => {
 
 afterAll(async () => { await entorno.cerrar(); });
 
+describe('solo se admiten imagenes y PDF', () => {
+  it('rechaza un archivo que no es imagen ni PDF, aunque diga que es una foto', async () => {
+    const idOrden = await ordenNueva();
+    // Un ejecutable de Windows: empieza con «MZ».
+    const contenido = Buffer.concat([Buffer.from('MZ'), randomBytes(2_000)]);
+    const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`).set(tecnico)
+      .send({
+        idOrden, clave: 'foto_articulo', tipo: 'foto', bytes: contenido.length,
+        huellaDigital: createHash('sha256').update(contenido).digest('hex'),
+        momentoDispositivo: new Date().toISOString(),
+      }).expect(201);
+
+    const parte = await peticion(entorno.aplicacion)
+      .patch(`${RAIZ}/evidencias/cargas/${carga.body.data.idCarga}`).set(tecnico)
+      .set('Content-Type', 'application/octet-stream').set('X-Desplazamiento', '0')
+      .send(contenido);
+    expect(parte.status).toBe(422);
+    expect(parte.body.error.code).toBe('ARCHIVO_NO_ADMITIDO');
+
+    // Y no se da por guardada: sigue pendiente, sin archivo.
+    const lista = await peticion(entorno.aplicacion)
+      .get(`${RAIZ}/ordenes/${idOrden}/evidencias`).set(tecnico).expect(200);
+    const registrada = lista.body.data.find((e: { id: string }) => e.id === carga.body.data.idEvidencia);
+    expect(registrada.sincronizada).toBe(false);
+    expect(registrada.rutaArchivo).toBeNull();
+  });
+
+  it('acepta un PDF', async () => {
+    const idOrden = await ordenNueva();
+    const contenido = Buffer.concat([Buffer.from('%PDF-1.7\n'), randomBytes(1_200)]);
+    const huella = createHash('sha256').update(contenido).digest('hex');
+    const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`).set(tecnico)
+      .send({
+        idOrden, clave: 'factura_compra', tipo: 'documento', bytes: contenido.length,
+        huellaDigital: huella, momentoDispositivo: new Date().toISOString(),
+      }).expect(201);
+    await subirPorPartes(carga.body.data.idCarga, contenido, 1_024);
+    const cerrada = await peticion(entorno.aplicacion)
+      .post(`${RAIZ}/evidencias/cargas/${carga.body.data.idCarga}/cerrar`).set(tecnico)
+      .send({ idEvidencia: carga.body.data.idEvidencia }).expect(200);
+    expect(cerrada.body.data.sincronizada).toBe(true);
+  });
+
+  it('una evidencia registrada no se puede borrar ni desde la base', async () => {
+    const { rows } = await entorno.piscina.query<{ id: string }>('SELECT id FROM evidencia LIMIT 1');
+    await expect(entorno.piscina.query('DELETE FROM evidencia WHERE id = $1', [rows[0]!.id]))
+      .rejects.toThrow(/no se modifican ni se borran/);
+  });
+});
+
 describe('carga por partes con reanudacion', () => {
   it('sube una foto en trozos y la cierra verificando la huella', async () => {
     const idOrden = await ordenNueva();
-    const contenido = randomBytes(9_000);
+    const contenido = fotoDePrueba(9_000);
     const huella = createHash('sha256').update(contenido).digest('hex');
 
     const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`).set(tecnico)
@@ -172,7 +233,7 @@ describe('carga por partes con reanudacion', () => {
    */
   it('la ficha y el archivo de una misma foto no crean dos evidencias', async () => {
     const idOrden = await ordenNueva();
-    const contenido = randomBytes(3_000);
+    const contenido = fotoDePrueba(3_000);
     const huella = createHash('sha256').update(contenido).digest('hex');
     const momento = new Date().toISOString();
 
@@ -224,7 +285,7 @@ describe('carga por partes con reanudacion', () => {
   it('dos tomas distintas de la misma clave siguen siendo dos evidencias', async () => {
     const idOrden = await ordenNueva();
 
-    for (const contenido of [randomBytes(1_500), randomBytes(1_700)]) {
+    for (const contenido of [fotoDePrueba(1_500), fotoDePrueba(1_700)]) {
       const huella = createHash('sha256').update(contenido).digest('hex');
       const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`)
         .set(tecnico)
@@ -247,7 +308,7 @@ describe('carga por partes con reanudacion', () => {
 
   it('el dispositivo puede preguntar desde que byte reanudar', async () => {
     const idOrden = await ordenNueva();
-    const contenido = randomBytes(5_000);
+    const contenido = fotoDePrueba(5_000);
     const huella = createHash('sha256').update(contenido).digest('hex');
 
     const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`).set(tecnico)
@@ -285,7 +346,7 @@ describe('carga por partes con reanudacion', () => {
 
   it('reanudar desde el byte equivocado se rechaza en lugar de corromper el archivo', async () => {
     const idOrden = await ordenNueva();
-    const contenido = randomBytes(3_000);
+    const contenido = fotoDePrueba(3_000);
     const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`).set(tecnico)
       .send({
         idOrden, clave: 'foto_falla', tipo: 'foto', bytes: contenido.length,
@@ -309,8 +370,8 @@ describe('carga por partes con reanudacion', () => {
 
   it('un archivo que no casa con su huella no se da por bueno', async () => {
     const idOrden = await ordenNueva();
-    const contenido = randomBytes(1_500);
-    const huellaDeOtroArchivo = createHash('sha256').update(randomBytes(1_500)).digest('hex');
+    const contenido = fotoDePrueba(1_500);
+    const huellaDeOtroArchivo = createHash('sha256').update(fotoDePrueba(1_500)).digest('hex');
 
     const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`).set(tecnico)
       .send({
@@ -332,7 +393,7 @@ describe('carga por partes con reanudacion', () => {
 
   it('no se cierra una carga incompleta', async () => {
     const idOrden = await ordenNueva();
-    const contenido = randomBytes(4_000);
+    const contenido = fotoDePrueba(4_000);
     const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`).set(tecnico)
       .send({
         idOrden, clave: 'foto_entrega', tipo: 'foto', bytes: contenido.length,

@@ -54,7 +54,7 @@ export function Validaciones(): JSX.Element {
       <h2 className="scr">Validacion tecnica</h2>
       <p className="sub">
         Trabajo terminado que ninguna jefatura ha aprobado todavia. Mientras no se apruebe,
-        el expediente de cobro al proveedor no se sostiene.
+        el articulo no puede entregarse al cliente.
       </p>
 
       {cargando ? <Cargando que="las ordenes por revisar" /> : null}
@@ -212,7 +212,7 @@ export function RevisarOrden(): JSX.Element {
           {datos.diagnostico === null ? (
             <Aviso tono="warn">
               <b>No hay diagnostico registrado.</b> Sin el, no hay nada que revisar ni con
-              que sustentar un cobro al proveedor.
+              que sustentar la reparacion.
             </Aviso>
           ) : (
             <>
@@ -272,7 +272,7 @@ export function RevisarOrden(): JSX.Element {
       {faltaEvidencia ? (
         <Aviso tono="warn">
           <b>Falta evidencia obligatoria, asi que no se puede aprobar.</b> Sin ella el
-          proveedor rechaza el expediente y el costo del repuesto lo come el centro.
+          trabajo no queda demostrado y la garantia del proveedor no lo respalda.
           Devuelva la orden para que el tecnico la complete.
         </Aviso>
       ) : null}

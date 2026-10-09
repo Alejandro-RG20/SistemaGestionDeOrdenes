@@ -14,27 +14,46 @@ export interface SeccionDelPanel {
   readonly etiqueta: string;
   /** Con cualquiera de estos permisos, la seccion se muestra. */
   readonly permisos: readonly string[];
-  /** Encabezado del prototipo bajo el que se agrupa. */
-  readonly grupo: 'inicio' | 'operacion' | 'control';
+  /** Encabezado bajo el que se agrupa en el menu. */
+  readonly grupo: 'inicio' | 'ordenes' | 'inventario' | 'control';
   /** Solo para quien de verdad sale a campo. Ver `trabajaEnCampo`. */
   readonly soloCampo?: boolean;
 }
 
+/**
+ * El menu general, en el orden en que se trabaja: primero las ordenes,
+ * luego el inventario, al final el control y la administracion.
+ *
+ * No hay entradas de cobros ni de pagos: el sistema gestiona ordenes de
+ * reparacion e inventario, no dinero (migracion 0023).
+ */
 export const SECCIONES: readonly SeccionDelPanel[] = [
-  { ruta: '/', etiqueta: 'Panel principal', permisos: [], grupo: 'inicio' },
+  { ruta: '/', etiqueta: 'Panel operativo', permisos: [], grupo: 'inicio' },
 
   // La aplicacion del tecnico es la misma web: se entra por aqui, no por
-  // una instalacion aparte. Va primero en su grupo porque para un tecnico
-  // de ruta es LA pantalla, no una mas.
-  // Se filtra aparte, por rol: ver `trabajaEnCampo`.
-  { ruta: '/campo', etiqueta: 'Mi ruta (celular)', permisos: ['campo.sincronizar'], grupo: 'operacion', soloCampo: true },
-  { ruta: '/clientes', etiqueta: 'Clientes y articulos', permisos: ['clientes.consultar'], grupo: 'operacion' },
-  { ruta: '/ordenes', etiqueta: 'Ordenes de servicio', permisos: ['ordenes.consultar'], grupo: 'operacion' },
-  { ruta: '/agenda', etiqueta: 'Agenda y rutas', permisos: ['agenda.consultar'], grupo: 'operacion' },
-  { ruta: '/taller', etiqueta: 'Cola de taller', permisos: ['ordenes.asignar'], grupo: 'operacion' },
-  { ruta: '/validaciones', etiqueta: 'Validacion tecnica', permisos: ['taller.validacion.registrar'], grupo: 'operacion' },
+  // una instalacion aparte. Se filtra aparte, por rol: ver `trabajaEnCampo`.
+  { ruta: '/campo', etiqueta: 'Mi ruta (celular)', permisos: ['campo.sincronizar'], grupo: 'ordenes', soloCampo: true },
+  { ruta: '/ordenes', etiqueta: 'Ordenes de reparacion', permisos: ['ordenes.consultar'], grupo: 'ordenes' },
+  { ruta: '/ordenes/nueva', etiqueta: 'Nueva orden', permisos: ['ordenes.crear'], grupo: 'ordenes' },
+  { ruta: '/taller', etiqueta: 'Asignacion de tecnicos', permisos: ['ordenes.asignar'], grupo: 'ordenes' },
+  { ruta: '/agenda', etiqueta: 'Agenda y visitas', permisos: ['agenda.consultar'], grupo: 'ordenes' },
+  { ruta: '/validaciones', etiqueta: 'Validacion tecnica', permisos: ['taller.validacion.registrar'], grupo: 'ordenes' },
+  {
+    ruta: '/ordenes?estado=finalizada',
+    etiqueta: 'Entregas pendientes',
+    permisos: ['ordenes.entregar'],
+    grupo: 'ordenes',
+  },
+  { ruta: '/clientes', etiqueta: 'Clientes y articulos', permisos: ['clientes.consultar'], grupo: 'ordenes' },
 
-  { ruta: '/inventario', etiqueta: 'Inventario y bodegas', permisos: ['inventario.consultar'], grupo: 'control' },
+  {
+    ruta: '/inventario/recorrido',
+    etiqueta: 'Solicitudes de repuesto',
+    permisos: ['inventario.solicitud.gestionar', 'inventario.solicitud.crear', 'inventario.consumo.registrar'],
+    grupo: 'inventario',
+  },
+  { ruta: '/inventario/disponibilidad', etiqueta: 'Disponibilidad', permisos: ['inventario.consultar'], grupo: 'inventario' },
+  { ruta: '/inventario', etiqueta: 'Catalogo y bodegas', permisos: ['inventario.consultar'], grupo: 'inventario' },
   {
     ruta: '/inventario/movimientos',
     etiqueta: 'Movimientos',
@@ -45,34 +64,22 @@ export const SECCIONES: readonly SeccionDelPanel[] = [
       'inventario.devolucion.registrar', 'inventario.consumo.registrar',
       'inventario.ajuste.registrar',
     ],
-    grupo: 'control',
+    grupo: 'inventario',
   },
-  {
-    ruta: '/inventario/recorrido',
-    etiqueta: 'Solicitudes de repuesto',
-    permisos: ['inventario.solicitud.gestionar', 'inventario.consumo.registrar'],
-    grupo: 'control',
-  },
-  { ruta: '/inventario/kardex', etiqueta: 'Kardex', permisos: ['inventario.consultar'], grupo: 'control' },
-  { ruta: '/coberturas', etiqueta: 'Reglas de cobertura', permisos: ['garantias.evaluar'], grupo: 'control' },
-  {
-    ruta: '/cobros',
-    etiqueta: 'Expedientes de cobro',
-    permisos: ['cobros.expediente.conformar', 'cobros.expediente.enviar'],
-    grupo: 'control',
-  },
-  { ruta: '/compras', etiqueta: 'Compras y proveedores', permisos: ['compras.consultar'], grupo: 'control' },
-  { ruta: '/pagos', etiqueta: 'Pagos de clientes', permisos: ['cobros.pago.registrar'], grupo: 'control' },
-  { ruta: '/excepciones', etiqueta: 'Excepciones', permisos: ['campo.excepcion.resolver'], grupo: 'control' },
-  { ruta: '/reportes', etiqueta: 'Reportes', permisos: ['reportes.consultar'], grupo: 'control' },
-  { ruta: '/tiendas', etiqueta: 'Tiendas', permisos: ['tiendas.gestionar'], grupo: 'control' },
+  { ruta: '/inventario/kardex', etiqueta: 'Kardex', permisos: ['inventario.consultar'], grupo: 'inventario' },
+  { ruta: '/compras', etiqueta: 'Reposicion de repuestos', permisos: ['compras.consultar'], grupo: 'inventario' },
+
+  { ruta: '/reportes', etiqueta: 'Reportes operativos', permisos: ['reportes.consultar'], grupo: 'control' },
   {
     ruta: '/indicadores',
     etiqueta: 'Indicadores',
-    permisos: ['cobros.indicadores.consultar', 'ordenes.asignar', 'ordenes.cerrar'],
+    permisos: ['ordenes.asignar', 'ordenes.cerrar', 'reportes.consultar'],
     grupo: 'control',
   },
-  { ruta: '/administracion', etiqueta: 'Administracion', permisos: ['seguridad.usuario.gestionar'], grupo: 'control' },
+  { ruta: '/coberturas', etiqueta: 'Reglas de garantia', permisos: ['garantias.evaluar'], grupo: 'control' },
+  { ruta: '/excepciones', etiqueta: 'Excepciones', permisos: ['campo.excepcion.resolver'], grupo: 'control' },
+  { ruta: '/tiendas', etiqueta: 'Tiendas', permisos: ['tiendas.gestionar'], grupo: 'control' },
+  { ruta: '/administracion', etiqueta: 'Usuarios y permisos', permisos: ['seguridad.usuario.gestionar'], grupo: 'control' },
 ];
 
 export function tienePermiso(usuario: UsuarioAutenticado | null, permiso: string): boolean {
@@ -132,10 +139,10 @@ export function rolLegible(usuario: UsuarioAutenticado | null): string {
  */
 export const SECCIONES_DEL_TECNICO: readonly SeccionDelPanel[] = [
   { ruta: '/campo', etiqueta: 'Mi ruta de hoy', permisos: [], grupo: 'inicio' },
-  { ruta: '/campo/bodega', etiqueta: 'Mis repuestos', permisos: [], grupo: 'operacion' },
-  { ruta: '/inventario/recorrido', etiqueta: 'Mis solicitudes', permisos: [], grupo: 'operacion' },
-  { ruta: '/ordenes', etiqueta: 'Mis ordenes', permisos: ['ordenes.consultar'], grupo: 'operacion' },
-  { ruta: '/agenda', etiqueta: 'Mi agenda', permisos: ['agenda.consultar'], grupo: 'operacion' },
+  { ruta: '/ordenes', etiqueta: 'Mis ordenes', permisos: ['ordenes.consultar'], grupo: 'ordenes' },
+  { ruta: '/agenda', etiqueta: 'Mi agenda', permisos: ['agenda.consultar'], grupo: 'ordenes' },
+  { ruta: '/inventario/recorrido', etiqueta: 'Mis solicitudes', permisos: [], grupo: 'inventario' },
+  { ruta: '/campo/bodega', etiqueta: 'Mis repuestos', permisos: [], grupo: 'inventario' },
   { ruta: '/campo/envios', etiqueta: 'Sincronizacion', permisos: [], grupo: 'control' },
 ];
 

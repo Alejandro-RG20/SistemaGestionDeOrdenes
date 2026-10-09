@@ -30,6 +30,24 @@ export function exigirPermiso(...requeridos: readonly CodigoPermiso[]): RequestH
   };
 }
 
+/** Exige que el usuario tenga AL MENOS UNO de los permisos indicados. */
+export function exigirAlgunPermiso(...alternativos: readonly CodigoPermiso[]): RequestHandler {
+  return function comprobarAlguno(peticion, _respuesta, siguiente): void {
+    try {
+      const usuario = usuarioDe(peticion);
+      if (!alternativos.some((permiso) => usuario.permisos.includes(permiso))) {
+        throw new ErrorAutorizacion(
+          'Su perfil no tiene autorizacion para realizar esta operacion. ' +
+            'Si la necesita, solicitela a la jefatura de atencion al cliente.',
+        );
+      }
+      siguiente();
+    } catch (error) {
+      siguiente(error);
+    }
+  };
+}
+
 /**
  * Envuelve un controlador asincrono para que sus fallos lleguen al
  * manejador de errores. Sin esto, una promesa rechazada dejaria la peticion

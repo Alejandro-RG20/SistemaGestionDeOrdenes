@@ -35,6 +35,8 @@ export interface FilaSolicitudDetallada {
   readonly entregada_en: Date | null;
   readonly recibida_en: Date | null;
   readonly tecnico: string | null;
+  /** Lo que hay sin reservar en bodega para este repuesto, ahora. */
+  readonly disponible: number;
 }
 
 const CAMPOS = `
@@ -46,7 +48,7 @@ const CAMPOS = `
   revisor.nombres AS revisada_por, s.revisada_en,
   preparador.nombres AS preparada_por, s.preparada_en,
   entregador.nombres AS entregada_por, s.entregada_en,
-  s.recibida_en, ut.nombres AS tecnico`;
+  s.recibida_en, ut.nombres AS tecnico, coalesce(dp.disponible, 0) AS disponible`;
 
 const DESDE = `
   FROM solicitud_repuesto s
@@ -57,7 +59,8 @@ const DESDE = `
   LEFT JOIN usuario preparador ON preparador.id = s.preparada_por
   LEFT JOIN usuario entregador ON entregador.id = s.entregada_por
   LEFT JOIN tecnico t ON t.id = o.id_tecnico
-  LEFT JOIN usuario ut ON ut.id = t.id_usuario`;
+  LEFT JOIN usuario ut ON ut.id = t.id_usuario
+  LEFT JOIN v_disponibilidad_repuesto dp ON dp.id_repuesto = s.id_repuesto`;
 
 export async function buscarDetallada(
   idSolicitud: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
@@ -101,20 +104,6 @@ export async function esDelTecnico(
     [idSolicitud, idUsuario],
   );
   return rows[0]?.suya ?? false;
-}
-
-/** La bodega movil del tecnico que tiene la orden de esa solicitud. */
-export async function bodegaDelTecnicoDeLaOrden(
-  ejecutor: Ejecutor, idSolicitud: string,
-): Promise<string | null> {
-  const { rows } = await ejecutor.query<{ id: string }>(
-    `SELECT b.id FROM solicitud_repuesto s
-       JOIN orden_servicio o ON o.id = s.id_orden
-       JOIN bodega b ON b.id_tecnico = o.id_tecnico AND b.activa
-      WHERE s.id = $1 LIMIT 1`,
-    [idSolicitud],
-  );
-  return rows[0]?.id ?? null;
 }
 
 /**
@@ -198,17 +187,4 @@ export async function listar(
     [...parametros(filtro), limite, desplazamiento],
   );
   return rows;
-}
-
-/** Si la orden de esa solicitud tiene tecnico asignado. */
-export async function tieneTecnico(
-  ejecutor: Ejecutor, idSolicitud: string,
-): Promise<boolean> {
-  const { rows } = await ejecutor.query<{ tiene: boolean }>(
-    `SELECT o.id_tecnico IS NOT NULL AS tiene
-       FROM solicitud_repuesto s JOIN orden_servicio o ON o.id = s.id_orden
-      WHERE s.id = $1`,
-    [idSolicitud],
-  );
-  return rows[0]?.tiene ?? false;
 }

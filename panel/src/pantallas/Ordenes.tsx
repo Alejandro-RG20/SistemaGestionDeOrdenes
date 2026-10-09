@@ -11,7 +11,7 @@
  * la usa, no pasa nada, y deja de confiar en la pantalla.
  */
 import { Link, useSearchParams } from 'react-router-dom';
-import { ESTADOS_ORDEN, type ResumenOrden } from '@servitotal/compartido';
+import { ESTADOS_ORDEN, type CatalogosDeApoyo, type ResumenOrden } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
 import {
@@ -26,10 +26,14 @@ export function Ordenes(): JSX.Element {
   const estado = parametros.get('estado') ?? '';
   const numero = parametros.get('numero') ?? '';
   const idCliente = parametros.get('idCliente') ?? '';
-  const soloVencidas = parametros.get('soloVencidas') === '1';
-  const soloActivas = parametros.get('soloActivas') === '1';
+  const idTecnico = parametros.get('idTecnico') ?? '';
+  const idTienda = parametros.get('idTienda') ?? '';
+  // Se aceptan «1» y «true»: los enlaces del tablero usan la segunda forma.
+  const activo = (clave: string): boolean => ['1', 'true'].includes(parametros.get(clave) ?? '');
+  const soloVencidas = activo('soloVencidas');
+  const soloActivas = activo('soloActivas');
   // RF-60: lo vencido y lo por vencer tiene su propio endpoint.
-  const enAlerta = parametros.get('enAlerta') === '1';
+  const enAlerta = activo('enAlerta');
   const pagina = Number(parametros.get('pagina') ?? '1');
 
   const { datos, cargando, error, recargar } = useRecurso<PaginaDeDatos<ResumenOrden>>(
@@ -39,11 +43,19 @@ export function Ordenes(): JSX.Element {
         estado: estado === '' ? undefined : estado,
         numero: numero === '' ? undefined : numero,
         idCliente: idCliente === '' ? undefined : idCliente,
+        idTecnico: idTecnico === '' ? undefined : idTecnico,
+        idTienda: idTienda === '' ? undefined : idTienda,
         soloVencidas: soloVencidas ? 'true' : undefined,
         soloActivas: soloActivas ? 'true' : undefined,
         pagina,
       })),
-    [estado, numero, idCliente, soloVencidas, soloActivas, enAlerta, pagina],
+    [estado, numero, idCliente, idTecnico, idTienda, soloVencidas, soloActivas, enAlerta, pagina],
+  );
+
+  // Tecnicos y tiendas para los filtros. Si no carga, los filtros no se
+  // ofrecen: un desplegable vacio que no filtra es peor que no tenerlo.
+  const catalogos = useRecurso<CatalogosDeApoyo | null>(
+    () => api.pedir<CatalogosDeApoyo>('/catalogos').catch(() => null), [],
   );
 
   function cambiar(clave: string, valor: string): void {
@@ -120,6 +132,28 @@ export function Ordenes(): JSX.Element {
               </select>
             </div>
           </div>
+          {catalogos.datos === null ? null : (
+            <div className="g g4" style={{ marginTop: 8 }}>
+              <div>
+                <label>Tecnico</label>
+                <select value={idTecnico} onChange={(e) => cambiar('idTecnico', e.target.value)}>
+                  <option value="">Todos</option>
+                  {catalogos.datos.tecnicos.map((uno) => (
+                    <option key={uno.id} value={uno.id}>{uno.nombre} · {uno.tipo}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label>Tienda de procedencia</label>
+                <select value={idTienda} onChange={(e) => cambiar('idTienda', e.target.value)}>
+                  <option value="">Todas</option>
+                  {catalogos.datos.tiendas.map((una) => (
+                    <option key={una.id} value={una.id}>{una.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
         </Tarjeta>
       )}
 
@@ -135,7 +169,7 @@ export function Ordenes(): JSX.Element {
               <thead>
                 <tr>
                   <th>N.º</th><th>Cliente</th><th>Articulo</th><th>Garantia</th>
-                  <th>Modalidad</th><th>Estado</th><th>Plazo</th>
+                  <th>Modalidad</th><th>Tecnico</th><th>Estado</th><th>Plazo</th>
                 </tr>
               </thead>
               <tbody>
@@ -150,6 +184,7 @@ export function Ordenes(): JSX.Element {
                       <td>{orden.articulo}</td>
                       <td><Garantia tipo={orden.tipoGarantia} /></td>
                       <td>{orden.modalidad}</td>
+                      <td className="tenue">{orden.tecnico ?? 'sin asignar'}</td>
                       <td><EtiquetaEstado estado={orden.estado} /></td>
                       <td style={plazo.color === undefined
                         ? {}

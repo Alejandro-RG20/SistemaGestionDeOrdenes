@@ -98,6 +98,8 @@ export interface PeticionCrearOrden {
 
 export interface PeticionAsignarTecnico {
   readonly idTecnico: string;
+  /** Obligatorio al reasignar una orden que ya tenia tecnico. */
+  readonly motivo?: string;
 }
 
 export interface PeticionTransicion {
@@ -117,4 +119,40 @@ export interface ResultadoTransicion {
   readonly estadoAnterior: EstadoOrden;
   readonly estadoNuevo: EstadoOrden;
   readonly plazoVenceEn: string | null;
+}
+
+/**
+ * Un renglon del historial completo de una orden.
+ *
+ * El historial reune en orden cronologico todo lo que le paso a la orden,
+ * venga de donde venga: cambios de estado, asignaciones, diagnosticos,
+ * evidencias, solicitudes de repuesto y cada uno de sus pasos, movimientos
+ * de inventario, visitas, la autorizacion del cliente, la revision tecnica,
+ * la entrega y las notas de correccion. Ninguna de esas fuentes se edita ni
+ * se borra (migracion 0023): el historial no se puede reescribir.
+ */
+export const TIPO_EVENTO_HISTORIAL = {
+  ESTADO: 'estado',
+  ASIGNACION: 'asignacion',
+  CAMBIO: 'cambio',
+  DIAGNOSTICO: 'diagnostico',
+  EVIDENCIA: 'evidencia',
+  SOLICITUD: 'solicitud',
+  MOVIMIENTO: 'movimiento',
+  VISITA: 'visita',
+  AUTORIZACION: 'autorizacion',
+  VALIDACION: 'validacion',
+  ENTREGA: 'entrega',
+  CORRECCION: 'correccion',
+} as const;
+export type TipoEventoHistorial = (typeof TIPO_EVENTO_HISTORIAL)[keyof typeof TIPO_EVENTO_HISTORIAL];
+
+export interface EventoDeHistorial {
+  readonly id: string;
+  readonly momento: string;
+  readonly tipo: TipoEventoHistorial;
+  readonly titulo: string;
+  readonly detalle: string | null;
+  readonly responsable: string | null;
+  readonly registradoSinConexion: boolean;
 }

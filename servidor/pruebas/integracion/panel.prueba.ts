@@ -97,24 +97,24 @@ describe('bandeja de avisos', () => {
     expect(tiposDe(respuesta.body.data)).toContain(TIPO_AVISO.EXCEPCION_SINCRONIZACION);
   });
 
-  it('el gestor de cobros ve los expedientes bloqueados y no las excepciones', async () => {
-    const gestor = await sesionDe(CODIGO_ROL.GESTOR_COBROS);
-    const respuesta = await peticion(entorno.aplicacion)
-      .get(`${RAIZ}/avisos`).set(gestor).expect(200);
-    const tipos = tiposDe(respuesta.body.data);
-
-    expect(tipos).toContain(TIPO_AVISO.EXPEDIENTE_BLOQUEADO);
-    expect(tipos).not.toContain(TIPO_AVISO.EXCEPCION_SINCRONIZACION);
+  it('ningun aviso habla de cobros, pagos ni expedientes: el sistema no gestiona dinero', async () => {
+    for (const rol of [CODIGO_ROL.ADMINISTRADOR, CODIGO_ROL.JEFE_ATENCION_CLIENTE, CODIGO_ROL.JEFE_TECNICOS]) {
+      const sesion = await sesionDe(rol);
+      const respuesta = await peticion(entorno.aplicacion)
+        .get(`${RAIZ}/avisos`).set(sesion).expect(200);
+      const texto = JSON.stringify(respuesta.body.data).toLowerCase();
+      expect(texto).not.toMatch(/expediente|cobro|\bpagos?\b/);
+    }
   });
 
-  it('el bodeguero ve el inventario bajo minimo y no los cobros', async () => {
+  it('el bodeguero ve el inventario bajo minimo y no las excepciones', async () => {
     const bodeguero = await sesionDe(CODIGO_ROL.BODEGUERO);
     const respuesta = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/avisos`).set(bodeguero).expect(200);
     const tipos = tiposDe(respuesta.body.data);
 
     expect(tipos).toContain(TIPO_AVISO.REPUESTO_BAJO_MINIMO);
-    expect(tipos).not.toContain(TIPO_AVISO.EXPEDIENTE_BLOQUEADO);
+    expect(tipos).not.toContain(TIPO_AVISO.EXCEPCION_SINCRONIZACION);
   });
 
   it('lo critico va primero', async () => {

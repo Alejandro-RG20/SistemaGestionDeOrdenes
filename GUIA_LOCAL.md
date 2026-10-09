@@ -105,7 +105,7 @@ base de datos.
 ## 5. Crear las tablas y los datos de prueba
 
 ```bash
-npm run migrar     # aplica las 14 migraciones, cada una en su transacción
+npm run migrar     # aplica las 23 migraciones, cada una en su transacción
 npm run sembrar    # genera doce meses de operación
 ```
 
@@ -113,8 +113,8 @@ La siembra tarda unos 20–25 segundos y genera, entre otras cosas:
 
 - 3 000 clientes, 5 000 artículos y **30 000 órdenes** repartidas en los 13
   estados
-- ~167 000 evidencias, ~36 000 movimientos de repuesto, ~8 300 expedientes de
-  cobro
+- ~167 000 evidencias, ~36 000 movimientos de repuesto, solicitudes de
+  repuesto y una bodega personal por técnico
 - 37 usuarios, uno por cada persona del centro
 
 Es **reproducible**: con la misma `SEMILLA_DATOS` salen exactamente los mismos
@@ -163,31 +163,33 @@ Según con cuál entre, verá un panel distinto — que es justamente la gracia:
 
 | Usuario | Rol | Qué verá |
 |---|---|---|
-| `mmorales` | jefa de atención al cliente | **todo**; administra el sistema |
-| `jlopez` | administrador | acceso global (el rol que el pliego exige aparte) |
-| `gcruz` | jefe de técnicos | órdenes vencidas, excepciones, **validación técnica** |
-| `ccruz` | técnico de ruta | **sólo sus órdenes**, sin cobros ni excepciones |
-| `cpalacios` | gestor de cobros | expedientes bloqueados, sin respuesta, sin conformar |
-| `esilva` | jefe de cobros | lo del gestor, más **confirmar pagos** |
-| `maguirre` | bodeguero | inventario bajo mínimo y **recepción de compras** |
-| `clopez` | jefe de compras | **pedidos al proveedor**, sin poder recibirlos |
-| `breyes` | agente de teléfonía | clientes, órdenes, agenda |
-| `bmorales` | usuario de tienda | **sólo las órdenes de su sucursal** |
-| `arodriguez` | usuario de consulta | lee y nada más |
+| `nhernandez` | jefa de atención al cliente | **todo** lo operativo; administra el sistema, recibe y entrega |
+| `abermudez` | administrador | acceso global |
+| `nflores` | jefe de técnicos | asignación, órdenes vencidas, excepciones, **validación técnica** |
+| `hflores` | gestor de técnicos | asignación de técnicos y agenda |
+| `brodriguez` | técnico de ruta | **sólo sus órdenes**; pide repuestos, registra su uso y devuelve lo que sobra |
+| `bperez` | técnico de planta | lo mismo, desde su bodega de banco del taller |
+| `gramirez` | bodeguero | solicitudes de repuesto (revisar, reservar, entregar), disponibilidad, kardex |
+| `aobando` | jefe de compras | **pedidos al proveedor**, sin poder recibirlos |
+| `bzeledon` | agente de telefonía | clientes, órdenes, agenda |
+| `csilva` | usuario de tienda | **sólo las órdenes de su sucursal**; recibe y entrega |
+| `egonzalez` | usuario de consulta | lee y nada más |
+
+No hay cuentas de cobros: el sistema dejó de gestionar dinero (migración 0023).
 
 ### Tres comparaciones que vale la pena hacer
 
-1. Entre con `clopez` y luego con `maguirre`, y abra la **misma compra**. El
+1. Entre con `aobando` y luego con `gramirez`, y abra la **misma compra**. El
    jefe de compras ve el bloque para mover el pedido y no el de recibir; el
    bodeguero, al revés. Quien pide no cuenta lo que llega.
-2. Entre con `bmorales` y mire el total de la bandeja, luego con `jlopez`.
+2. Entre con `csilva` y mire el total de la bandeja, luego con `abermudez`.
    El usuario de tienda ve unas nueve mil órdenes —las de su sucursal— y el
    administrador las treinta mil.
-3. Entre con `gcruz` en **Validación técnica** y abra una orden a la que le
+3. Entre con `nflores` en **Validación técnica** y abra una orden a la que le
    falte evidencia: la opción de aprobar **no está**, y en su lugar se explica
    por qué y qué hacer.
 
-Entre con `gcruz` y luego con `ccruz` y compare la bandeja: el jefe ve unas
+Entre con `nflores` y luego con `brodriguez` y compare la bandeja: el jefe ve unas
 doscientas órdenes vencidas —las del taller entero— y el técnico ve un puñado,
 que son las suyas. Esa diferencia es la razón de ser de la pantalla: siendo el
 único canal de aviso del sistema, una bandeja llena de problemas ajenos se
@@ -242,7 +244,7 @@ npm run panel -- --host
 ```
 
 Y desde el teléfono, abra `http://192.168.1.50:5173` (con su IP). Entre con un
-técnico —`dhernandez`, `ccruz` o `emembreno`, misma contraseña— y toque **Mi
+técnico de ruta —por ejemplo `brodriguez`, misma contraseña— y toque **Mi
 ruta (celular)** en el menú.
 
 ### Autorizar el teléfono antes de que pueda enviar
@@ -252,7 +254,7 @@ no está autorizado**, y le va a mostrar un código `web-…`. Eso es a propósi
 es la misma regla que permitía revocar a distancia una tableta perdida
 (RF-05), aplicada al navegador.
 
-Entre con la jefatura de atención al cliente (`mmorales`), vaya a
+Entre con la jefatura de atención al cliente (`nhernandez`), vaya a
 **Administración › Dispositivos de campo**, elija al técnico, pegue el código
 y pulse *Autorizar este dispositivo*. El técnico cierra sesión, vuelve a
 entrar, y ya sincroniza.
@@ -283,9 +285,11 @@ npm run prueba          # las del servidor (necesita PostgreSQL andando)
 npm run prueba:panel    # las de la web, incluida toda la capa sin conexión
 ```
 
-Las del servidor tardan unos cinco minutos: cada archivo crea su propia base
-desde cero y la siembra entera. Crean y destruyen `servitotal_pruebas`;
-**nunca tocan su base de desarrollo**.
+La primera corrida siembra una base plantilla (`servitotal_pruebas_plantilla`,
+unos cinco minutos) y cada archivo de pruebas arranca de una copia de ella en
+segundos. La plantilla se vuelve a sembrar sola cuando cambian las
+migraciones, la siembra o el dominio compartido. Crean y destruyen
+`servitotal_pruebas`; **nunca tocan su base de desarrollo**.
 
 Si no tiene PostgreSQL a mano:
 
@@ -325,7 +329,6 @@ Si viene de una versión anterior, estas son las secciones nuevas del menú:
 |---|---|---|
 | **Validación técnica** | jefe de técnicos | revisar el trabajo antes de darlo por bueno |
 | **Compras y proveedores** | compras y bodega | pedir al proveedor y registrar lo que llega |
-| **Pagos de clientes** | cobros | confirmar que el dinero entró |
 | **Reportes** | jefaturas | los 17 reportes del pliego, en una pantalla |
 | **Tiendas** | administración | las sucursales desde las que entra el trabajo |
 
@@ -426,7 +429,7 @@ curl -s "localhost:3000/api/v1/ordenes?tamano=5" -H "Authorization: Bearer $TK" 
 ```bash
 TK=$(curl -s localhost:3000/api/v1/autenticacion/sesion -X POST \
   -H 'Content-Type: application/json' \
-  -d '{"nombreUsuario":"arodriguez","contrasena":"ServiTotal.2026"}' \
+  -d '{"nombreUsuario":"egonzalez","contrasena":"ServiTotal.2026"}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["datos"]["tokenAcceso"])')
 
 curl -s localhost:3000/api/v1/movimientos -X POST -H "Authorization: Bearer $TK" \
@@ -435,7 +438,7 @@ curl -s localhost:3000/api/v1/movimientos -X POST -H "Authorization: Bearer $TK"
 # → 403 SIN_PERMISO, y la existencia no se mueve
 ```
 
-`arodriguez` es `usuario_consulta`. Antes esto respondía 200 y sumaba 99
+`egonzalez` es `usuario_consulta`. Antes esto respondía 200 y sumaba 99
 unidades.
 
 ### El kardex
@@ -489,7 +492,7 @@ en contradicción.
 ### El tablero de inicio
 
 Entre con cualquier usuario: las once cifras de arriba son la foto de hoy.
-Están cercadas, así que la comparación vale la pena: entre con `jlopez`
+Están cercadas, así que la comparación vale la pena: entre con `abermudez`
 (administrador), con un usuario de tienda y con un técnico, y mire «Órdenes
 abiertas». Deben bajar: 1 500 → 478 → 56.
 

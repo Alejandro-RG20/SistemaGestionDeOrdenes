@@ -32,8 +32,6 @@ export interface FilaEstadoDeOrden {
   readonly estado: string;
   readonly tipo_garantia: string;
   readonly total: string;
-  /** Lo efectivamente cobrado y confirmado. */
-  readonly pagado: string;
   readonly cotizacion_aceptada: boolean | null;
   readonly tiene_cotizacion: boolean;
 }
@@ -51,10 +49,6 @@ export async function estadoParaEntrega(
   const { rows } = await ejecutor.query<FilaEstadoDeOrden>(
     `SELECT o.id, o.codigo, o.estado::text AS estado, o.tipo_garantia::text AS tipo_garantia,
             o.total,
-            coalesce((
-              SELECT sum(p.monto) FROM pago p
-               WHERE p.id_orden = o.id AND p.estado = 'confirmado'
-            ), 0) AS pagado,
             c.aceptada AS cotizacion_aceptada,
             (c.id IS NOT NULL) AS tiene_cotizacion
        FROM orden_servicio o

@@ -15,21 +15,22 @@
  * cuatrocientas, y callarlo produce decisiones equivocadas con cara de
  * dato duro.
  */
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  TIPO_COLUMNA,
-  type ColumnaDeReporte, type DefinicionDeReporte, type ResultadoDeReporte,
+  ESTADOS_ORDEN, TIPO_COLUMNA,
+  type CatalogosDeApoyo, type ColumnaDeReporte, type DefinicionDeReporte, type FiltroDeReporte,
+  type ResultadoDeReporte, type ResumenBodega,
 } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
 import { Aviso, Cargando, cordobas, Fallo, fechaCorta, Tarjeta, Vacio } from '../componentes/piezas.js';
-import { RAIZ_API, consultaDe } from '../api/cliente.js';
+import { consultaDe } from '../api/cliente.js';
 
 const TITULO_DE_GRUPO: Record<string, string> = {
   operacion: 'Operacion',
   tecnico: 'Trabajo tecnico',
-  inventario: 'Inventario y compras',
-  dinero: 'Dinero',
+  inventario: 'Inventario y reposicion',
 };
 
 /** Da formato a la celda segun el tipo que declaro el servidor. */
@@ -67,21 +68,53 @@ export function Reportes(): JSX.Element {
   const clave = parametros.get('reporte') ?? '';
   const desde = parametros.get('desde') ?? '';
   const hasta = parametros.get('hasta') ?? '';
+  const filtros: Record<FiltroDeReporte, string> = {
+    estado: parametros.get('estado') ?? '',
+    tecnico: parametros.get('tecnico') ?? '',
+    tienda: parametros.get('tienda') ?? '',
+    repuesto: parametros.get('repuesto') ?? '',
+    bodega: parametros.get('bodega') ?? '',
+  };
+  const [falloDescarga, setFalloDescarga] = useState<string | null>(null);
 
   const catalogo = useRecurso<DefinicionDeReporte[]>(
     () => api.pedir<DefinicionDeReporte[]>('/reportes'), [],
   );
 
+  const definicionesCargadas = catalogo.datos ?? [];
+  const admitidos = definicionesCargadas.find((d) => d.clave === clave)?.filtros ?? [];
+  // Solo viajan los filtros que el reporte admite: los demas no harian nada.
+  const consulta: Record<string, string | undefined> = {
+    desde: desde === '' ? undefined : desde,
+    hasta: hasta === '' ? undefined : hasta,
+    ...Object.fromEntries(admitidos.map((filtro) => [filtro, filtros[filtro] === '' ? undefined : filtros[filtro]])),
+  };
+  const claveDeConsulta = consultaDe(consulta);
+
   const resultado = useRecurso<ResultadoDeReporte | null>(
-    async () => (clave === ''
+    async () => (clave === '' || catalogo.datos === null
       ? null
-      : api.pedir<ResultadoDeReporte>(
-        `/reportes/${clave}`
-        + (desde === '' ? '' : `?desde=${desde}`)
-        + (hasta === '' ? '' : `${desde === '' ? '?' : '&'}hasta=${hasta}`),
-      )),
-    [clave, desde, hasta],
+      : api.pedir<ResultadoDeReporte>(`/reportes/${clave}`, { consulta })),
+    [clave, claveDeConsulta, catalogo.datos === null],
   );
+
+  // Opciones de los filtros: tecnicos y tiendas del catalogo de apoyo, y las
+  // bodegas. Si alguna no carga, ese filtro no se ofrece.
+  const apoyo = useRecurso<CatalogosDeApoyo | null>(
+    () => api.pedir<CatalogosDeApoyo>('/catalogos').catch(() => null), [],
+  );
+  const bodegas = useRecurso<readonly ResumenBodega[] | null>(
+    () => api.pedir<readonly ResumenBodega[]>('/bodegas').catch(() => null), [],
+  );
+
+  async function descargar(): Promise<void> {
+    setFalloDescarga(null);
+    try {
+      await api.descargar(`/reportes/${clave}/exportar${claveDeConsulta}`, `${clave}.csv`);
+    } catch (error) {
+      setFalloDescarga(error instanceof Error ? error.message : 'No se pudo descargar el reporte.');
+    }
+  }
 
   function cambiar(campo: string, valor: string): void {
     const siguientes = new URLSearchParams(parametros);
@@ -89,7 +122,7 @@ export function Reportes(): JSX.Element {
     setParametros(siguientes);
   }
 
-  const definiciones = catalogo.datos ?? [];
+  const definiciones = definicionesCargadas;
   const elegido = definiciones.find((definicion) => definicion.clave === clave);
   const grupos = [...new Set(definiciones.map((definicion) => definicion.grupo))];
 
@@ -151,6 +184,57 @@ export function Reportes(): JSX.Element {
           ) : null}
         </div>
 
+        {elegido !== undefined && elegido.filtros.length > 0 ? (
+          <div className="g g3" style={{ marginTop: 8 }}>
+            {elegido.filtros.includes('estado') ? (
+              <div>
+                <label htmlFor="f-estado">Estado de la orden</label>
+                <select id="f-estado" value={filtros.estado} onChange={(e) => cambiar('estado', e.target.value)}>
+                  <option value="">Todos</option>
+                  {ESTADOS_ORDEN.map((uno) => <option key={uno} value={uno}>{uno.replace(/_/g, ' ')}</option>)}
+                </select>
+              </div>
+            ) : null}
+            {elegido.filtros.includes('tecnico') && apoyo.datos !== null ? (
+              <div>
+                <label htmlFor="f-tecnico">Tecnico</label>
+                <select id="f-tecnico" value={filtros.tecnico} onChange={(e) => cambiar('tecnico', e.target.value)}>
+                  <option value="">Todos</option>
+                  {apoyo.datos.tecnicos.map((uno) => <option key={uno.id} value={uno.id}>{uno.nombre}</option>)}
+                </select>
+              </div>
+            ) : null}
+            {elegido.filtros.includes('tienda') && apoyo.datos !== null ? (
+              <div>
+                <label htmlFor="f-tienda">Tienda</label>
+                <select id="f-tienda" value={filtros.tienda} onChange={(e) => cambiar('tienda', e.target.value)}>
+                  <option value="">Todas</option>
+                  {apoyo.datos.tiendas.map((una) => <option key={una.id} value={una.id}>{una.nombre}</option>)}
+                </select>
+              </div>
+            ) : null}
+            {elegido.filtros.includes('bodega') && bodegas.datos !== null ? (
+              <div>
+                <label htmlFor="f-bodega">Bodega</label>
+                <select id="f-bodega" value={filtros.bodega} onChange={(e) => cambiar('bodega', e.target.value)}>
+                  <option value="">Todas</option>
+                  {bodegas.datos.map((una) => <option key={una.id} value={una.id}>{una.nombre}</option>)}
+                </select>
+              </div>
+            ) : null}
+            {elegido.filtros.includes('repuesto') ? (
+              <div>
+                <label htmlFor="f-repuesto">Repuesto (identificador del kardex)</label>
+                <input
+                  id="f-repuesto" defaultValue={filtros.repuesto}
+                  placeholder="Pegue el identificador y presione Enter"
+                  onKeyDown={(e) => { if (e.key === 'Enter') cambiar('repuesto', e.currentTarget.value.trim()); }}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {elegido !== undefined ? (
           <p className="tenue" style={{ fontSize: 12.5, margin: '10px 0 0' }}>
             {elegido.proposito}
@@ -198,17 +282,11 @@ export function Reportes(): JSX.Element {
             * descarga es exactamente lo que se esta viendo.
             */}
           <p>
-            <a
-              className="secundario"
-              href={`${RAIZ_API}/reportes/${clave}/exportar${consultaDe({
-                desde: desde === '' ? undefined : desde,
-                hasta: hasta === '' ? undefined : hasta,
-              })}`}
-              download
-            >
+            <button type="button" className="btn chico" onClick={() => { void descargar(); }}>
               Descargar en CSV ({resultado.datos.filas.length} filas)
-            </a>
+            </button>
           </p>
+          {falloDescarga === null ? null : <Aviso tono="warn">{falloDescarga}</Aviso>}
 
           {resultado.datos.filas.length === 0 ? (
             <Vacio>Este reporte no devolvio ninguna fila para ese periodo.</Vacio>

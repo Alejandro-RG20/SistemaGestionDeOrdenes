@@ -214,3 +214,16 @@ table.d td a:hover { text-decoration: underline; }
 .app.m .crumb { padding: 7px 13px; }
 /* Los enlaces que hacen de boton: el navegador no los centra como a <button>. */
 .app.m a.btn { display: flex; align-items: center; text-decoration: none; }
+
+/* Encabezados del tablero: ordenes, inventario, campo. */
+.seccion-tablero {
+  font-family: Archivo, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--soft); margin: 4px 0 6px;
+}
+/* Estados en tablas: siempre con texto, el color solo acompaña. */
+.estado { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); }
+.estado-critico { color: var(--red); border-color: var(--red); background: #FBECE9; }
+.estado-alerta { color: var(--amber); border-color: var(--amber); background: #FDF5E6; }
+.estado-exito { color: var(--teal); border-color: var(--teal); background: #F4F9F8; }
+.historial td { vertical-align: top; }
+.historial .tipo { font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase; }

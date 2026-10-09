@@ -11,6 +11,7 @@ export interface FilaBodega {
   readonly id_tecnico: string | null;
   readonly tecnico: string | null;
   readonly activa: boolean;
+  readonly surte_repuestos: boolean;
   readonly renglones: string;
   readonly unidades: string;
 }
@@ -81,6 +82,7 @@ export function aResumenBodega(fila: FilaBodega): ResumenBodega {
   return {
     id: fila.id, tipo: fila.tipo, nombre: fila.nombre,
     idTecnico: fila.id_tecnico, tecnico: fila.tecnico, activa: fila.activa,
+    surteRepuestos: fila.surte_repuestos,
     renglones: Number(fila.renglones), unidades: Number(fila.unidades),
   };
 }

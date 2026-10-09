@@ -15,6 +15,7 @@ export function rutasDeOrdenes(): Router {
   router.get('/ordenes', consultar, asincrono(controlador.listar));
   router.get('/ordenes/alertas', consultar, asincrono(controlador.alertas));
   router.get('/ordenes/:id', consultar, asincrono(controlador.obtener));
+  router.get('/ordenes/:id/historial', consultar, asincrono(controlador.historial));
   router.post('/ordenes', exigirPermiso('ordenes.crear'), asincrono(controlador.crear));
   router.put('/ordenes/:id/tecnico', exigirPermiso('ordenes.asignar'), asincrono(controlador.asignarTecnico));
 

@@ -3,7 +3,12 @@
  *
  * Lo que el prototipo demuestra aqui es que **el plazo comprometido esta
  * visible en todo momento** (RN-16): va en la cabecera, junto al
- * responsable y al costo para el cliente, no escondido en una pestana.
+ * responsable y al tecnico asignado, no escondido en una pestana.
+ *
+ * El historial es la respuesta a «¿que paso con esta orden?»: reune en orden
+ * cronologico los cambios de estado, asignaciones, diagnosticos, evidencias,
+ * solicitudes de repuesto, movimientos de inventario, la revision, la
+ * entrega y las correcciones, cada uno con quien lo hizo.
  *
  * Las pestanas cargan bajo demanda. Una orden con doscientos eventos de
  * bitacora y treinta evidencias no puede hacer esperar a quien solo queria
@@ -13,19 +18,27 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ESTADO_ORDEN,
-  type EstadoOrden, type EvidenciaDeOrden, type FichaOrden,
-  type ResumenMovimiento, type ResumenVisita,
+  type CatalogosDeApoyo, type EstadoOrden, type EventoDeHistorial, type FichaOrden,
+  type ResumenVisita,
 } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
 import {
   Aviso, Cargando, Cifra, EtiquetaEstado, Fallo, Garantia, Tarjeta, Vacio,
-  cordobas, fechaHora, plazoEnPalabras,
+  fechaHora, plazoEnPalabras,
 } from '../componentes/piezas.js';
-import { ErrorDeApi, type PaginaDeDatos } from '../api/cliente.js';
+import { ErrorDeApi } from '../api/cliente.js';
 import { tienePermiso } from '../sesion/navegacion.js';
+import { EvidenciasDeOrden } from './EvidenciasDeOrden.js';
+import { RepuestosDeOrden } from './RepuestosDeOrden.js';
 
-const PESTANAS = ['Resumen', 'Evidencia', 'Repuestos', 'Visitas', 'Bitacora'] as const;
+const PESTANAS = ['Resumen', 'Repuestos', 'Evidencia', 'Visitas', 'Historial'] as const;
+
+const TITULO_TIPO: Record<string, string> = {
+  estado: 'Estado', asignacion: 'Asignacion', cambio: 'Cambio', diagnostico: 'Diagnostico',
+  evidencia: 'Evidencia', solicitud: 'Repuesto', movimiento: 'Inventario', visita: 'Visita',
+  autorizacion: 'Cliente', validacion: 'Revision', entrega: 'Entrega', correccion: 'Correccion',
+};
 type Pestana = (typeof PESTANAS)[number];
 
 export function DetalleOrden(): JSX.Element {
@@ -38,19 +51,21 @@ export function DetalleOrden(): JSX.Element {
 
   const ficha = useRecurso<FichaOrden>(() => api.pedir<FichaOrden>(`/ordenes/${id}`), [id]);
 
-  const evidencias = useRecurso<readonly EvidenciaDeOrden[]>(
-    () => (pestana === 'Evidencia'
-      ? api.pedir<readonly EvidenciaDeOrden[]>(`/ordenes/${id}/evidencias`)
+  const historial = useRecurso<readonly EventoDeHistorial[]>(
+    () => (pestana === 'Historial'
+      ? api.pedir<readonly EventoDeHistorial[]>(`/ordenes/${id}/historial`)
       : Promise.resolve([])),
     [id, pestana],
   );
 
-  const consumos = useRecurso<PaginaDeDatos<ResumenMovimiento>>(
-    () => (pestana === 'Repuestos'
-      ? api.pedirPagina<ResumenMovimiento>('/movimientos', { idOrden: id, tamano: 50 })
-      : Promise.resolve({ datos: [], paginacion: { pagina: 1, tamano: 0, total: 0, totalPaginas: 0 } })),
-    [id, pestana],
+  const puedeAsignar = tienePermiso(usuario, 'ordenes.asignar');
+  const catalogos = useRecurso<CatalogosDeApoyo | null>(
+    () => (puedeAsignar ? api.pedir<CatalogosDeApoyo>('/catalogos') : Promise.resolve(null)),
+    [puedeAsignar],
   );
+  const [idTecnicoNuevo, setIdTecnicoNuevo] = useState('');
+  const [motivoAsignacion, setMotivoAsignacion] = useState('');
+  const [errorAsignacion, setErrorAsignacion] = useState<string | null>(null);
 
   const visitas = useRecurso<readonly ResumenVisita[]>(
     () => (pestana === 'Visitas'
@@ -66,7 +81,38 @@ export function DetalleOrden(): JSX.Element {
   const orden = ficha.datos;
   const plazo = plazoEnPalabras(orden.horasParaVencer, orden.vencida);
 
+  async function asignar(): Promise<void> {
+    setErrorAsignacion(null);
+    if (idTecnicoNuevo === '') { setErrorAsignacion('Elija el tecnico.'); return; }
+    if (orden.idTecnico !== null && motivoAsignacion.trim() === '') {
+      setErrorAsignacion('Para reasignar escriba el motivo: queda en el historial de la orden.');
+      return;
+    }
+    setMoviendo(true);
+    try {
+      await api.pedir(`/ordenes/${orden.id}/tecnico`, {
+        metodo: 'PUT',
+        cuerpo: {
+          idTecnico: idTecnicoNuevo,
+          ...(motivoAsignacion.trim() === '' ? {} : { motivo: motivoAsignacion.trim() }),
+        },
+      });
+      setIdTecnicoNuevo('');
+      setMotivoAsignacion('');
+      ficha.recargar();
+    } catch (fallo) {
+      setErrorAsignacion(fallo instanceof ErrorDeApi ? fallo.message : 'No se pudo asignar el tecnico.');
+    } finally {
+      setMoviendo(false);
+    }
+  }
+
   async function mover(hacia: EstadoOrden): Promise<void> {
+    // Anular y cerrar sin reparar no tienen vuelta atras: se confirman.
+    if ((hacia === ESTADO_ORDEN.ANULADA || hacia === ESTADO_ORDEN.CERRADA_SIN_REPARAR)
+      && !window.confirm(`La orden pasara a «${hacia.replace(/_/g, ' ')}» y no se podra reabrir. Continuar?`)) {
+      return;
+    }
     setMoviendo(true);
     setError(null);
     try {
@@ -111,7 +157,7 @@ export function DetalleOrden(): JSX.Element {
         ) : null}
       </div>
 
-      {/* La cabecera del prototipo: estado, responsable, plazo y costo. */}
+      {/* La cabecera: estado, responsable, plazo y tecnico. */}
       <div className="g g4" style={{ marginBottom: 12 }}>
         <Cifra valor={<EtiquetaEstado estado={orden.estado} />} etiqueta="Estado actual" pequena />
         <Cifra valor={orden.responsableActual ?? 'sin responsable'} etiqueta="Responsable actual" pequena />
@@ -121,11 +167,7 @@ export function DetalleOrden(): JSX.Element {
           color={plazo.color}
           pequena
         />
-        <Cifra
-          valor={orden.tipoGarantia === 'particular' ? cordobas(orden.total) : cordobas(0)}
-          etiqueta="Costo al cliente"
-          pequena
-        />
+        <Cifra valor={orden.tecnico ?? 'sin asignar'} etiqueta="Tecnico asignado" pequena />
       </div>
 
       <div className="tabs">
@@ -153,13 +195,45 @@ export function DetalleOrden(): JSX.Element {
                 <label>Direccion del servicio</label>
                 <input value={orden.direccionServicio ?? 'orden de taller'} readOnly />
               </div>
-              <div><label>Cargo por visita</label><input value={cordobas(orden.cargoVisita)} readOnly /></div>
+              <div><label>Tienda de procedencia</label><input value={orden.tienda ?? 'sin tienda registrada'} readOnly /></div>
             </div>
             <p style={{ fontSize: 11.5, color: 'var(--soft)', margin: '10px 0 0' }}>
               Cambiar la direccion en la ficha del cliente no altera esta orden: describe como
               eran las cosas cuando se programo el servicio.
             </p>
           </Tarjeta>
+
+          {puedeAsignar && orden.destinosPosibles.length > 0 ? (
+            <Tarjeta titulo={orden.idTecnico === null ? 'Asignar tecnico' : 'Reasignar tecnico'}>
+              <div className="g g3">
+                <div>
+                  <label htmlFor="tecnico-nuevo">Tecnico</label>
+                  <select id="tecnico-nuevo" value={idTecnicoNuevo} onChange={(e) => setIdTecnicoNuevo(e.target.value)}>
+                    <option value="">Elija…</option>
+                    {(catalogos.datos?.tecnicos ?? []).map((tecnico) => (
+                      <option key={tecnico.id} value={tecnico.id} disabled={tecnico.id === orden.idTecnico}>
+                        {tecnico.nombre} · {tecnico.tipo} · {tecnico.cargaActual} abiertas
+                        {tecnico.disponible ? '' : ' · no disponible'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="motivo-asignacion">
+                    Motivo {orden.idTecnico === null ? '(opcional)' : '(obligatorio al reasignar)'}
+                  </label>
+                  <input id="motivo-asignacion" value={motivoAsignacion}
+                    onChange={(e) => setMotivoAsignacion(e.target.value)} />
+                </div>
+                <div style={{ alignSelf: 'end' }}>
+                  <button type="button" className="btn pri" disabled={moviendo} onClick={() => { void asignar(); }}>
+                    {orden.idTecnico === null ? 'Asignar' : 'Reasignar'}
+                  </button>
+                </div>
+              </div>
+              {errorAsignacion === null ? null : <Aviso tono="warn">{errorAsignacion}</Aviso>}
+            </Tarjeta>
+          ) : null}
 
           <Tarjeta titulo="Mover la orden">
             {orden.destinosPosibles.length === 0 ? (
@@ -209,64 +283,10 @@ export function DetalleOrden(): JSX.Element {
       ) : null}
 
       {pestana === 'Evidencia' ? (
-        <Tarjeta titulo="Evidencia para el expediente de cobro">
-          {evidencias.cargando ? <Cargando que="la evidencia" /> : null}
-          {evidencias.datos === null || evidencias.datos.length === 0 ? (
-            <Vacio>Todavia no se ha cargado evidencia de esta orden.</Vacio>
-          ) : (
-            evidencias.datos.map((evidencia) => (
-              <div key={evidencia.id} className={evidencia.sincronizada ? 'ev done' : 'ev'}>
-                <span>{evidencia.sincronizada ? '✓' : '◇'}</span>
-                <span>{evidencia.clave.replace(/_/g, ' ')} · {evidencia.tipo}</span>
-                <em>{fechaHora(evidencia.momentoDispositivo)}</em>
-              </div>
-            ))
-          )}
-          <p style={{ fontSize: 11.5, color: 'var(--soft)', margin: '9px 0 0' }}>
-            Cada evidencia se guarda con autor, fecha, hora y huella digital. El expediente de
-            cobro no podra enviarse mientras falte alguna obligatoria (RF-57).
-          </p>
-        </Tarjeta>
+        <EvidenciasDeOrden idOrden={orden.id} cerrada={orden.destinosPosibles.length === 0} />
       ) : null}
 
-      {pestana === 'Repuestos' ? (
-        <Tarjeta titulo="Repuestos consumidos en esta orden">
-          {consumos.cargando ? <Cargando que="los consumos" /> : null}
-          {consumos.datos === null || consumos.datos.datos.length === 0 ? (
-            <Vacio>No se ha consumido ningun repuesto en esta orden.</Vacio>
-          ) : (
-            <table className="d">
-              <thead>
-                <tr>
-                  <th>Fecha</th><th>Repuesto</th><th>Tipo</th>
-                  <th>Cantidad</th><th>Precio</th><th>Responsable</th>
-                </tr>
-              </thead>
-              <tbody>
-                {consumos.datos.datos.map((movimiento) => (
-                  <tr key={movimiento.id}>
-                    <td className="tenue">{fechaHora(movimiento.creadoEn)}</td>
-                    <td>{movimiento.codigo} · {movimiento.descripcion}</td>
-                    <td>{movimiento.tipo.replace(/_/g, ' ')}</td>
-                    <td>{movimiento.cantidad}</td>
-                    <td>{cordobas(movimiento.precioUnitario)}</td>
-                    <td className="tenue">
-                      {movimiento.responsable}
-                      {movimiento.registradoSinConexion ? (
-                        <span className="tag t-a" style={{ marginLeft: 6 }}>sin conexion</span>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <p style={{ fontSize: 11.5, color: 'var(--soft)', margin: '9px 0 0' }}>
-            El precio es el <b>congelado del movimiento</b>, no el de hoy: es lo que se le
-            reclama al proveedor y lo que la factura respalda.
-          </p>
-        </Tarjeta>
-      ) : null}
+      {pestana === 'Repuestos' ? <RepuestosDeOrden orden={orden} /> : null}
 
       {pestana === 'Visitas' ? (
         <Tarjeta titulo="Visitas programadas y realizadas">
@@ -294,30 +314,36 @@ export function DetalleOrden(): JSX.Element {
         </Tarjeta>
       ) : null}
 
-      {pestana === 'Bitacora' ? (
-        <Tarjeta titulo="Bitacora" extra="inmutable · RN-18">
-          <table className="d">
-            <thead>
-              <tr><th>Momento</th><th>Cambio</th><th>Responsable</th><th>Observacion</th></tr>
-            </thead>
-            <tbody>
-              {orden.eventos.map((evento) => (
-                <tr key={evento.id}>
-                  <td className="tenue">{fechaHora(evento.momento)}</td>
-                  <td>
-                    {evento.estadoAnterior === null
-                      ? 'registrada'
-                      : `${evento.estadoAnterior.replace(/_/g, ' ')} → ${evento.estadoNuevo.replace(/_/g, ' ')}`}
-                    {evento.registradoSinConexion ? (
-                      <span className="tag t-a" style={{ marginLeft: 6 }}>sin conexion</span>
-                    ) : null}
-                  </td>
-                  <td className="tenue">{evento.responsable ?? '—'}</td>
-                  <td className="tenue">{evento.observacion ?? ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {pestana === 'Historial' ? (
+        <Tarjeta titulo="Historial completo de la orden" extra="no se edita ni se borra">
+          {historial.cargando ? <Cargando que="el historial" /> : null}
+          {historial.error !== null ? <Fallo error={historial.error} alReintentar={historial.recargar} /> : null}
+          {historial.datos !== null && !historial.cargando && historial.datos.length === 0
+            ? <Vacio>Esta orden todavia no tiene eventos.</Vacio> : null}
+          {historial.datos !== null && historial.datos.length > 0 ? (
+            <table className="d historial">
+              <thead>
+                <tr><th>Momento</th><th>Tipo</th><th>Que paso</th><th>Quien</th></tr>
+              </thead>
+              <tbody>
+                {historial.datos.map((evento) => (
+                  <tr key={`${evento.tipo}-${evento.id}`}>
+                    <td className="tenue" style={{ whiteSpace: 'nowrap' }}>{fechaHora(evento.momento)}</td>
+                    <td className="tipo">{TITULO_TIPO[evento.tipo] ?? evento.tipo}</td>
+                    <td>
+                      {evento.titulo}
+                      {evento.registradoSinConexion ? (
+                        <span className="tag t-a" style={{ marginLeft: 6 }}>sin conexion</span>
+                      ) : null}
+                      {evento.detalle === null || evento.detalle === ''
+                        ? null : <><br /><span className="tenue">{evento.detalle}</span></>}
+                    </td>
+                    <td className="tenue">{evento.responsable ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
         </Tarjeta>
       ) : null}
 

@@ -16,7 +16,7 @@
  */
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { appendFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, open, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ErrorDominio, ErrorNoEncontrado } from '../comun/errores.js';
@@ -121,6 +121,15 @@ export async function agregarParte(
     );
   }
 
+  // La primera parte trae la firma del formato: se rechaza ahi mismo lo que
+  // no es imagen ni PDF, sin esperar a que suba el archivo entero.
+  if (yaRecibidos === 0 && parte.length >= 12 && formatoDe(parte.subarray(0, 16)) === null) {
+    throw new ErrorDominio(
+      'ARCHIVO_NO_ADMITIDO',
+      'El archivo no es una imagen (JPEG, PNG, WEBP, HEIC) ni un PDF. No se guardo.',
+    );
+  }
+
   await appendFile(rutaParcial(idCarga), parte);
   const bytesRecibidos = yaRecibidos + parte.length;
   return { ...descriptor, bytesRecibidos, completa: bytesRecibidos >= descriptor.bytes };
@@ -130,6 +139,34 @@ async function huellaDe(ruta: string): Promise<string> {
   const resumen = createHash('sha256');
   for await (const trozo of createReadStream(ruta)) resumen.update(trozo as Buffer);
   return resumen.digest('hex');
+}
+
+async function primerosBytes(ruta: string, cuantos: number): Promise<Buffer> {
+  const archivo = await open(ruta, 'r');
+  try {
+    const bufer = Buffer.alloc(cuantos);
+    const { bytesRead } = await archivo.read(bufer, 0, cuantos, 0);
+    return bufer.subarray(0, bytesRead);
+  } finally {
+    await archivo.close();
+  }
+}
+
+export type FormatoDeEvidencia = 'jpeg' | 'png' | 'webp' | 'heic' | 'pdf';
+
+/** Reconoce el formato por su firma de bytes. Nulo si no es uno admitido. */
+export function formatoDe(cabecera: Buffer): FormatoDeEvidencia | null {
+  const empieza = (...bytes: number[]): boolean => bytes.every((b, i) => cabecera[i] === b);
+  if (empieza(0xff, 0xd8, 0xff)) return 'jpeg';
+  if (empieza(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return 'png';
+  if (cabecera.subarray(0, 4).toString('latin1') === 'RIFF'
+    && cabecera.subarray(8, 12).toString('latin1') === 'WEBP') return 'webp';
+  if (cabecera.subarray(4, 8).toString('latin1') === 'ftyp'
+    && ['heic', 'heix', 'mif1', 'msf1', 'heif'].includes(cabecera.subarray(8, 12).toString('latin1'))) {
+    return 'heic';
+  }
+  if (cabecera.subarray(0, 5).toString('latin1') === '%PDF-') return 'pdf';
+  return null;
 }
 
 export interface ObjetoGuardado {
@@ -160,6 +197,23 @@ export async function cerrarCarga(idCarga: string): Promise<ObjetoGuardado> {
       'HUELLA_NO_COINCIDE',
       'El archivo que llego no coincide con la huella que anuncio el dispositivo. ' +
         'Se descarta y hay que volver a subirlo.',
+    );
+  }
+
+  /*
+   * EL CONTENIDO TIENE QUE SER LO QUE DICE SER.
+   *
+   * La huella prueba que llego lo que se mando, no que lo mandado sea una
+   * fotografia. Se miran los primeros bytes —la firma del formato, que no
+   * depende del nombre ni de lo que declare el navegador— y solo se admiten
+   * imagenes y PDF. Un ejecutable renombrado a .jpg no entra al expediente.
+   */
+  const formato = formatoDe(await primerosBytes(rutaParcial(idCarga), 16));
+  if (formato === null) {
+    throw new ErrorDominio(
+      'ARCHIVO_NO_ADMITIDO',
+      'El archivo no es una imagen (JPEG, PNG, WEBP, HEIC) ni un PDF. No se guardo: '
+        + 'adjunte la fotografia o el documento original.',
     );
   }
 

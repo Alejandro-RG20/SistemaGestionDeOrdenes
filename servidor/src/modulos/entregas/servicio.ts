@@ -3,19 +3,21 @@
  *
  * LA LISTA DE REQUISITOS SE CALCULA, NO SE DECLARA.
  *
- * El pliego enumera lo que hay que verificar antes de entregar: reparacion
- * terminada, validacion tecnica aprobada cuando corresponda, cotizacion
- * aceptada cuando corresponda, pago hecho cuando corresponda. La tentacion
- * es poner una casilla «todo revisado» en la pantalla; eso convierte el
- * control en un tramite y es exactamente lo que el pliego prohibe para los
- * expedientes de cobro (§39). Aqui se aplica el mismo criterio.
+ * Lo que hay que verificar antes de entregar: reparacion terminada,
+ * validacion tecnica aprobada y, cuando corresponda, la autorizacion del
+ * cliente. La tentacion es poner una casilla «todo revisado» en la
+ * pantalla; eso convierte el control en un tramite.
+ *
+ * LA ENTREGA NO DEPENDE DE NINGUN COBRO. El sistema gestiona ordenes e
+ * inventario, no dinero (migracion 0023): una orden se entrega y se cierra
+ * sin registrar pagos. La tabla `pago` se conserva solo como historico.
  *
  * Cada requisito se comprueba contra los datos y se devuelve con QUE HACER
  * si no se cumple, porque quien atiende el mostrador tiene al cliente
  * delante y necesita saber a donde mandarlo, no que se le diga que no.
  *
  * «Cuando corresponda» tambien se calcula: una orden de garantia del
- * proveedor no necesita ni cotizacion ni pago, y pedirselos seria inventar
+ * proveedor no necesita autorizacion del cliente, y pedirsela seria inventar
  * un obstaculo que el negocio no tiene.
  */
 import {
@@ -43,14 +45,11 @@ function aEntrega(fila: repositorio.FilaEntrega): Entrega {
   };
 }
 
-/** Un centavo de diferencia por redondeo no es una deuda. */
-const TOLERANCIA_CORDOBAS = 0.5;
-
 /**
  * Que le falta a esta orden para poder entregarse.
  *
- * Lleva el cerco por datos: la verificacion dice quien es el cliente, cuanto
- * debe y que evidencias tiene. Y como `entregar` la usa, el cerco protege las
+ * Lleva el cerco por datos: la verificacion dice quien es el cliente y que
+ * evidencias tiene. Y como `entregar` la usa, el cerco protege las
  * dos puertas con una sola linea.
  */
 export async function verificar(
@@ -64,9 +63,11 @@ export async function verificar(
   const entregaPrevia = await repositorio.deOrden(idOrden);
   const aprobada = await validaciones.estaAprobada(idOrden);
 
-  const total = Number(orden.total);
-  const pagado = Number(orden.pagado);
-  const cobrableAlCliente = orden.tipo_garantia === TIPO_GARANTIA.PARTICULAR && total > 0;
+  // Solo la reparacion particular necesita que el cliente la haya
+  // autorizado. Es una decision operativa —el cliente dijo «si, repárelo»—,
+  // no un cobro.
+  const requiereAutorizacion = orden.tipo_garantia === TIPO_GARANTIA.PARTICULAR
+    && (orden.tiene_cotizacion || Number(orden.total) > 0);
 
   const requisitos: RequisitoDeEntrega[] = [
     {
@@ -85,36 +86,22 @@ export async function verificar(
       queHacer: aprobada
         ? ''
         : 'Pida la revision a la jefatura de tecnicos. Sin aprobacion, el centro no puede '
-          + 'responder por la reparacion ni cobrarsela al proveedor.',
+          + 'responder por la reparacion.',
     },
   ];
 
-  if (cobrableAlCliente) {
-    // Solo las ordenes que el cliente paga necesitan cotizacion aceptada y
-    // dinero entrado. Exigirselo a una garantia de proveedor seria inventar
-    // un tramite que el negocio no tiene.
+  if (requiereAutorizacion) {
     const aceptada = orden.cotizacion_aceptada === true;
     requisitos.push({
       clave: 'cotizacion_aceptada',
-      etiqueta: 'El cliente autorizo el costo',
+      etiqueta: 'El cliente autorizo la reparacion',
       cumplido: aceptada,
       queHacer: aceptada
         ? ''
         : orden.tiene_cotizacion
           ? 'Hay cotizacion pero el cliente todavia no la acepto. Registre la autorizacion.'
-          : 'Esta orden es particular y no tiene cotizacion registrada. Elaborela y hagasela '
-            + 'firmar antes de entregar.',
-    });
-
-    const cubierto = pagado + TOLERANCIA_CORDOBAS >= total;
-    requisitos.push({
-      clave: 'pago_confirmado',
-      etiqueta: 'El pago esta confirmado',
-      cumplido: cubierto,
-      queHacer: cubierto
-        ? ''
-        : `Faltan C$ ${(total - pagado).toFixed(2)} por confirmar. Un pago registrado pero sin `
-          + 'confirmar no habilita la entrega: registrelo en cobros y pida la confirmacion.',
+          : 'Esta orden es particular y no tiene la autorizacion del cliente registrada. '
+            + 'Registrela antes de entregar.',
     });
   }
 
@@ -157,21 +144,28 @@ export async function entregar(
     );
   }
 
-  const id = await enTransaccion((cliente) => repositorio.insertar(cliente, {
-    idOrden,
-    recibidoPor: peticion.recibidoPor,
-    documentoReceptor: peticion.documentoReceptor ?? null,
-    esElCliente: peticion.esElCliente,
-    observacion: peticion.observacion ?? null,
-    idResponsable: actor.id,
-  }));
+  // El acta y el cambio de estado van en LA MISMA transaccion
+  // (`enTransaccion` es reentrante: `mover` se suma a esta). Si la maquina
+  // de estados rechaza el paso —falta la firma, por ejemplo—, el acta
+  // tampoco queda escrita y la entrega se puede volver a intentar.
+  const id = await enTransaccion(async (cliente) => {
+    const nueva = await repositorio.insertar(cliente, {
+      idOrden,
+      recibidoPor: peticion.recibidoPor,
+      documentoReceptor: peticion.documentoReceptor ?? null,
+      esElCliente: peticion.esElCliente,
+      observacion: peticion.observacion ?? null,
+      idResponsable: actor.id,
+    });
 
-  // La maquina de estados es la unica que mueve una orden: aqui se la
-  // llama, no se replica.
-  await transiciones.mover(actor, idOrden, {
-    hacia: ESTADO_ORDEN.ENTREGADA,
-    observacion: `Entregado a ${peticion.recibidoPor}`
-      + (peticion.esElCliente ? '.' : ', que no es el titular de la orden.'),
+    // La maquina de estados es la unica que mueve una orden: aqui se la
+    // llama, no se replica. Exige que el acta exista, y existe.
+    await transiciones.mover(actor, idOrden, {
+      hacia: ESTADO_ORDEN.ENTREGADA,
+      observacion: `Entregado a ${peticion.recibidoPor}`
+        + (peticion.esElCliente ? '.' : ', que no es el titular de la orden.'),
+    });
+    return nueva;
   });
 
   const fila = await repositorio.deOrden(idOrden);

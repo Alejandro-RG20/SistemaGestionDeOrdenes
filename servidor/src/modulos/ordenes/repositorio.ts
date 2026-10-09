@@ -188,6 +188,9 @@ export interface FilaContextoTransicion {
   readonly tiene_cotizacion: boolean;
   readonly cotizacion_aceptada: boolean;
   readonly solicitudes_sin_liberar: number;
+  readonly solicitudes_abiertas: number;
+  readonly piezas_sin_conciliar: number;
+  readonly tiene_entrega: boolean;
 }
 
 /** Todo lo que la maquina de estados necesita, en un solo viaje. */
@@ -202,8 +205,27 @@ export async function buscarContextoTransicion(
             EXISTS (SELECT 1 FROM diagnostico d WHERE d.id_orden = o.id) AS tiene_diagnostico,
             EXISTS (SELECT 1 FROM cotizacion c WHERE c.id_orden = o.id) AS tiene_cotizacion,
             EXISTS (SELECT 1 FROM cotizacion c WHERE c.id_orden = o.id AND c.aceptada) AS cotizacion_aceptada,
+            -- Una solicitud anulada o rechazada ya no se espera: contarla
+            -- dejaba la orden detenida para siempre en 'esperando_repuesto'.
             (SELECT count(*) FROM solicitud_repuesto s
-              WHERE s.id_orden = o.id AND NOT s.liberada)::int AS solicitudes_sin_liberar
+              WHERE s.id_orden = o.id AND NOT s.liberada
+                AND s.estado NOT IN ('anulada', 'rechazada'))::int AS solicitudes_sin_liberar,
+            (SELECT count(*) FROM solicitud_repuesto s
+              WHERE s.id_orden = o.id
+                AND s.estado IN ('solicitada', 'en_revision', 'aprobada', 'preparada', 'entregada')
+            )::int AS solicitudes_abiertas,
+            -- Piezas entregadas al tecnico PARA esta orden que no se
+            -- instalaron ni se devolvieron. Por repuesto, y nunca negativo:
+            -- el tecnico de ruta puede instalar de su stock general.
+            (SELECT coalesce(sum(greatest(pendiente, 0)), 0) FROM (
+               SELECT sum(CASE m.tipo WHEN 'despacho_a_movil' THEN m.cantidad
+                                      WHEN 'consumo' THEN -m.cantidad
+                                      WHEN 'devolucion_a_central' THEN -m.cantidad
+                                      ELSE 0 END) AS pendiente
+                 FROM movimiento_repuesto m
+                WHERE m.id_orden = o.id
+                GROUP BY m.id_repuesto) p)::int AS piezas_sin_conciliar,
+            EXISTS (SELECT 1 FROM entrega en WHERE en.id_orden = o.id) AS tiene_entrega
        FROM orden_servicio o WHERE o.id = $1
        FOR UPDATE OF o`,
     [idOrden],
@@ -327,6 +349,34 @@ export async function tiendaActiva(
     [idTienda],
   );
   return rows[0]?.activa === true;
+}
+
+/** El tecnico que tiene la orden ahora, con su nombre. Bloquea la orden. */
+export async function tecnicoDeLaOrden(
+  ejecutor: Ejecutor, idOrden: string,
+): Promise<{ id: string; nombre: string } | null> {
+  const { rows } = await ejecutor.query<{ id: string | null; nombre: string | null }>(
+    `SELECT t.id, trim(u.nombres) AS nombre
+       FROM orden_servicio o
+       LEFT JOIN tecnico t ON t.id = o.id_tecnico
+       LEFT JOIN usuario u ON u.id = t.id_usuario
+      WHERE o.id = $1 FOR UPDATE OF o`,
+    [idOrden],
+  );
+  const fila = rows[0];
+  return fila === undefined || fila.id === null ? null : { id: fila.id, nombre: fila.nombre ?? '' };
+}
+
+export async function tecnicoActivo(
+  ejecutor: Ejecutor, idTecnico: string,
+): Promise<{ id: string; nombre: string } | null> {
+  const { rows } = await ejecutor.query<{ id: string; nombre: string }>(
+    `SELECT t.id, trim(u.nombres) AS nombre
+       FROM tecnico t JOIN usuario u ON u.id = t.id_usuario
+      WHERE t.id = $1 AND t.activo AND u.activo`,
+    [idTecnico],
+  );
+  return rows[0] ?? null;
 }
 
 export async function asignarTecnico(

@@ -18,9 +18,6 @@ export const TIPO_AVISO = {
   ORDEN_VENCIDA: 'orden_vencida',
   ORDEN_EN_ALERTA: 'orden_en_alerta',
   EXCEPCION_SINCRONIZACION: 'excepcion_sincronizacion',
-  EXPEDIENTE_BLOQUEADO: 'expediente_bloqueado',
-  EXPEDIENTE_SIN_RESPUESTA: 'expediente_sin_respuesta',
-  ORDEN_COBRABLE_SIN_EXPEDIENTE: 'orden_cobrable_sin_expediente',
   REPUESTO_BAJO_MINIMO: 'repuesto_bajo_minimo',
   SOLICITUD_REPUESTO_PENDIENTE: 'solicitud_repuesto_pendiente',
   EVIDENCIA_FALTANTE: 'evidencia_faltante',
@@ -35,8 +32,8 @@ export const TIPO_AVISO = {
   /**
    * Una cotizacion hecha que el cliente no ha respondido.
    *
-   * Es dinero esperando una llamada: la orden no avanza y nadie la esta
-   * persiguiendo porque, formalmente, no hay nada que hacer.
+   * La orden no avanza mientras el cliente no autorice la reparacion, y
+   * nadie la esta persiguiendo porque, formalmente, no hay nada que hacer.
    */
   COTIZACION_PENDIENTE: 'cotizacion_pendiente',
   /** Un pedido al proveedor que no ha llegado completo. */
@@ -53,7 +50,7 @@ export const GRAVEDAD_AVISO = {
 export type GravedadAviso = (typeof GRAVEDAD_AVISO)[keyof typeof GRAVEDAD_AVISO];
 
 export interface RenglonDeAviso {
-  /** Identificador de la entidad: orden, expediente, repuesto. */
+  /** Identificador de la entidad: orden, solicitud, repuesto. */
   readonly id: string;
   /** Lo que la persona lee en la lista. */
   readonly titulo: string;

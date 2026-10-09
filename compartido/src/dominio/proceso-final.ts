@@ -1,8 +1,9 @@
 /**
  * El vocabulario del tramo final del proceso: validacion tecnica, entrega y
- * el estado del pago.
+ * compras de reposicion. (El estado del pago se retiro con el modulo de
+ * cobros en la migracion 0023.)
  *
- * Son las tres cosas que estaban implicitas en el estado de la orden y que
+ * Son las cosas que estaban implicitas en el estado de la orden y que
  * el pliego pide explicitas. La diferencia practica: «entregada» decia que
  * alguien movio la orden; `entrega` dice a quien se le puso el equipo en
  * las manos y quien se lo dio.
@@ -21,35 +22,6 @@ export type ResultadoValidacion =
 /** Las que dejan pasar la orden al cierre. */
 export const VALIDACIONES_QUE_APRUEBAN: readonly ResultadoValidacion[] = [
   RESULTADO_VALIDACION.APROBADA,
-];
-
-export const ESTADO_PAGO = {
-  /** Anotado en el mostrador. Todavia no es dinero en la cuenta. */
-  REGISTRADO: 'registrado',
-  CONFIRMADO: 'confirmado',
-  ANULADO: 'anulado',
-} as const;
-export type EstadoPago = (typeof ESTADO_PAGO)[keyof typeof ESTADO_PAGO];
-
-/**
- * Formas de pago del pliego (RF-40).
- *
- * El efectivo se cuenta en la mano y queda confirmado ahi mismo; el resto
- * nace registrado y alguien de cobros confirma que entro. Esa distincion
- * no es contable, es operativa: decide si el articulo puede salir.
- */
-export const FORMA_PAGO = {
-  EFECTIVO: 'efectivo',
-  TARJETA: 'tarjeta',
-  TRANSFERENCIA: 'transferencia',
-  DEPOSITO: 'deposito',
-  OTRO: 'otro',
-} as const;
-export type FormaPago = (typeof FORMA_PAGO)[keyof typeof FORMA_PAGO];
-
-/** Las que se dan por cobradas al registrarlas. */
-export const FORMAS_COBRADAS_AL_INSTANTE: readonly FormaPago[] = [
-  FORMA_PAGO.EFECTIVO, FORMA_PAGO.TARJETA,
 ];
 
 export const ESTADO_COMPRA = {

@@ -73,7 +73,9 @@ export interface SolicitudConRecorrido {
   readonly entregadaPor: string | null;
   readonly entregadaEn: string | null;
   readonly recibidaEn: string | null;
-  /** Los pasos que esta solicitud admite desde donde esta. */
+  /** Unidades del repuesto en bodega sin reservar, en este momento. */
+  readonly disponible: number;
+  /** Los pasos que esta solicitud admite desde donde esta y que quien consulta puede dar. */
   readonly pasosPosibles: readonly string[];
 }
 

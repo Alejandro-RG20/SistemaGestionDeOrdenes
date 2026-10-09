@@ -75,8 +75,8 @@ async function ordenAbierta(): Promise<string> {
    *
    * No es decoracion de la prueba: desde que existe el cerco por datos
    * (§13), consumir repuestos contra la orden de otro responde 403, y con
-   * razon —le carga el costo de la pieza a la orden equivocada, y ese costo
-   * acaba en el expediente de cobro de otra persona—. Antes esta prueba
+   * razon —le carga la pieza a la orden equivocada y el kardex cuenta una
+   * reparacion que no ocurrio—. Antes esta prueba
    * levantaba la orden con el agente, la dejaba sin asignar, y el tecnico le
    * cargaba repuestos igual.
    *
@@ -105,6 +105,31 @@ async function idDelTecnicoDePlanta(): Promise<string> {
     throw new Error('La sesion de pruebas no es de un tecnico con ficha activa.');
   }
   return rows[0].id;
+}
+
+/**
+ * La bodega de banco del tecnico de planta de estas pruebas.
+ *
+ * Desde la migracion 0023 el tecnico consume desde SU bodega, no desde la
+ * central: lo que necesita le llega por una entrega de bodega. Aqui se hace
+ * esa entrega con un despacho del bodeguero.
+ */
+async function bancoDelTecnico(): Promise<string> {
+  const { rows } = await entorno.piscina.query<{ id: string }>(
+    "SELECT id FROM bodega WHERE id_tecnico = $1 AND tipo = 'movil' AND activa",
+    [await idDelTecnicoDePlanta()],
+  );
+  return rows[0]!.id;
+}
+
+async function abastecerBanco(idRepuesto: string, cantidad: number): Promise<string> {
+  const banco = await bancoDelTecnico();
+  await ingresar(idRepuesto, cantidad);
+  await movimiento(bodeguero, {
+    idRepuesto, tipo: TIPO_MOVIMIENTO.DESPACHO_A_MOVIL,
+    idBodegaOrigen: idCentral, idBodegaDestino: banco, cantidad,
+  }).expect(201);
+  return banco;
 }
 
 beforeAll(async () => {
@@ -242,7 +267,16 @@ describe('la bodega movil no tiene concurrencia; la central si', () => {
     }).expect(201);
 
     const idOrden = await ordenAbierta();
-    const tecnicoRuta = await sesionDe(CODIGO_ROL.TECNICO_RUTA);
+    // El consumo lo registra el dueño de esa bodega movil: un tecnico solo
+    // mueve lo que tiene en la suya.
+    const { rows: duenos } = await entorno.piscina.query<{ nombre_usuario: string }>(
+      `SELECT u.nombre_usuario FROM bodega b JOIN tecnico t ON t.id = b.id_tecnico
+         JOIN usuario u ON u.id = t.id_usuario WHERE b.id = $1`, [idMovil],
+    );
+    const sesionDueno = await peticion(entorno.aplicacion).post(`${RAIZ}/autenticacion/sesion`)
+      .send({ nombreUsuario: duenos[0]!.nombre_usuario, contrasena: CONTRASENA_DE_PRUEBA }).expect(201);
+    const tecnicoRuta = { Authorization: `Bearer ${sesionDueno.body.data.tokenAcceso}` };
+    await entorno.piscina.query('UPDATE orden_servicio SET id_tecnico = t.id FROM bodega b JOIN tecnico t ON t.id = b.id_tecnico WHERE b.id = $2 AND orden_servicio.id = $1', [idOrden, idMovil]);
     await movimiento(tecnicoRuta, {
       idRepuesto, tipo: TIPO_MOVIMIENTO.CONSUMO, idBodegaOrigen: idMovil,
       cantidad: 2, idOrden, registradoSinConexion: true,
@@ -275,11 +309,11 @@ describe('todo consumo va atado a su orden', () => {
 
   it('el consumo queda consultable desde la orden', async () => {
     const idRepuesto = await repuestoNuevo();
-    await ingresar(idRepuesto, 5);
+    const banco = await abastecerBanco(idRepuesto, 5);
     const idOrden = await ordenAbierta();
 
     await movimiento(tecnicoPlanta, {
-      idRepuesto, tipo: TIPO_MOVIMIENTO.CONSUMO, idBodegaOrigen: idCentral, cantidad: 2, idOrden,
+      idRepuesto, tipo: TIPO_MOVIMIENTO.CONSUMO, idBodegaOrigen: banco, cantidad: 2, idOrden,
     }).expect(201);
 
     const movimientos = await peticion(entorno.aplicacion)
@@ -312,9 +346,9 @@ describe('consumo en lote: todo o nada', () => {
     const alcanza = await repuestoNuevo();
     const tambienAlcanza = await repuestoNuevo();
     const noAlcanza = await repuestoNuevo();
-    await ingresar(alcanza, 10);
-    await ingresar(tambienAlcanza, 10);
-    await ingresar(noAlcanza, 1);
+    const banco = await abastecerBanco(alcanza, 10);
+    await abastecerBanco(tambienAlcanza, 10);
+    await abastecerBanco(noAlcanza, 1);
 
     const idOrden = await ordenAbierta();
 
@@ -322,9 +356,9 @@ describe('consumo en lote: todo o nada', () => {
       .post(`${RAIZ}/ordenes/${idOrden}/consumos`).set(tecnicoPlanta)
       .send({
         consumos: [
-          { idRepuesto: alcanza, cantidad: 3, idBodegaOrigen: idCentral },
-          { idRepuesto: tambienAlcanza, cantidad: 2, idBodegaOrigen: idCentral },
-          { idRepuesto: noAlcanza, cantidad: 5, idBodegaOrigen: idCentral },
+          { idRepuesto: alcanza, cantidad: 3, idBodegaOrigen: banco },
+          { idRepuesto: tambienAlcanza, cantidad: 2, idBodegaOrigen: banco },
+          { idRepuesto: noAlcanza, cantidad: 5, idBodegaOrigen: banco },
         ],
       });
 
@@ -332,9 +366,9 @@ describe('consumo en lote: todo o nada', () => {
     expect(respuesta.body.error.code).toBe('EXISTENCIA_INSUFICIENTE');
 
     // Ni el primero ni el segundo se descontaron.
-    expect(await existenciaDe(idCentral, alcanza)).toBe(10);
-    expect(await existenciaDe(idCentral, tambienAlcanza)).toBe(10);
-    expect(await existenciaDe(idCentral, noAlcanza)).toBe(1);
+    expect(await existenciaDe(banco, alcanza)).toBe(10);
+    expect(await existenciaDe(banco, tambienAlcanza)).toBe(10);
+    expect(await existenciaDe(banco, noAlcanza)).toBe(1);
 
     // Y no quedo ningun movimiento suelto.
     const { rows } = await entorno.piscina.query<{ total: string }>(
@@ -346,22 +380,22 @@ describe('consumo en lote: todo o nada', () => {
   it('cuando todo alcanza, se descuenta todo junto', async () => {
     const uno = await repuestoNuevo();
     const otro = await repuestoNuevo();
-    await ingresar(uno, 10);
-    await ingresar(otro, 10);
+    const banco = await abastecerBanco(uno, 10);
+    await abastecerBanco(otro, 10);
     const idOrden = await ordenAbierta();
 
     const respuesta = await peticion(entorno.aplicacion)
       .post(`${RAIZ}/ordenes/${idOrden}/consumos`).set(tecnicoPlanta)
       .send({
         consumos: [
-          { idRepuesto: uno, cantidad: 3, idBodegaOrigen: idCentral },
-          { idRepuesto: otro, cantidad: 4, idBodegaOrigen: idCentral },
+          { idRepuesto: uno, cantidad: 3, idBodegaOrigen: banco },
+          { idRepuesto: otro, cantidad: 4, idBodegaOrigen: banco },
         ],
       }).expect(201);
 
     expect(respuesta.body.data).toHaveLength(2);
-    expect(await existenciaDe(idCentral, uno)).toBe(7);
-    expect(await existenciaDe(idCentral, otro)).toBe(6);
+    expect(await existenciaDe(banco, uno)).toBe(7);
+    expect(await existenciaDe(banco, otro)).toBe(6);
   });
 });
 

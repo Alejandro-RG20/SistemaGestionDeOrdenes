@@ -29,7 +29,7 @@ describe('secciones del panel', () => {
     expect(rutas(usuarioDePrueba([]))).toContain('/');
   });
 
-  it('un bodeguero ve inventario y no cobros ni administracion', () => {
+  it('un bodeguero ve inventario y no administracion', () => {
     const bodeguero = usuarioDePrueba(
       ['ordenes.consultar', 'inventario.consultar'], 'bodeguero',
     );
@@ -44,25 +44,42 @@ describe('secciones del panel', () => {
   it('la jefatura de atencion al cliente ve administracion', () => {
     // No hay rol de administrador: esta jefatura administra el sistema.
     const jefatura = usuarioDePrueba(
-      ['ordenes.consultar', 'seguridad.usuario.gestionar', 'cobros.indicadores.consultar'],
+      ['ordenes.consultar', 'seguridad.usuario.gestionar', 'reportes.consultar'],
       'jefe_atencion_cliente',
     );
     expect(rutas(jefatura)).toContain('/administracion');
   });
 
-  it('el gestor de cobros ve cobros y no excepciones', () => {
-    const gestor = usuarioDePrueba(
-      ['ordenes.consultar', 'cobros.expediente.conformar'], 'gestor_cobros',
+  it('el menu no tiene cobros, pagos ni expedientes, ni siquiera para el administrador', () => {
+    const administrador = usuarioDePrueba(
+      CATALOGO_PERMISOS.map((permiso) => permiso.codigo), CODIGO_ROL.ADMINISTRADOR,
     );
-    const suyas = rutas(gestor);
-
-    expect(suyas).toContain('/cobros');
-    expect(suyas).not.toContain('/excepciones');
+    const todas = rutas(administrador);
+    for (const ruta of todas) {
+      expect(ruta).not.toMatch(/cobro|pago|expediente/);
+    }
+    for (const seccion of SECCIONES) {
+      expect(seccion.etiqueta.toLowerCase()).not.toMatch(/cobro|pago|expediente/);
+    }
   });
 
   it('basta uno de los permisos declarados para ver la seccion', () => {
-    const soloEnviar = usuarioDePrueba(['cobros.expediente.enviar']);
-    expect(rutas(soloEnviar)).toContain('/cobros');
+    const soloCrear = usuarioDePrueba(['inventario.solicitud.crear']);
+    expect(rutas(soloCrear)).toContain('/inventario/recorrido');
+  });
+
+  it('el menu prioriza ordenes, luego inventario, luego control', () => {
+    const grupos = SECCIONES.map((seccion) => seccion.grupo);
+    const primero = (grupo: string): number => grupos.indexOf(grupo as never);
+    expect(primero('ordenes')).toBeLessThan(primero('inventario'));
+    expect(primero('inventario')).toBeLessThan(primero('control'));
+  });
+
+  it('quien entrega ve las entregas pendientes; quien no, no', () => {
+    expect(rutas(usuarioDePrueba(['ordenes.consultar', 'ordenes.entregar'])))
+      .toContain('/ordenes?estado=finalizada');
+    expect(rutas(usuarioDePrueba(['ordenes.consultar'])))
+      .not.toContain('/ordenes?estado=finalizada');
   });
 
   it('un tecnico no ve indicadores', () => {
@@ -80,9 +97,9 @@ describe('secciones del panel', () => {
   });
 
   it('tienePermiso no se confunde con un permiso parecido', () => {
-    const usuario = usuarioDePrueba(['cobros.expediente.conformar']);
-    expect(tienePermiso(usuario, 'cobros.expediente.conformar')).toBe(true);
-    expect(tienePermiso(usuario, 'cobros.expediente.enviar')).toBe(false);
+    const usuario = usuarioDePrueba(['inventario.solicitud.crear']);
+    expect(tienePermiso(usuario, 'inventario.solicitud.crear')).toBe(true);
+    expect(tienePermiso(usuario, 'inventario.solicitud.gestionar')).toBe(false);
   });
 });
 

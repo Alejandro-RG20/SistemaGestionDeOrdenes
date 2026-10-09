@@ -8,8 +8,8 @@
  * que instalar nada.
  *
  * La lista de comprobacion no es un recordatorio amable. Sin la fotografia
- * de la pieza dañada, el proveedor rechaza el expediente y el centro come
- * el costo del repuesto. Por eso se dice cuanto vale la falta —en cordobas
+ * de la pieza dañada, la orden no puede avanzar ni validarse y el trabajo
+ * no queda demostrado. Por eso se dice cuanto vale la falta —en cordobas
  * no, porque aqui no se sabe, pero si en consecuencias— en vez de un
  * «campo obligatorio» que no explica nada.
  *
@@ -190,8 +190,7 @@ export function Evidencia(): JSX.Element {
                 : `Faltan ${bloqueantes.length} evidencias obligatorias.`}
             </b>
             {' '}
-            Sin ellas el expediente de cobro se rechaza y el costo del repuesto lo come el
-            centro. Tomelas <b>antes de despedirse del cliente</b>: volver cuesta otra visita.
+            Sin ellas la orden no puede avanzar de etapa ni validarse. Tomelas <b>antes de despedirse del cliente</b>: volver cuesta otra visita.
           </Aviso>
         )
         : (

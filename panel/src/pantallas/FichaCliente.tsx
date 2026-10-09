@@ -197,7 +197,7 @@ export function FichaCliente(): JSX.Element {
       <Aviso>
         <b>Desactivar no es eliminar.</b> Un cliente desactivado deja de aparecer en busquedas y
         no puede usarse en ordenes nuevas, pero sus ordenes, sus articulos y sus coberturas
-        permanecen intactos porque sustentan expedientes de cobro ya presentados (RN-21).
+        permanecen intactos porque son el historial de servicio que se puede consultar (RN-21).
       </Aviso>
     </>
   );

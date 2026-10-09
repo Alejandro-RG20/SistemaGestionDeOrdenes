@@ -151,7 +151,7 @@ export async function registrar(
       throw new ErrorDominio(
         'EVIDENCIA_INCOMPLETA',
         `No se puede aprobar: falta evidencia obligatoria (${faltantes.join(', ')}). `
-        + 'Pida la correccion al tecnico; aprobar asi deja el expediente de cobro sin sustento.',
+        + 'Pida la correccion al tecnico; aprobar asi deja la reparacion sin sustento.',
       );
     }
   }
@@ -172,8 +172,7 @@ export async function registrar(
 }
 
 /**
- * Si la orden quedo aprobada por una jefatura. Lo consultan la entrega y el
- * expediente de cobro.
+ * Si la orden quedo aprobada por una jefatura. Lo consulta la entrega.
  */
 export async function estaAprobada(idOrden: string): Promise<boolean> {
   const ultima = await repositorio.ultimaDeOrden(idOrden);

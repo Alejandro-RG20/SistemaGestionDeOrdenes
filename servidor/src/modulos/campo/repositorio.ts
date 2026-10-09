@@ -50,8 +50,8 @@ export async function insertarEvidencia(
  * la FICHA por la cola de operaciones —para que el taller sepa que la foto
  * existe aunque el binario nunca suba— y el ARCHIVO por la cola de cargas.
  * Si cada camino insertara lo suyo, cada fotografia dejaria dos filas: una
- * huerfana sin archivo y otra completa. En un expediente de cobro eso se
- * lee como «faltan evidencias» aunque esten todas.
+ * huerfana sin archivo y otra completa. En la revision tecnica eso se lee
+ * como «faltan evidencias» aunque esten todas.
  *
  * La identidad de una fotografia es su HUELLA, no su nombre: dos capturas
  * distintas de la misma clave —una repetida porque salio movida— son dos

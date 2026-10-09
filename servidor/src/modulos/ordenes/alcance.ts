@@ -59,7 +59,7 @@ export interface AlcanceDeOrdenes {
  * Resuelve el cerco del actor.
  *
  * La consulta del tecnico solo se hace para los roles que la necesitan: no
- * tiene sentido buscarle una ficha de tecnico a la jefa de cobros en cada
+ * tiene sentido buscarle una ficha de tecnico a la jefa de compras en cada
  * peticion.
  */
 export async function alcanceDe(

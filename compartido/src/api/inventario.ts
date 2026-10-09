@@ -8,6 +8,8 @@ export interface ResumenBodega {
   readonly idTecnico: string | null;
   readonly tecnico: string | null;
   readonly activa: boolean;
+  /** Si de ella se toman piezas para reparar. La de piezas sustituidas no. */
+  readonly surteRepuestos: boolean;
   readonly renglones: number;
   readonly unidades: number;
 }
@@ -112,4 +114,28 @@ export interface ResultadoMovimiento {
   }[];
   /** Ordenes que este ingreso desbloqueo. Vacio si el movimiento no libera nada. */
   readonly ordenesLiberadas: readonly OrdenLiberada[];
+}
+
+/**
+ * Lo que se puede prometer de un repuesto (migracion 0023).
+ *
+ * Solicitar, reservar, entregar, consumir y devolver son cosas distintas, y
+ * cada una se ve aqui en su columna:
+ *   - comprometido: pedido por un tecnico y todavia sin revisar.
+ *   - reservado: aprobado o preparado; apartado, pero aun en bodega.
+ *   - enTecnicos: ya entregado, en la bodega personal del tecnico.
+ *   - disponible: lo que hay en bodega menos lo reservado.
+ * El consumo y la devolucion son movimientos y se leen en el kardex.
+ */
+export interface DisponibilidadRepuesto {
+  readonly idRepuesto: string;
+  readonly codigo: string;
+  readonly descripcion: string;
+  readonly stockMinimo: number;
+  readonly existenciaBodegas: number;
+  readonly enTecnicos: number;
+  readonly reservado: number;
+  readonly comprometido: number;
+  readonly disponible: number;
+  readonly bajoMinimo: boolean;
 }

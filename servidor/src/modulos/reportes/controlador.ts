@@ -11,11 +11,11 @@ export async function catalogo(_peticion: Request, respuesta: Response): Promise
 }
 
 export async function ejecutar(peticion: Request, respuesta: Response): Promise<void> {
-  const { clave, desde, hasta } = validar(esquemaConsultaReporte, {
+  const { clave, desde, hasta, ...filtros } = validar(esquemaConsultaReporte, {
     clave: peticion.params['clave'],
     ...peticion.query,
   });
-  responderDatos(respuesta, await servicio.ejecutar(clave, desde, hasta));
+  responderDatos(respuesta, await servicio.ejecutar(clave, desde, hasta, filtros));
 }
 
 /**
@@ -30,11 +30,11 @@ export async function ejecutar(peticion: Request, respuesta: Response): Promise<
  * caminos a los mismos numeros es un camino de mas.
  */
 export async function exportar(peticion: Request, respuesta: Response): Promise<void> {
-  const { clave, desde, hasta } = validar(esquemaConsultaReporte, {
+  const { clave, desde, hasta, ...filtros } = validar(esquemaConsultaReporte, {
     clave: peticion.params['clave'],
     ...peticion.query,
   });
-  const reporte = await servicio.ejecutar(clave, desde, hasta);
+  const reporte = await servicio.ejecutar(clave, desde, hasta, filtros);
 
   respuesta
     .status(200)
