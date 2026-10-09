@@ -104,7 +104,8 @@ export function manejarErrores(
       ? mensajeDelCuerpo(error)
       : esEsperado && error instanceof ErrorAplicacion ? error.message : MENSAJE_GENERICO,
     correlationId: idCorrelacion,
-    ...(error instanceof ErrorValidacion && Object.keys(error.campos).length > 0
+    ...((error instanceof ErrorValidacion || error instanceof ErrorConflicto)
+      && Object.keys(error.campos).length > 0
       ? { fields: error.campos }
       : {}),
   };

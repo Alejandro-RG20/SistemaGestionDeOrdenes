@@ -23,7 +23,10 @@ export const esquemaCrearCliente = z.object({
     referencia: z.string().trim().max(300).nullish(),
     idZona: z.string().uuid('La zona indicada no es valida.').nullish(),
   }).nullish(),
+  confirmarDuplicado: z.boolean().default(false),
 });
+
+export const esquemaCambiarEstadoCliente = z.object({ motivo });
 
 export const esquemaActualizarCliente = z.object({
   nombres: texto(2, 120, 'Escriba el nombre del cliente.').optional(),

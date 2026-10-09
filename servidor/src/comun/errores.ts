@@ -66,10 +66,20 @@ export class ErrorNoEncontrado extends ErrorAplicacion {
   }
 }
 
-/** La operacion choca con algo que ya existe. */
+/**
+ * La operacion choca con algo que ya existe. `campos` dice con que: por
+ * ejemplo, el identificador de la ficha que ya tiene ese telefono, para que
+ * la pantalla pueda ofrecer abrirla.
+ */
 export class ErrorConflicto extends ErrorAplicacion {
-  constructor(mensaje: string, causa?: unknown) {
-    super('CONFLICTO', mensaje, causa);
+  readonly campos: Readonly<Record<string, string>>;
+
+  constructor(
+    mensaje: string, causa?: unknown, codigo = 'CONFLICTO',
+    campos: Readonly<Record<string, string>> = {},
+  ) {
+    super(codigo, mensaje, causa);
+    this.campos = campos;
   }
 }
 

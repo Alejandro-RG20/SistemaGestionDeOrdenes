@@ -6,7 +6,7 @@ import { actorDe } from '../../comun/autenticacion.js';
 import { esquemaIdentificador, validar } from '../seguridad/esquemas.js';
 import {
   esquemaActualizarCliente, esquemaAgregarDireccion, esquemaAgregarTelefono,
-  esquemaCrearCliente, esquemaFusionar,
+  esquemaCambiarEstadoCliente, esquemaCrearCliente, esquemaFusionar,
 } from './esquemas.js';
 import * as servicio from './servicio.js';
 
@@ -54,4 +54,14 @@ export async function agregarDireccion(peticion: Request, respuesta: Response): 
 export async function fusionar(peticion: Request, respuesta: Response): Promise<void> {
   const datos = validar(esquemaFusionar, peticion.body);
   responderDatos(respuesta, await servicio.fusionar(actorDe(peticion), identificador(peticion), datos));
+}
+
+export async function desactivar(peticion: Request, respuesta: Response): Promise<void> {
+  const datos = validar(esquemaCambiarEstadoCliente, peticion.body);
+  responderDatos(respuesta, await servicio.cambiarEstado(actorDe(peticion), identificador(peticion), false, datos));
+}
+
+export async function activar(peticion: Request, respuesta: Response): Promise<void> {
+  const datos = validar(esquemaCambiarEstadoCliente, peticion.body);
+  responderDatos(respuesta, await servicio.cambiarEstado(actorDe(peticion), identificador(peticion), true, datos));
 }

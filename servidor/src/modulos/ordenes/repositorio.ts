@@ -457,12 +457,14 @@ export async function datosParaCongelar(
 ): Promise<{
   telefono: string | null; detalle: string | null; referencia: string | null;
   id_zona: string | null; cargo_visita: number | null;
+  activo: boolean; id_cliente_principal: string | null;
 } | null> {
   const { rows } = await ejecutor.query<{
     telefono: string | null; detalle: string | null; referencia: string | null;
     id_zona: string | null; cargo_visita: number | null;
+    activo: boolean; id_cliente_principal: string | null;
   }>(
-    `SELECT tel.numero AS telefono, dir.detalle, dir.referencia, dir.id_zona, z.cargo_visita
+    `SELECT c.activo, c.id_cliente_principal, tel.numero AS telefono, dir.detalle, dir.referencia, dir.id_zona, z.cargo_visita
        FROM cliente c
        LEFT JOIN LATERAL (
          SELECT t.numero FROM cliente_telefono t

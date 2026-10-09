@@ -11,18 +11,31 @@
  *    abierta, y eso no es un defecto: es lo que impide que un expediente
  *    presentado al proveedor deje de coincidir con lo que se presento.
  */
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import type { FichaCliente as Ficha, ResumenArticulo, ResumenOrden } from '@servitotal/compartido';
+import type {
+  CatalogosDeApoyo, FichaCliente as Ficha, ResumenArticulo, ResumenOrden,
+} from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
 import {
   Aviso, Cargando, EtiquetaEstado, Fallo, Garantia, Tarjeta, Vacio, fechaCorta,
 } from '../componentes/piezas.js';
-import type { PaginaDeDatos } from '../api/cliente.js';
+import { ErrorDeApi, type PaginaDeDatos } from '../api/cliente.js';
+import { tienePermiso } from '../sesion/navegacion.js';
+
+type Edicion = 'datos' | 'telefono' | 'direccion' | 'estado' | null;
 
 export function FichaCliente(): JSX.Element {
   const { id = '' } = useParams();
-  const { api } = useSesion();
+  const { api, usuario } = useSesion();
+  const [edicion, setEdicion] = useState<Edicion>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const puedeEditar = tienePermiso(usuario, 'clientes.editar');
+  // Retirar una ficha lo hace quien supervisa los datos de clientes: el
+  // mismo permiso que fusionar duplicados (el servidor lo exige igual).
+  const puedeRetirar = tienePermiso(usuario, 'clientes.fusionar');
+  const puedeAbrirOrden = tienePermiso(usuario, 'ordenes.crear');
 
   const ficha = useRecurso<Ficha>(() => api.pedir<Ficha>(`/clientes/${id}`), [id]);
   const articulos = useRecurso<PaginaDeDatos<ResumenArticulo>>(
@@ -37,6 +50,14 @@ export function FichaCliente(): JSX.Element {
   if (ficha.datos === null) return <Fallo error={null} alReintentar={ficha.recargar} />;
 
   const cliente = ficha.datos;
+  const retirado = !cliente.activo || cliente.idClientePrincipal !== null;
+
+  /** Tras guardar: se cierra el formulario y se relee la ficha del servidor. */
+  const alGuardar = (mensaje: string): void => {
+    setEdicion(null);
+    setAviso(mensaje);
+    ficha.recargar();
+  };
 
   return (
     <>
@@ -49,9 +70,47 @@ export function FichaCliente(): JSX.Element {
       {cliente.idClientePrincipal === null ? null : (
         <Aviso tono="warn">
           Este registro fue <b>fusionado</b> en otro cliente. Se conserva porque sustenta
-          ordenes ya cerradas, pero no debe usarse para abrir ninguna nueva.
+          ordenes ya cerradas, pero no debe usarse para abrir ninguna nueva.{' '}
+          <Link to={`/clientes/${cliente.idClientePrincipal}`}>Abrir la ficha principal</Link>
         </Aviso>
       )}
+      {cliente.activo || cliente.idClientePrincipal !== null ? null : (
+        <Aviso tono="warn">
+          Este cliente esta <b>desactivado</b>: no aparece en las busquedas y no puede recibir
+          ordenes nuevas. Su historial sigue intacto.
+        </Aviso>
+      )}
+      {aviso === null ? null : <Aviso tono="ok">{aviso}</Aviso>}
+
+      {cliente.idClientePrincipal !== null ? null : (
+        <div className="tools" style={{ marginBottom: 12 }}>
+          {puedeEditar && cliente.activo ? (
+            <>
+              <button type="button" className="btn" onClick={() => setEdicion('datos')}>Editar datos</button>
+              <button type="button" className="btn" onClick={() => setEdicion('telefono')}>Cambiar o agregar telefono</button>
+              <button type="button" className="btn" onClick={() => setEdicion('direccion')}>Agregar direccion</button>
+            </>
+          ) : null}
+          {puedeRetirar ? (
+            <button type="button" className="btn" onClick={() => setEdicion('estado')}>
+              {cliente.activo ? 'Desactivar cliente' : 'Reactivar cliente'}
+            </button>
+          ) : null}
+        </div>
+      )}
+
+      {edicion === 'datos' ? (
+        <EditarDatos cliente={cliente} alCancelar={() => setEdicion(null)} alGuardar={alGuardar} />
+      ) : null}
+      {edicion === 'telefono' ? (
+        <AgregarTelefono idCliente={cliente.id} alCancelar={() => setEdicion(null)} alGuardar={alGuardar} />
+      ) : null}
+      {edicion === 'direccion' ? (
+        <AgregarDireccion idCliente={cliente.id} alCancelar={() => setEdicion(null)} alGuardar={alGuardar} />
+      ) : null}
+      {edicion === 'estado' ? (
+        <CambiarEstado cliente={cliente} alCancelar={() => setEdicion(null)} alGuardar={alGuardar} />
+      ) : null}
 
       <Tarjeta titulo="Datos personales" extra="datos vivos · se actualizan en todas partes">
         <div className="g g3">
@@ -188,9 +247,11 @@ export function FichaCliente(): JSX.Element {
       </Tarjeta>
 
       <div className="tools">
-        <Link className="btn pri" to={`/ordenes/nueva?idCliente=${cliente.id}`}>
-          Nueva orden para este cliente
-        </Link>
+        {puedeAbrirOrden && !retirado ? (
+          <Link className="btn pri" to={`/ordenes/nueva?idCliente=${cliente.id}`}>
+            Nueva orden para este cliente
+          </Link>
+        ) : null}
         <Link className="btn" to="/clientes">Volver</Link>
       </div>
 
@@ -200,5 +261,230 @@ export function FichaCliente(): JSX.Element {
         permanecen intactos porque son el historial de servicio que se puede consultar (RN-21).
       </Aviso>
     </>
+  );
+}
+
+interface PropsFormulario {
+  readonly alCancelar: () => void;
+  readonly alGuardar: (mensaje: string) => void;
+}
+
+/** Envia, y si el servidor rechaza, muestra su mensaje y los campos que señala. */
+function useEnvio(): {
+  enviar: (accion: () => Promise<unknown>, mensaje: string, alGuardar: (m: string) => void) => Promise<void>;
+  guardando: boolean; error: string | null; campos: Record<string, string>;
+} {
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [campos, setCampos] = useState<Record<string, string>>({});
+  async function enviar(
+    accion: () => Promise<unknown>, mensaje: string, alGuardar: (m: string) => void,
+  ): Promise<void> {
+    setGuardando(true);
+    setError(null);
+    setCampos({});
+    try {
+      await accion();
+      alGuardar(mensaje);
+    } catch (fallo) {
+      setError(fallo instanceof ErrorDeApi ? fallo.message : 'No se pudo guardar el cambio.');
+      setCampos(fallo instanceof ErrorDeApi ? fallo.campos ?? {} : {});
+    } finally {
+      setGuardando(false);
+    }
+  }
+  return { enviar, guardando, error, campos };
+}
+
+function Pista({ campos, clave }: { campos: Record<string, string>; clave: string }): JSX.Element | null {
+  return campos[clave] === undefined ? null : <small style={{ color: 'var(--red)' }}>{campos[clave]}</small>;
+}
+
+const vacioANulo = (valor: string): string | null => (valor.trim() === '' ? null : valor.trim());
+
+function EditarDatos({ cliente, alCancelar, alGuardar }: PropsFormulario & { cliente: Ficha }): JSX.Element {
+  const { api } = useSesion();
+  const { enviar, guardando, error, campos } = useEnvio();
+  const [datos, setDatos] = useState({
+    nombres: cliente.nombres, apellidos: cliente.apellidos ?? '',
+    identificacion: cliente.identificacion ?? '', correo: cliente.correo ?? '',
+  });
+  const poner = (clave: keyof typeof datos) =>
+    (evento: { target: { value: string } }) => setDatos({ ...datos, [clave]: evento.target.value });
+
+  return (
+    <Tarjeta titulo="Editar datos personales">
+      {error === null ? null : <Aviso tono="warn">{error}</Aviso>}
+      <div className="g g4">
+        <div><label>Nombres *</label><input value={datos.nombres} onChange={poner('nombres')} /><Pista campos={campos} clave="nombres" /></div>
+        <div><label>Apellidos</label><input value={datos.apellidos} onChange={poner('apellidos')} /><Pista campos={campos} clave="apellidos" /></div>
+        <div><label>Identificacion</label><input value={datos.identificacion} onChange={poner('identificacion')} /><Pista campos={campos} clave="identificacion" /></div>
+        <div><label>Correo</label><input value={datos.correo} onChange={poner('correo')} type="email" /><Pista campos={campos} clave="correo" /></div>
+      </div>
+      <p className="tenue" style={{ fontSize: 12 }}>
+        Cada cambio queda en la bitacora con el valor anterior. Las ordenes ya abiertas conservan
+        lo que copiaron al crearse.
+      </p>
+      <div className="tools">
+        <button
+          type="button" className="btn pri" disabled={guardando || datos.nombres.trim().length < 2}
+          onClick={() => {
+            void enviar(() => api.pedir(`/clientes/${cliente.id}`, {
+              metodo: 'PATCH',
+              cuerpo: {
+                nombres: datos.nombres.trim(),
+                apellidos: vacioANulo(datos.apellidos),
+                identificacion: vacioANulo(datos.identificacion),
+                correo: vacioANulo(datos.correo),
+              },
+            }), 'Datos del cliente actualizados.', alGuardar);
+          }}
+        >
+          {guardando ? 'Guardando…' : 'Guardar cambios'}
+        </button>
+        <button type="button" className="btn" onClick={alCancelar}>Cancelar</button>
+      </div>
+    </Tarjeta>
+  );
+}
+
+function AgregarTelefono({ idCliente, alCancelar, alGuardar }: PropsFormulario & { idCliente: string }): JSX.Element {
+  const { api } = useSesion();
+  const { enviar, guardando, error, campos } = useEnvio();
+  const [numero, setNumero] = useState('');
+  const [tipo, setTipo] = useState('celular');
+  const [reemplaza, setReemplaza] = useState(true);
+
+  return (
+    <Tarjeta titulo="Telefono">
+      {error === null ? null : <Aviso tono="warn">{error}</Aviso>}
+      <div className="g g3">
+        <div>
+          <label>Numero *</label>
+          <input value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="8888 7777" inputMode="tel" />
+          <Pista campos={campos} clave="numero" />
+        </div>
+        <div>
+          <label>Tipo</label>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+            <option value="celular">Celular</option>
+            <option value="casa">Casa</option>
+            <option value="trabajo">Trabajo</option>
+          </select>
+        </div>
+        <div>
+          <label>Que hacer con el vigente</label>
+          <select value={reemplaza ? '1' : ''} onChange={(e) => setReemplaza(e.target.value === '1')}>
+            <option value="1">Reemplazarlo (pasa a historico)</option>
+            <option value="">Conservarlo tambien vigente</option>
+          </select>
+        </div>
+      </div>
+      <div className="tools" style={{ marginTop: 10 }}>
+        <button
+          type="button" className="btn pri"
+          disabled={guardando || numero.replace(/[\s-]/g, '').length !== 8}
+          onClick={() => {
+            void enviar(() => api.pedir(`/clientes/${idCliente}/telefonos`, {
+              metodo: 'POST', cuerpo: { numero, tipo, reemplazaAlVigente: reemplaza },
+            }), 'Telefono registrado. El anterior se conserva en el historial.', alGuardar);
+          }}
+        >
+          {guardando ? 'Guardando…' : 'Guardar telefono'}
+        </button>
+        <button type="button" className="btn" onClick={alCancelar}>Cancelar</button>
+      </div>
+    </Tarjeta>
+  );
+}
+
+function AgregarDireccion({ idCliente, alCancelar, alGuardar }: PropsFormulario & { idCliente: string }): JSX.Element {
+  const { api } = useSesion();
+  const { enviar, guardando, error, campos } = useEnvio();
+  const catalogos = useRecurso<CatalogosDeApoyo | null>(
+    () => api.pedir<CatalogosDeApoyo>('/catalogos').catch(() => null), [],
+  );
+  const [detalle, setDetalle] = useState('');
+  const [referencia, setReferencia] = useState('');
+  const [idZona, setIdZona] = useState('');
+  const [principal, setPrincipal] = useState(true);
+
+  return (
+    <Tarjeta titulo="Nueva direccion">
+      {error === null ? null : <Aviso tono="warn">{error}</Aviso>}
+      <div className="g g4">
+        <div><label>Direccion *</label><input value={detalle} onChange={(e) => setDetalle(e.target.value)} /><Pista campos={campos} clave="detalle" /></div>
+        <div><label>Referencia</label><input value={referencia} onChange={(e) => setReferencia(e.target.value)} /></div>
+        <div>
+          <label>Zona</label>
+          <select value={idZona} onChange={(e) => setIdZona(e.target.value)}>
+            <option value="">Sin zona</option>
+            {(catalogos.datos?.zonas ?? []).map((zona) => (
+              <option key={zona.id} value={zona.id}>{zona.nombre}</option>
+            ))}
+          </select>
+          <Pista campos={campos} clave="idZona" />
+        </div>
+        <div>
+          <label>Uso</label>
+          <select value={principal ? '1' : ''} onChange={(e) => setPrincipal(e.target.value === '1')}>
+            <option value="1">Principal</option>
+            <option value="">Adicional</option>
+          </select>
+        </div>
+      </div>
+      <div className="tools" style={{ marginTop: 10 }}>
+        <button
+          type="button" className="btn pri" disabled={guardando || detalle.trim().length < 5}
+          onClick={() => {
+            void enviar(() => api.pedir(`/clientes/${idCliente}/direcciones`, {
+              metodo: 'POST',
+              cuerpo: {
+                detalle: detalle.trim(), referencia: vacioANulo(referencia),
+                idZona: idZona === '' ? null : idZona, esPrincipal: principal,
+              },
+            }), 'Direccion registrada. Las ordenes ya programadas no cambian.', alGuardar);
+          }}
+        >
+          {guardando ? 'Guardando…' : 'Guardar direccion'}
+        </button>
+        <button type="button" className="btn" onClick={alCancelar}>Cancelar</button>
+      </div>
+    </Tarjeta>
+  );
+}
+
+function CambiarEstado({ cliente, alCancelar, alGuardar }: PropsFormulario & { cliente: Ficha }): JSX.Element {
+  const { api } = useSesion();
+  const { enviar, guardando, error, campos } = useEnvio();
+  const [motivo, setMotivo] = useState('');
+  const desactivar = cliente.activo;
+
+  return (
+    <Tarjeta titulo={desactivar ? 'Desactivar cliente' : 'Reactivar cliente'}>
+      {error === null ? null : <Aviso tono="warn">{error}</Aviso>}
+      <Aviso tono="info">
+        {desactivar
+          ? 'El cliente dejara de aparecer en las busquedas y no podra recibir ordenes nuevas. '
+            + 'No se borra nada: sus ordenes, articulos y su historial quedan intactos y se puede reactivar.'
+          : 'El cliente volvera a aparecer en las busquedas y podra recibir ordenes nuevas.'}
+      </Aviso>
+      <label>Motivo * (minimo 10 caracteres, queda en la bitacora)</label>
+      <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2} />
+      <Pista campos={campos} clave="motivo" />
+      <div className="tools" style={{ marginTop: 10 }}>
+        <button
+          type="button" className="btn pri" disabled={guardando || motivo.trim().length < 10}
+          onClick={() => {
+            void enviar(() => api.pedir(`/clientes/${cliente.id}/${desactivar ? 'desactivar' : 'activar'}`, {
+              metodo: 'POST', cuerpo: { motivo: motivo.trim() },
+            }), desactivar ? 'Cliente desactivado.' : 'Cliente reactivado.', alGuardar);
+          }}
+        >
+          {guardando ? 'Guardando…' : desactivar ? 'Confirmar desactivacion' : 'Confirmar reactivacion'}
+        </button>
+        <button type="button" className="btn" onClick={alCancelar}>Cancelar</button>
+      </div>
+    </Tarjeta>
   );
 }

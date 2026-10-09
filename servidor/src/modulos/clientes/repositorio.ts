@@ -245,3 +245,35 @@ export async function marcarComoAbsorbido(
     [idAbsorbido, idPrincipal, modificadoPor],
   );
 }
+
+/**
+ * Clientes activos que ya tienen esa identificacion o ese telefono vigente.
+ * Es lo que se revisa antes de dar de alta uno nuevo.
+ */
+export async function buscarPosiblesDuplicados(
+  identificacion: string | null, telefono: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<Array<{ id: string; nombre: string; por: 'identificacion' | 'telefono' }>> {
+  const { rows } = await ejecutor.query<{ id: string; nombre: string; por: 'identificacion' | 'telefono' }>(
+    `SELECT c.id, trim(c.nombres || ' ' || coalesce(c.apellidos, '')) AS nombre,
+            CASE WHEN $1::text IS NOT NULL AND upper(c.identificacion) = upper($1)
+                 THEN 'identificacion' ELSE 'telefono' END AS por
+       FROM cliente c
+      WHERE c.activo
+        AND (($1::text IS NOT NULL AND upper(c.identificacion) = upper($1))
+             OR EXISTS (SELECT 1 FROM cliente_telefono t
+                         WHERE t.id_cliente = c.id AND t.vigente AND t.numero = $2))
+      ORDER BY por, c.creado_en
+      LIMIT 5`,
+    [identificacion, telefono],
+  );
+  return rows;
+}
+
+export async function cambiarActivo(
+  ejecutor: Ejecutor, idCliente: string, activo: boolean, modificadoPor: string,
+): Promise<void> {
+  await ejecutor.query(
+    `UPDATE cliente SET activo = $2, modificado_en = now(), modificado_por = $3 WHERE id = $1`,
+    [idCliente, activo, modificadoPor],
+  );
+}

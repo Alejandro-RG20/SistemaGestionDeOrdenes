@@ -219,7 +219,13 @@ export function Ordenes(): JSX.Element {
       ) : null}
 
       <div className="tools">
-        <Link className="btn pri" to="/ordenes/nueva">Nueva orden</Link>
+        {/* Si la lista esta filtrada por cliente, la orden nueva es para el. */}
+        <Link
+          className="btn pri"
+          to={idCliente === '' ? '/ordenes/nueva' : `/ordenes/nueva?idCliente=${idCliente}`}
+        >
+          {idCliente === '' ? 'Nueva orden' : 'Nueva orden para este cliente'}
+        </Link>
       </div>
     </>
   );

@@ -229,3 +229,122 @@ describe('fusion de duplicados', () => {
       .send({ idClienteAbsorbido: rows[1]!.id, motivo: MOTIVO }).expect(403);
   });
 });
+
+describe('duplicados al registrar', () => {
+  it('rechaza la misma identificacion de un cliente activo y dice cual es', async () => {
+    const primero = await peticion(entorno.aplicacion).post(`${RAIZ}/clientes`).set(cabecera)
+      .send({ nombres: 'Duplicado', apellidos: 'Por Cedula', identificacion: '001-010190-9999Z', telefono: '86001122' })
+      .expect(201);
+
+    const segundo = await peticion(entorno.aplicacion).post(`${RAIZ}/clientes`).set(cabecera)
+      .send({ nombres: 'Otro Nombre', identificacion: '001-010190-9999z', telefono: '86001133' });
+    expect(segundo.status).toBe(409);
+    expect(segundo.body.error.code).toBe('CLIENTE_DUPLICADO');
+    expect(segundo.body.error.fields.identificacion).toBe(primero.body.data.id);
+
+    // Confirmar no sirve: la misma identificacion es la misma persona.
+    const forzado = await peticion(entorno.aplicacion).post(`${RAIZ}/clientes`).set(cabecera)
+      .send({ nombres: 'Otro Nombre', identificacion: '001-010190-9999Z', telefono: '86001133', confirmarDuplicado: true });
+    expect(forzado.status).toBe(409);
+  });
+
+  it('el mismo telefono vigente exige confirmacion y despues se acepta', async () => {
+    const primero = await peticion(entorno.aplicacion).post(`${RAIZ}/clientes`).set(cabecera)
+      .send({ nombres: 'Titular', apellidos: 'Del Celular', telefono: '86002244' }).expect(201);
+
+    const sinConfirmar = await peticion(entorno.aplicacion).post(`${RAIZ}/clientes`).set(cabecera)
+      .send({ nombres: 'Hija', apellidos: 'Del Titular', telefono: '8600 2244' });
+    expect(sinConfirmar.status).toBe(409);
+    expect(sinConfirmar.body.error.code).toBe('CLIENTE_POSIBLE_DUPLICADO');
+    expect(sinConfirmar.body.error.fields.telefono).toBe(primero.body.data.id);
+
+    await peticion(entorno.aplicacion).post(`${RAIZ}/clientes`).set(cabecera)
+      .send({ nombres: 'Hija', apellidos: 'Del Titular', telefono: '86002244', confirmarDuplicado: true })
+      .expect(201);
+  });
+});
+
+describe('desactivar y reactivar', () => {
+  let idCliente: string;
+  let idArticulo: string;
+
+  beforeAll(async () => {
+    const { rows } = await entorno.piscina.query<{ id_cliente: string; id_articulo: string }>(
+      `SELECT c.id AS id_cliente, a.id AS id_articulo
+         FROM cliente c JOIN articulo a ON a.id_cliente = c.id AND a.activo
+        WHERE c.activo AND c.id_cliente_principal IS NULL
+          AND EXISTS (SELECT 1 FROM cliente_telefono t WHERE t.id_cliente = c.id AND t.vigente)
+        ORDER BY c.creado_en DESC LIMIT 1`,
+    );
+    idCliente = rows[0]!.id_cliente;
+    idArticulo = rows[0]!.id_articulo;
+  });
+
+  it('exige motivo y el permiso de supervision', async () => {
+    const sinMotivo = await peticion(entorno.aplicacion)
+      .post(`${RAIZ}/clientes/${idCliente}/desactivar`).set(cabecera).send({ motivo: 'corto' });
+    expect(sinMotivo.status).toBe(400);
+
+    const agente = await sesionDe(CODIGO_ROL.AGENTE_TELEFONIA);
+    await peticion(entorno.aplicacion)
+      .post(`${RAIZ}/clientes/${idCliente}/desactivar`).set(agente)
+      .send({ motivo: `${MOTIVO}: no deberia poder` }).expect(403);
+  });
+
+  it('desactiva sin borrar nada, lo saca de la busqueda y le cierra las ordenes nuevas', async () => {
+    const antes = await peticion(entorno.aplicacion).get(`${RAIZ}/clientes/${idCliente}`).set(cabecera).expect(200);
+
+    const respuesta = await peticion(entorno.aplicacion)
+      .post(`${RAIZ}/clientes/${idCliente}/desactivar`).set(cabecera)
+      .send({ motivo: `${MOTIVO}: el cliente pidio no ser contactado` }).expect(200);
+    expect(respuesta.body.data.activo).toBe(false);
+    expect(respuesta.body.data.cantidadOrdenes).toBe(antes.body.data.cantidadOrdenes);
+    expect(respuesta.body.data.cantidadArticulos).toBe(antes.body.data.cantidadArticulos);
+
+    const telefono = antes.body.data.telefonoVigente as string;
+    const activos = await peticion(entorno.aplicacion)
+      .get(`${RAIZ}/clientes?telefono=${telefono}`).set(cabecera).expect(200);
+    expect(activos.body.data.map((c: { id: string }) => c.id)).not.toContain(idCliente);
+    const todos = await peticion(entorno.aplicacion)
+      .get(`${RAIZ}/clientes?telefono=${telefono}&soloActivos=false`).set(cabecera).expect(200);
+    expect(todos.body.data.map((c: { id: string }) => c.id)).toContain(idCliente);
+
+    const orden = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(cabecera)
+      .send({ idCliente, idArticulo, modalidad: 'taller', fallaReportada: 'No enciende desde ayer por la tarde' });
+    expect(orden.status).toBe(400);
+    expect(orden.body.error.message).toMatch(/desactivado/);
+
+    const asientos = await peticion(entorno.aplicacion)
+      .get(`${RAIZ}/bitacora?tabla=cliente&idRegistro=${idCliente}`).set(cabecera).expect(200);
+    const baja = asientos.body.data.find((a: { accion: string }) => a.accion === 'desactivar');
+    expect(baja.motivo).toMatch(/no ser contactado/);
+  });
+
+  it('no desactiva dos veces y se puede reactivar', async () => {
+    const otraVez = await peticion(entorno.aplicacion)
+      .post(`${RAIZ}/clientes/${idCliente}/desactivar`).set(cabecera)
+      .send({ motivo: `${MOTIVO}: segundo intento` });
+    expect(otraVez.status).toBe(422);
+    expect(otraVez.body.error.code).toBe('CLIENTE_YA_INACTIVO');
+
+    const respuesta = await peticion(entorno.aplicacion)
+      .post(`${RAIZ}/clientes/${idCliente}/activar`).set(cabecera)
+      .send({ motivo: `${MOTIVO}: volvio a solicitar servicio` }).expect(200);
+    expect(respuesta.body.data.activo).toBe(true);
+
+    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(cabecera)
+      .send({ idCliente, idArticulo, modalidad: 'taller', fallaReportada: 'No enciende desde ayer por la tarde' })
+      .expect(201);
+  });
+
+  it('una ficha fusionada no se reactiva ni recibe ordenes', async () => {
+    const { rows } = await entorno.piscina.query<{ id: string }>(
+      'SELECT id FROM cliente WHERE id_cliente_principal IS NOT NULL LIMIT 1',
+    );
+    const respuesta = await peticion(entorno.aplicacion)
+      .post(`${RAIZ}/clientes/${rows[0]!.id}/activar`).set(cabecera)
+      .send({ motivo: `${MOTIVO}: intento sobre fusionado` });
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('YA_FUSIONADO');
+  });
+});

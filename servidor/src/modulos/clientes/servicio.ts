@@ -8,7 +8,7 @@
  * programada.
  */
 import type {
-  FichaCliente, Paginacion, PeticionActualizarCliente, PeticionAgregarDireccion,
+  FichaCliente, Paginacion, PeticionActualizarCliente, PeticionAgregarDireccion, PeticionCambiarEstadoCliente,
   PeticionAgregarTelefono, PeticionCrearCliente, PeticionFusionarClientes,
   ResultadoFusion, ResumenCliente,
 } from '@servitotal/compartido';
@@ -18,7 +18,7 @@ import type { ParametrosPagina } from '../../comun/paginacion.js';
 import { construirPaginacion } from '../../comun/paginacion.js';
 import { ErrorConflicto, ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import { auditar, type AsientoAuditoria } from '../../comun/auditoria.js';
-import { enTransaccion } from '../../comun/transacciones.js';
+import { enTransaccion, type Ejecutor } from '../../comun/transacciones.js';
 import * as repositorio from './repositorio.js';
 import { aFichaCliente, aResumenCliente } from './dto.js';
 
@@ -51,6 +51,8 @@ export async function crear(actor: Actor, peticion: PeticionCrearCliente): Promi
       throw new ErrorValidacion('La zona indicada no existe o esta desactivada.', { idZona: 'Zona no valida.' });
     }
 
+    await rechazarDuplicados(cliente, peticion);
+
     const id = await repositorio.insertar(cliente, {
       idCentro: actor.idCentro,
       nombres: peticion.nombres,
@@ -80,6 +82,40 @@ export async function crear(actor: Actor, peticion: PeticionCrearCliente): Promi
   });
 
   return obtenerFicha(idCliente);
+}
+
+/**
+ * Antes de dar de alta, se busca si la persona ya esta registrada.
+ *
+ * La misma identificacion en otro cliente activo es un duplicado, sin
+ * discusion: se rechaza y se dice cual es la ficha existente. El mismo
+ * telefono vigente casi siempre lo es, pero no siempre —una familia comparte
+ * celular—, asi que se rechaza salvo que quien registra lo confirme.
+ */
+async function rechazarDuplicados(
+  ejecutor: Ejecutor,
+  peticion: PeticionCrearCliente,
+): Promise<void> {
+  const identificacion = peticion.identificacion?.trim() === '' ? null : peticion.identificacion ?? null;
+  const candidatos = await repositorio.buscarPosiblesDuplicados(identificacion, peticion.telefono, ejecutor);
+
+  const mismaIdentificacion = candidatos.find((uno) => uno.por === 'identificacion');
+  if (mismaIdentificacion !== undefined) {
+    throw new ErrorConflicto(
+      `Ya existe un cliente activo con la identificacion ${identificacion}: ${mismaIdentificacion.nombre}. `
+        + 'Abra su ficha en lugar de registrarlo de nuevo.',
+      undefined, 'CLIENTE_DUPLICADO', { identificacion: mismaIdentificacion.id },
+    );
+  }
+
+  const mismoTelefono = candidatos.find((uno) => uno.por === 'telefono');
+  if (mismoTelefono !== undefined && peticion.confirmarDuplicado !== true) {
+    throw new ErrorConflicto(
+      `El telefono ${peticion.telefono} ya es el vigente de ${mismoTelefono.nombre}. `
+        + 'Si es otra persona que comparte ese numero, confirme el registro.',
+      undefined, 'CLIENTE_POSIBLE_DUPLICADO', { telefono: mismoTelefono.id },
+    );
+  }
 }
 
 export async function actualizar(
@@ -206,4 +242,54 @@ export async function fusionar(
       ordenesTrasladadas: ordenes,
     };
   });
+}
+
+/**
+ * Desactivar no borra: el cliente sale de las busquedas y no recibe ordenes
+ * nuevas, pero sus articulos, ordenes e historial quedan donde estaban, y se
+ * puede reactivar. Una ficha absorbida por fusion no se reactiva por aqui:
+ * su lugar es la ficha principal.
+ */
+export async function cambiarEstado(
+  actor: Actor, idCliente: string, activo: boolean, peticion: PeticionCambiarEstadoCliente,
+): Promise<FichaCliente> {
+  await enTransaccion(async (cliente) => {
+    const previo = await repositorio.buscarPorId(idCliente, cliente);
+    if (previo === null) throw new ErrorNoEncontrado('No existe un cliente con ese identificador.');
+    if (previo.id_cliente_principal !== null) {
+      throw new ErrorDominio(
+        'YA_FUSIONADO',
+        'Esa ficha fue fusionada con otro cliente. Trabaje sobre la ficha principal.',
+      );
+    }
+    if (previo.activo === activo) {
+      throw new ErrorDominio(
+        activo ? 'CLIENTE_YA_ACTIVO' : 'CLIENTE_YA_INACTIVO',
+        activo ? 'El cliente ya esta activo.' : 'El cliente ya estaba desactivado.',
+      );
+    }
+    if (activo && previo.identificacion !== null) {
+      const otros = (await repositorio.buscarPosiblesDuplicados(
+        previo.identificacion, previo.telefono_vigente ?? '', cliente,
+      )).filter((uno) => uno.id !== idCliente && uno.por === 'identificacion');
+      if (otros.length > 0) {
+        throw new ErrorConflicto(
+          `No se puede reactivar: ${otros[0]!.nombre} ya esta activo con la misma identificacion. `
+            + 'Fusione las dos fichas.',
+          undefined, 'CLIENTE_DUPLICADO', { identificacion: otros[0]!.id },
+        );
+      }
+    }
+
+    await repositorio.cambiarActivo(cliente, idCliente, activo, actor.id);
+    await auditar(cliente, [{
+      tabla: 'cliente', idRegistro: idCliente,
+      // La bitacora no tiene accion «activar» (0013): reactivar es una modificacion.
+      accion: activo ? ACCION_BITACORA.MODIFICAR : ACCION_BITACORA.DESACTIVAR,
+      campo: 'activo', valorAnterior: String(previo.activo), valorNuevo: String(activo),
+      motivo: peticion.motivo, idUsuario: actor.id,
+    }]);
+  });
+
+  return obtenerFicha(idCliente);
 }

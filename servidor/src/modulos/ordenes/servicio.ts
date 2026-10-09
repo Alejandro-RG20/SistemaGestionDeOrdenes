@@ -168,6 +168,21 @@ export async function crear(actor: Actor, peticion: PeticionCrearOrden): Promise
     if (congelables === null) {
       throw new ErrorValidacion('El cliente indicado no existe.', { idCliente: 'Cliente no valido.' });
     }
+    // Una ficha retirada no recibe ordenes nuevas. Si fue absorbida por una
+    // fusion, la orden va a la principal; si se desactivo, hay que
+    // reactivarla primero, con su motivo en la bitacora.
+    if (congelables.id_cliente_principal !== null) {
+      throw new ErrorValidacion(
+        'Ese cliente fue fusionado con otra ficha. Registre la orden a nombre de la ficha principal.',
+        { idCliente: congelables.id_cliente_principal },
+      );
+    }
+    if (!congelables.activo) {
+      throw new ErrorValidacion(
+        'Ese cliente esta desactivado y no puede recibir ordenes nuevas. Reactivelo desde su ficha.',
+        { idCliente: 'Cliente desactivado.' },
+      );
+    }
 
     const telefono = peticion.telefonoContacto ?? congelables.telefono;
     if (telefono === null) {

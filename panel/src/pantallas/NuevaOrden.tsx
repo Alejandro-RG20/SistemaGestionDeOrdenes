@@ -17,7 +17,7 @@
  * inventa ninguno.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   MODALIDAD_SERVICIO,
   type CatalogosDeApoyo, type EvaluacionCobertura, type FichaArticulo, type FichaCliente,
@@ -83,14 +83,46 @@ export function NuevaOrden(): JSX.Element {
     [consulta],
   );
 
-  // Si se llegó desde la ficha de un cliente, ya viene elegido.
+  /*
+   * Si se llego desde la ficha de un cliente (o desde sus ordenes), ya viene
+   * elegido. Se precarga UNA vez por identificador: antes, «Cambiar de
+   * cliente» dejaba el cliente en null y el efecto lo volvia a cargar, asi
+   * que no habia forma de elegir otro. Y si la precarga fallaba —cliente
+   * inexistente, desactivado, sin permiso— la pantalla se quedaba en la
+   * busqueda sin decir por que.
+   */
   const idClienteInicial = parametros.get('idCliente');
+  const [precargado, setPrecargado] = useState<string | null>(null);
+  const [precargando, setPrecargando] = useState(false);
+  const [errorPrecarga, setErrorPrecarga] = useState<string | null>(null);
   useEffect(() => {
-    if (idClienteInicial === null || cliente !== null) return;
+    if (idClienteInicial === null || idClienteInicial === precargado) return;
+    setPrecargado(idClienteInicial);
+    setPrecargando(true);
+    setErrorPrecarga(null);
     void api.pedir<FichaCliente>(`/clientes/${idClienteInicial}`)
-      .then((ficha) => { setCliente(ficha); setTelefonoContacto(ficha.telefonoVigente ?? ''); })
-      .catch(() => undefined);
-  }, [api, idClienteInicial, cliente]);
+      .then((ficha) => {
+        if (ficha.idClientePrincipal !== null) {
+          setErrorPrecarga('Ese cliente fue fusionado con otra ficha. Busque la ficha principal.');
+          return;
+        }
+        if (!ficha.activo) {
+          setErrorPrecarga(
+            `${ficha.nombres} ${ficha.apellidos ?? ''} esta desactivado y no puede recibir ordenes nuevas.`,
+          );
+          return;
+        }
+        setCliente(ficha);
+        setTelefonoContacto(ficha.telefonoVigente ?? '');
+        setDireccionServicio(ficha.direccionPrincipal ?? '');
+      })
+      .catch((fallo: unknown) => {
+        setErrorPrecarga(fallo instanceof ErrorDeApi
+          ? `No se pudo cargar el cliente indicado: ${fallo.message}`
+          : 'No se pudo cargar el cliente indicado. Busquelo por nombre o telefono.');
+      })
+      .finally(() => setPrecargando(false));
+  }, [api, idClienteInicial, precargado]);
 
   const articulos = useRecurso<PaginaDeDatos<ResumenArticulo>>(
     () => (cliente === null
@@ -200,6 +232,8 @@ export function NuevaOrden(): JSX.Element {
 
       {/* ── 1 · Cliente ── */}
       <Tarjeta titulo="1 · Cliente">
+        {precargando ? <Cargando que="el cliente" /> : null}
+        {errorPrecarga === null || cliente !== null ? null : <Aviso tono="warn">{errorPrecarga}</Aviso>}
         {cliente === null ? (
           <>
             <div className="g g3">
@@ -237,7 +271,7 @@ export function NuevaOrden(): JSX.Element {
             {consulta.length >= 2 && sugerencias.datos?.datos.length === 0 && !sugerencias.cargando ? (
               <p className="cargando">
                 Ningun cliente coincide con «{consulta}».{' '}
-                <a href="/clientes">Registrelo primero en Clientes</a>.
+                <Link to="/clientes">Registrelo primero en Clientes</Link>.
               </p>
             ) : null}
           </>

@@ -59,6 +59,17 @@ export interface PeticionCrearCliente {
     readonly referencia?: string | null;
     readonly idZona?: string | null;
   } | null;
+  /**
+   * El telefono ya es el vigente de otro cliente activo. Puede ser legitimo
+   * —una familia que comparte celular—, pero el servidor no lo acepta sin
+   * que quien registra lo confirme: casi siempre es un duplicado.
+   */
+  readonly confirmarDuplicado?: boolean;
+}
+
+/** Desactivar o reactivar un cliente: siempre con motivo, queda en bitacora. */
+export interface PeticionCambiarEstadoCliente {
+  readonly motivo: string;
 }
 
 export interface PeticionActualizarCliente {
