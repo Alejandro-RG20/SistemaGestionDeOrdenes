@@ -47,6 +47,12 @@ export async function buscarBodega(
 }
 
 /** Si la bodega es la bodega personal del tecnico que es ese usuario. */
+/** Si el usuario es un tecnico activo (de ruta o de planta). */
+export async function esTecnico(ejecutor: Ejecutor, idUsuario: string): Promise<boolean> {
+  const { rows } = await ejecutor.query('SELECT 1 FROM tecnico WHERE id_usuario = $1 AND activo', [idUsuario]);
+  return rows.length > 0;
+}
+
 export async function esBodegaDelUsuario(
   ejecutor: Ejecutor, idBodega: string, idUsuario: string,
 ): Promise<boolean> {

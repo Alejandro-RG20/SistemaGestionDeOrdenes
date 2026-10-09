@@ -6,10 +6,12 @@
  * sus repositorios— y corre dentro de la transaccion que abrio el motor,
  * gracias a que las transacciones son reentrantes.
  */
-import { TIPO_OPERACION, type TipoOperacion } from '@servitotal/compartido';
+import { ESTADOS_FINALES, TIPO_OPERACION, type EstadoOrden, type TipoOperacion } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import type { Ejecutor } from '../../comun/transacciones.js';
-import { ErrorValidacion } from '../../comun/errores.js';
+import { ErrorDominio, ErrorValidacion } from '../../comun/errores.js';
+import { exigirCercoSobreOrden } from '../ordenes/alcance.js';
+import * as repositorioSincronizacion from './repositorio.js';
 import * as servicioOrdenes from '../ordenes/servicio.js';
 import * as servicioTransiciones from '../ordenes/servicio-transiciones.js';
 import * as servicioAgenda from '../agenda/servicio.js';
@@ -54,6 +56,28 @@ function opcional<T>(carga: Record<string, unknown>, campo: string, tipo: 'strin
   return typeof valor === tipo ? (valor as T) : undefined;
 }
 
+/**
+ * Lo que toda operacion de campo sobre una orden exige antes de aplicarse:
+ * que quien la envia pueda ver esa orden (un tecnico, solo las suyas) y que
+ * la orden no este cerrada. Los servicios del panel ya lo exigian; la cola
+ * no, y por ella un tecnico podia registrar visitas, diagnosticos,
+ * consumos o evidencias en ordenes ajenas o ya entregadas.
+ *
+ * Los rechazos llevan los codigos que el clasificador de conflictos conoce
+ * (ORDEN_CERRADA), asi que el trabajo no se pierde: queda en la bandeja de
+ * excepciones para conciliarlo.
+ */
+async function exigirOrdenDeCampo(actor: Actor, idOrden: string, ejecutor: Ejecutor): Promise<void> {
+  await exigirCercoSobreOrden(actor, idOrden, ejecutor);
+  const estado = await repositorioSincronizacion.estadoDeOrden(idOrden, ejecutor);
+  if (estado !== null && (ESTADOS_FINALES as readonly string[]).includes(estado)) {
+    throw new ErrorDominio(
+      'ORDEN_CERRADA',
+      `La orden ya esta ${(estado as EstadoOrden).replace(/_/g, ' ')} y no admite trabajo de campo.`,
+    );
+  }
+}
+
 const EJECUTORES: Readonly<Record<TipoOperacion, Ejecutador>> = {
   [TIPO_OPERACION.ORDEN_CREAR]: async ({ actor, carga }) => {
     const ficha = await servicioOrdenes.crear(actor, {
@@ -91,6 +115,7 @@ const EJECUTORES: Readonly<Record<TipoOperacion, Ejecutador>> = {
 
   [TIPO_OPERACION.VISITA_REGISTRAR]: async ({ actor, carga, momentoDispositivo, ejecutor }) => {
     const idOrden = exigir<string>(carga, 'idOrden', 'string');
+    await exigirOrdenDeCampo(actor, idOrden, ejecutor);
     const visita = await servicioAgenda.registrarResultadoDeVisita(ejecutor, actor, idOrden, {
       resultado: exigir<never>(carga, 'resultado', 'string'),
       horaLlegada: opcional<string>(carga, 'horaLlegada', 'string') ?? momentoDispositivo.toISOString(),
@@ -102,9 +127,24 @@ const EJECUTORES: Readonly<Record<TipoOperacion, Ejecutador>> = {
 
   [TIPO_OPERACION.DIAGNOSTICO_REGISTRAR]: async ({ actor, carga, momentoDispositivo, ejecutor }) => {
     const idOrden = exigir<string>(carga, 'idOrden', 'string');
+    await exigirOrdenDeCampo(actor, idOrden, ejecutor);
+    // El diagnostico se firma con el tecnico de la SESION, no con el que
+    // diga la carga: antes cualquiera podia registrarlo a nombre de otro.
+    // La carga puede seguir trayendo idTecnico (las colas ya guardadas en
+    // los dispositivos lo traen); si no coincide, se rechaza.
+    const idTecnicoDeLaSesion = await repositorioSincronizacion.tecnicoDeUsuario(actor.id, ejecutor);
+    const idTecnicoDeLaCarga = opcional<string>(carga, 'idTecnico', 'string');
+    if (idTecnicoDeLaSesion !== null && idTecnicoDeLaCarga !== undefined
+        && idTecnicoDeLaCarga !== idTecnicoDeLaSesion) {
+      throw new ErrorDominio(
+        'NO_ES_RESPONSABLE',
+        'El diagnostico viene a nombre de otro tecnico. Solo puede registrar diagnosticos propios.',
+      );
+    }
+    const idTecnico = idTecnicoDeLaSesion ?? exigir<string>(carga, 'idTecnico', 'string');
     const id = await repositorioCampo.insertarDiagnostico(ejecutor, {
       idOrden,
-      idTecnico: exigir<string>(carga, 'idTecnico', 'string'),
+      idTecnico,
       fallaReal: exigir<string>(carga, 'fallaReal', 'string'),
       componente: opcional<string>(carga, 'componente', 'string') ?? null,
       momentoDispositivo,
@@ -114,11 +154,13 @@ const EJECUTORES: Readonly<Record<TipoOperacion, Ejecutador>> = {
   },
 
   [TIPO_OPERACION.INVENTARIO_CONSUMO]: async ({ actor, carga, momentoDispositivo, ejecutor }) => {
+    const idOrden = exigir<string>(carga, 'idOrden', 'string');
+    await exigirOrdenDeCampo(actor, idOrden, ejecutor);
     const resultado = await consumirDesdeCampo(ejecutor, actor, {
       idRepuesto: exigir<string>(carga, 'idRepuesto', 'string'),
       idBodegaOrigen: exigir<string>(carga, 'idBodegaOrigen', 'string'),
       cantidad: exigir<number>(carga, 'cantidad', 'number'),
-      idOrden: exigir<string>(carga, 'idOrden', 'string'),
+      idOrden,
       precioFirmado: opcional<number>(carga, 'precioUnitario', 'number'),
       momentoDispositivo,
     });
@@ -155,6 +197,7 @@ const EJECUTORES: Readonly<Record<TipoOperacion, Ejecutador>> = {
 
   [TIPO_OPERACION.EVIDENCIA_REGISTRAR]: async ({ actor, carga, momentoDispositivo, ejecutor }) => {
     const idOrden = exigir<string>(carga, 'idOrden', 'string');
+    await exigirOrdenDeCampo(actor, idOrden, ejecutor);
     const clave = exigir<string>(carga, 'clave', 'string');
     const huellaDigital = opcional<string>(carga, 'huellaDigital', 'string') ?? null;
 

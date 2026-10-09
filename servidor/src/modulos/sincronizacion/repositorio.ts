@@ -180,3 +180,13 @@ export async function tecnicoDeUsuario(
   );
   return rows[0]?.id ?? null;
 }
+
+/** Estado de la orden hoy, o null si no existe. */
+export async function estadoDeOrden(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<string | null> {
+  const { rows } = await ejecutor.query<{ estado: string }>(
+    'SELECT estado::text AS estado FROM orden_servicio WHERE id = $1', [idOrden],
+  );
+  return rows[0]?.estado ?? null;
+}

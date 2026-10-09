@@ -158,3 +158,13 @@ export async function registrarResultado(
     [datos.id, datos.resultado, datos.horaLlegada, datos.horaSalida, datos.motivo],
   );
 }
+
+/** El tecnico activo de un usuario, o null si el usuario no es tecnico. */
+export async function tecnicoDeUsuario(
+  idUsuario: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<string | null> {
+  const { rows } = await ejecutor.query<{ id: string }>(
+    'SELECT id FROM tecnico WHERE id_usuario = $1 AND activo', [idUsuario],
+  );
+  return rows[0]?.id ?? null;
+}

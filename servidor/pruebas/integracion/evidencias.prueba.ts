@@ -111,13 +111,14 @@ function fotoDePrueba(bytes: number): Buffer {
 /** Sube el archivo por trozos, como haria el movil con mala senal. */
 async function subirPorPartes(
   idCarga: string, contenido: Buffer, tamanoDeParte: number,
+  sesion: { Authorization: string } = tecnico,
 ): Promise<number> {
   let enviados = 0;
   while (enviados < contenido.length) {
     const parte = contenido.subarray(enviados, enviados + tamanoDeParte);
     const respuesta = await peticion(entorno.aplicacion)
       .patch(`${RAIZ}/evidencias/cargas/${idCarga}`)
-      .set(tecnico)
+      .set(sesion)
       .set('Content-Type', 'application/octet-stream')
       .set('X-Desplazamiento', String(enviados))
       .send(parte).expect(200);
@@ -238,8 +239,16 @@ describe('carga por partes con reanudacion', () => {
     const momento = new Date().toISOString();
 
     // Primero la ficha, por la cola de operaciones: es el orden en que lo
-    // manda el dispositivo.
+    // manda el dispositivo. Ficha y archivo los manda el MISMO tecnico desde
+    // su dispositivo, y la orden es suya: la cola tambien aplica el cerco
+    // por datos y rechaza operaciones sobre ordenes ajenas.
     const movil = await sesionDeDispositivo();
+    await entorno.piscina.query(
+      `UPDATE orden_servicio SET id_tecnico = (
+         SELECT t.id FROM dispositivo d JOIN tecnico t ON t.id_usuario = d.id_usuario
+          WHERE d.revocado_en IS NULL AND t.tipo = 'ruta' ORDER BY d.identificador LIMIT 1)
+        WHERE id = $1`, [idOrden],
+    );
     const cola = await peticion(entorno.aplicacion).post(`${RAIZ}/sincronizacion/cola`)
       .set(movil)
       .send({
@@ -256,19 +265,19 @@ describe('carga por partes con reanudacion', () => {
     expect(cola.body.data.aplicadas).toBe(1);
 
     // Y despues el archivo. Se tiene que colgar de la ficha que ya existe.
-    const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`).set(tecnico)
+    const carga = await peticion(entorno.aplicacion).post(`${RAIZ}/evidencias/cargas`).set(movil)
       .send({
         idOrden, clave: 'foto_falla', tipo: 'foto',
         bytes: contenido.length, huellaDigital: huella, momentoDispositivo: momento,
       }).expect(201);
 
-    await subirPorPartes(carga.body.data.idCarga, contenido, 1_024);
+    await subirPorPartes(carga.body.data.idCarga, contenido, 1_024, movil);
     await peticion(entorno.aplicacion)
-      .post(`${RAIZ}/evidencias/cargas/${carga.body.data.idCarga}/cerrar`).set(tecnico)
+      .post(`${RAIZ}/evidencias/cargas/${carga.body.data.idCarga}/cerrar`).set(movil)
       .send({ idEvidencia: carga.body.data.idEvidencia }).expect(200);
 
     const listadas = await peticion(entorno.aplicacion)
-      .get(`${RAIZ}/ordenes/${idOrden}/evidencias`).set(tecnico).expect(200);
+      .get(`${RAIZ}/ordenes/${idOrden}/evidencias`).set(movil).expect(200);
     const deEsaFoto = listadas.body.data
       .filter((e: { clave: string }) => e.clave === 'foto_falla');
 

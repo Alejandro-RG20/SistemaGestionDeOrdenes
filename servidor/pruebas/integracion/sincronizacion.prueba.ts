@@ -80,6 +80,16 @@ async function clienteConArticulo(): Promise<{ idCliente: string; idArticulo: st
   return { idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id };
 }
 
+/**
+ * La orden se le encarga al tecnico del movil. Con el cerco por datos en la
+ * cola (un tecnico solo opera sobre sus ordenes), un consumo sobre una orden
+ * que nadie le asigno es justamente lo que se rechaza; estas pruebas miden
+ * otra cosa y necesitan la orden encargada, como pasa en la realidad.
+ */
+async function encargarAlTecnico(idOrden: string): Promise<void> {
+  await entorno.piscina.query('UPDATE orden_servicio SET id_tecnico = $2 WHERE id = $1', [idOrden, idTecnicoRuta]);
+}
+
 let contador = 0;
 async function repuestoNuevo(precio = 900): Promise<string> {
   contador += 1;
@@ -172,6 +182,7 @@ describe('idempotencia: reenviar no duplica', () => {
         idCliente: base.idCliente, idArticulo: base.idArticulo,
         modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Para probar consumo repetido',
       }).expect(201);
+    await encargarAlTecnico(orden.body.data.id);
 
     const op = operacion(TIPO_OPERACION.INVENTARIO_CONSUMO, {
       idOrden: orden.body.data.id, idRepuesto, idBodegaOrigen: idBodegaMovil, cantidad: 2,
@@ -332,6 +343,7 @@ describe('prevalece lo que ocurrio en el domicilio', () => {
         idCliente: base.idCliente, idArticulo: base.idArticulo,
         modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'El tecnico instalo una pieza que no figuraba',
       }).expect(201);
+    await encargarAlTecnico(orden.body.data.id);
 
     // La bodega movil no tiene ni una unidad de este repuesto.
     expect(await existenciaDe(idBodegaMovil, idRepuesto)).toBe(0);
@@ -383,6 +395,7 @@ describe('prevalece lo que ocurrio en el domicilio', () => {
         idCliente: base.idCliente, idArticulo: base.idArticulo,
         modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Para probar el precio firmado',
       }).expect(201);
+    await encargarAlTecnico(orden.body.data.id);
 
     const respuesta = await sincronizar(movil, [
       operacion(TIPO_OPERACION.INVENTARIO_CONSUMO, {
@@ -437,5 +450,123 @@ describe('quien puede sincronizar', () => {
   it('solo quien tiene el permiso resuelve excepciones', async () => {
     await peticion(entorno.aplicacion)
       .get(`${RAIZ}/sincronizacion/excepciones`).set(agente).expect(403);
+  });
+});
+
+describe('la cola no deja hacer lo que el panel no deja', () => {
+  async function ordenDeRuta(): Promise<string> {
+    const base = await clienteConArticulo();
+    const orden = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
+      .send({
+        idCliente: base.idCliente, idArticulo: base.idArticulo,
+        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Orden para probar el cerco de la cola',
+      }).expect(201);
+    return orden.body.data.id as string;
+  }
+
+  async function motivoDe(idExcepcion: string): Promise<string> {
+    const excepcion = await peticion(entorno.aplicacion)
+      .get(`${RAIZ}/sincronizacion/excepciones/${idExcepcion}`).set(gestor).expect(200);
+    return excepcion.body.data.motivo as string;
+  }
+
+  it('un consumo sobre una orden ajena no descuenta nada y queda en la bandeja', async () => {
+    const idOrden = await ordenDeRuta();
+    const idRepuesto = await repuestoNuevo();
+
+    const respuesta = await sincronizar(movil, [
+      operacion(TIPO_OPERACION.INVENTARIO_CONSUMO, { idOrden, idRepuesto, idBodegaOrigen: idBodegaMovil, cantidad: 1 }),
+    ]).expect(200);
+
+    const resultado = respuesta.body.data.resultados[0];
+    expect(resultado.estado).toBe(ESTADO_OPERACION.EN_EXCEPCION);
+    expect(resultado.confirmada).toBe(true);
+    const { rows } = await entorno.piscina.query('SELECT 1 FROM movimiento_repuesto WHERE id_orden = $1', [idOrden]);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('un tecnico no consume de una bodega que no es suya, ni siquiera para ajustar faltantes', async () => {
+    const idOrden = await ordenDeRuta();
+    await encargarAlTecnico(idOrden);
+    const idRepuesto = await repuestoNuevo();
+    const antes = await existenciaDe(idCentral, idRepuesto);
+
+    const respuesta = await sincronizar(movil, [
+      operacion(TIPO_OPERACION.INVENTARIO_CONSUMO, { idOrden, idRepuesto, idBodegaOrigen: idCentral, cantidad: 3 }),
+    ]).expect(200);
+
+    const resultado = respuesta.body.data.resultados[0];
+    expect(resultado.estado).toBe(ESTADO_OPERACION.EN_EXCEPCION);
+    expect(await existenciaDe(idCentral, idRepuesto)).toBe(antes);
+    const { rows } = await entorno.piscina.query('SELECT 1 FROM movimiento_repuesto WHERE id_orden = $1', [idOrden]);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('el diagnostico se registra a nombre de quien sincroniza, no de quien diga la carga', async () => {
+    const idOrden = await ordenDeRuta();
+    await encargarAlTecnico(idOrden);
+    const { rows: otros } = await entorno.piscina.query<{ id: string }>(
+      'SELECT id FROM tecnico WHERE id <> $1 AND activo LIMIT 1', [idTecnicoRuta],
+    );
+
+    const suplantado = await sincronizar(movil, [
+      operacion(TIPO_OPERACION.DIAGNOSTICO_REGISTRAR, {
+        idOrden, idTecnico: otros[0]!.id, fallaReal: 'Tarjeta quemada', componente: 'tarjeta',
+      }),
+    ]).expect(200);
+    expect(suplantado.body.data.resultados[0].estado).toBe(ESTADO_OPERACION.EN_EXCEPCION);
+    expect(await motivoDe(suplantado.body.data.resultados[0].idExcepcion)).toBeTypeOf('string');
+
+    // Sin idTecnico en la carga, se toma el de la sesion.
+    const propio = await sincronizar(movil, [
+      operacion(TIPO_OPERACION.DIAGNOSTICO_REGISTRAR, { idOrden, fallaReal: 'Tarjeta quemada', componente: 'tarjeta' }),
+    ]).expect(200);
+    expect(propio.body.data.resultados[0].estado).toBe(ESTADO_OPERACION.APLICADA);
+    const { rows } = await entorno.piscina.query<{ id_tecnico: string }>(
+      'SELECT id_tecnico FROM diagnostico WHERE id_orden = $1', [idOrden],
+    );
+    expect(rows.map((fila) => fila.id_tecnico)).toEqual([idTecnicoRuta]);
+  });
+
+  it('el resultado de una visita no se sobrescribe con un segundo registro', async () => {
+    const idOrden = await ordenDeRuta();
+    await encargarAlTecnico(idOrden);
+    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${idOrden}/visitas`).set(gestor)
+      .send({ idTecnico: idTecnicoRuta, fechaProgramada: '2031-03-03', franjaHoraria: '07:00-09:00' })
+      .expect(201);
+
+    const primera = await sincronizar(movil, [
+      operacion(TIPO_OPERACION.VISITA_REGISTRAR, {
+        idOrden, resultado: 'resuelta_en_sitio', horaLlegada: '2031-03-03T09:00:00.000Z',
+      }),
+    ]).expect(200);
+    expect(primera.body.data.resultados[0].estado).toBe(ESTADO_OPERACION.APLICADA);
+
+    const segunda = await sincronizar(movil, [
+      operacion(TIPO_OPERACION.VISITA_REGISTRAR, {
+        idOrden, resultado: 'cliente_ausente', horaLlegada: '2031-03-03T11:00:00.000Z',
+      }),
+    ]).expect(200);
+    expect(segunda.body.data.resultados[0].estado).toBe(ESTADO_OPERACION.EN_EXCEPCION);
+
+    const { rows } = await entorno.piscina.query<{ resultado: string; hora_llegada: Date }>(
+      'SELECT resultado::text AS resultado, hora_llegada FROM visita WHERE id_orden = $1 AND vigente', [idOrden],
+    );
+    expect(rows[0]!.resultado).toBe('resuelta_en_sitio');
+    expect(rows[0]!.hora_llegada.toISOString()).toBe('2031-03-03T09:00:00.000Z');
+  });
+
+  it('no se registra evidencia de campo en una orden ya cerrada', async () => {
+    const idOrden = await ordenDeRuta();
+    await encargarAlTecnico(idOrden);
+    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${idOrden}/estado`).set(jefatura)
+      .send({ hacia: 'anulada', motivo: 'El cliente cancelo antes de la visita' }).expect(200);
+
+    const respuesta = await sincronizar(movil, [
+      operacion(TIPO_OPERACION.EVIDENCIA_REGISTRAR, { idOrden, tipo: 'foto', clave: 'equipo_recibido' }),
+    ]).expect(200);
+    expect(respuesta.body.data.resultados[0].estado).toBe(ESTADO_OPERACION.EN_EXCEPCION);
+    const { rows } = await entorno.piscina.query('SELECT 1 FROM evidencia WHERE id_orden = $1', [idOrden]);
+    expect(rows).toHaveLength(0);
   });
 });

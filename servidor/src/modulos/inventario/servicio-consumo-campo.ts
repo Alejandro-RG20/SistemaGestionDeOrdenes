@@ -11,7 +11,7 @@
 import { TIPO_MOVIMIENTO } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import type { Ejecutor } from '../../comun/transacciones.js';
-import { ErrorValidacion } from '../../comun/errores.js';
+import { ErrorDominio, ErrorValidacion } from '../../comun/errores.js';
 import { resolverPrecio } from '../../dominio/sincronizacion/indice.js';
 import * as repositorio from './repositorio.js';
 import * as repositorioMovimientos from './repositorio-movimientos.js';
@@ -46,6 +46,17 @@ export async function consumirDesdeCampo(
   const bodega = await repositorio.buscarBodega(consumo.idBodegaOrigen, ejecutor);
   if (bodega === null) {
     throw new ErrorValidacion('La bodega indicada no existe.', { idBodegaOrigen: 'Bodega no valida.' });
+  }
+  // Un tecnico consume de SU bodega (vehiculo o banco). Si pudiera nombrar
+  // cualquier otra, el ajuste automatico de faltantes de abajo le dejaria
+  // crear existencias en la bodega central o en la de un compañero. Quien
+  // no es tecnico (el administrador) no tiene bodega propia y no se cerca.
+  if (await repositorio.esTecnico(ejecutor, actor.id)
+      && !(await repositorio.esBodegaDelUsuario(ejecutor, bodega.id, actor.id))) {
+    throw new ErrorDominio(
+      'BODEGA_AJENA',
+      'Solo puede registrar consumos desde su propia bodega (vehiculo o banco de taller).',
+    );
   }
 
   const disponible = await repositorio.bloquearExistencia(ejecutor, bodega.id, consumo.idRepuesto);

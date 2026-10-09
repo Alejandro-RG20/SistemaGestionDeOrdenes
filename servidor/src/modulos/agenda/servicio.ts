@@ -10,6 +10,7 @@ import type {
   CalendarioDelCentro, Paginacion, PeticionProgramarVisita,
   PeticionReprogramarVisita, ResumenVisita,
 } from '@servitotal/compartido';
+import { RESULTADO_VISITA } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import type { Ejecutor } from '../../comun/transacciones.js';
 import { enTransaccion, ejecutorPorDefecto } from '../../comun/transacciones.js';
@@ -175,11 +176,31 @@ export interface ResultadoDeVisita {
  * sincronizacion, asi que corre dentro de la transaccion del motor.
  */
 export async function registrarResultadoDeVisita(
-  ejecutor: Ejecutor, _actor: Actor, idOrden: string, datos: ResultadoDeVisita,
+  ejecutor: Ejecutor, actor: Actor, idOrden: string, datos: ResultadoDeVisita,
 ): Promise<ResumenVisita> {
   const vigente = await repositorio.buscarVigenteDeOrden(idOrden, ejecutor);
   if (vigente === null) {
     throw new ErrorNoEncontrado('La orden no tiene ninguna visita vigente que cerrar.');
+  }
+  // Una visita sigue «vigente» despues de cerrarse (deja de serlo solo al
+  // reprogramarla). Sin esta comprobacion, un segundo registro —otro
+  // dispositivo, o el mismo con otro identificador de operacion— pisaba la
+  // hora de llegada y el resultado del primero sin dejar rastro.
+  if (vigente.resultado !== RESULTADO_VISITA.PROGRAMADA) {
+    throw new ErrorDominio(
+      'VISITA_YA_REGISTRADA',
+      `La visita de la orden ${vigente.numero_orden} ya tiene resultado (${vigente.resultado}). `
+        + 'Si hubo otra visita, hay que programarla o reprogramarla primero.',
+    );
+  }
+  // La registra el tecnico al que se le programo. Otro tecnico no cierra
+  // una visita ajena, aunque vea la orden.
+  const idTecnico = await repositorio.tecnicoDeUsuario(actor.id, ejecutor);
+  if (idTecnico !== null && idTecnico !== vigente.id_tecnico) {
+    throw new ErrorDominio(
+      'NO_ES_RESPONSABLE',
+      `La visita de la orden ${vigente.numero_orden} esta programada para otro tecnico.`,
+    );
   }
 
   await repositorio.registrarResultado(ejecutor, {
