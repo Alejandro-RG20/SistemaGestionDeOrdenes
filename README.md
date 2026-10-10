@@ -26,7 +26,7 @@ pantallas, su lenguaje visual y sus códigos (`W-03`, `P-01`…).
 | Seguridad | 9 roles, 44 permisos, JWT, dispositivos vinculados |
 | Clientes y artículos | fichas históricas, fusión de duplicados, datos sensibles auditados |
 | Garantías | motor con Especificación y Estrategia sobre reglas versionadas |
-| Órdenes | máquina de 13 estados, responsable único, plazos en horas laborables |
+| Órdenes | máquina de 14 estados (13 del pliego + `autorizada`, migración 0024), responsable único, plazos en horas laborables |
 | Agenda | visitas sin doble programación |
 | Inventario | movimientos como fuente de verdad, bodegas móviles, liberación automática |
 | Sincronización | cola idempotente, dos colas, nada se descarta |
@@ -734,7 +734,7 @@ Cubre los últimos doce meses de operación.
 |---|---:|---|
 | `cliente` | 3 000 | con teléfonos y direcciones históricos |
 | `articulo` | 5 000 | 16 % con póliza extendida |
-| `orden_servicio` | 30 000 | repartidas en los 13 estados |
+| `orden_servicio` | 30 000 | repartidas en los 13 estados del pliego (la siembra no genera órdenes `autorizada`) |
 | `evento_orden` | ~239 000 | bitácora completa de cada orden |
 | `evidencia` | ~167 000 | ruta y huella, nunca el binario |
 | `diagnostico_item` | ~76 000 | mediciones tipificadas, con fuera de rango |

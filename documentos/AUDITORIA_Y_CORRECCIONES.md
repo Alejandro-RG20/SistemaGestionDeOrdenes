@@ -242,3 +242,171 @@ Ejecutado en Linux, contra PostgreSQL 16 local, sobre la base de pruebas sembrad
 | Recorrido en navegador (Chromium, Playwright) | ficha → «Nueva orden» con el cliente elegido; «Cambiar de cliente» devuelve el buscador; pestañas de administración según el rol; 50 permisos editables para el administrador; detalle de excepción con lectura y datos técnicos plegados; sin errores de consola ni respuestas 5xx |
 
 No se probó en Windows: los comandos de la sección 6 son los equivalentes de los que se ejecutaron.
+
+---
+
+# Tercera etapa · Técnicos, asignación, «autorizada», bitácora y garantías
+
+Commit `c65c920` sobre la misma rama. **Único cambio de esquema: la migración
+`0024_estado_autorizada.sql`**, que solo agrega el valor `autorizada` al
+enumerado `estado_orden`, justo después de `esperando_autorizacion`
+(autorizado expresamente). No reescribe ni borra filas; la reversión manual
+está en `base-datos/reversiones/0024_revertir.sql`. Todo lo demás reutiliza
+tablas existentes.
+
+## A. Causas encontradas
+
+| Problema | Causa real |
+|---|---|
+| No había dónde gestionar técnicos | No existía ningún endpoint ni pantalla para la tabla `tecnico`; solo los creaba la siembra. |
+| Tras asignar, el selector volvía a «Elija…» | `DetalleOrden.tsx` limpiaba la selección después de guardar y dejaba **deshabilitada** la opción del técnico asignado; no mostraba lo guardado. Los botones de estado salían de `destinosPosibles`, que no considera ni al usuario ni los requisitos. |
+| «Esta orden la tiene jefe_tecnicos…» | En `asignada` y `en_cola_taller` el responsable era solo el **rol** `jefe_tecnicos`. El `gestor_tecnicos`, que es quien asigna (`ordenes.asignar`), no podía mandar la orden a ruta. El rol `administrador` no coincidía con ningún responsable y no podía mover ninguna orden. Bloqueo en el **backend** (la máquina de estados); el panel ofrecía el botón igual. |
+| `agente_telefonia` en mensajes | Es el responsable declarado de `registrada`, `esperando_autorizacion` y `finalizada`; el mensaje mostraba el código del rol. Regla correcta, mensaje defectuoso. |
+| El técnico reemplazado seguía moviendo la orden | Al reasignar no se actualizaba `id_responsable_actual`, que seguía apuntando al técnico anterior. |
+| No se podía cotizar ni registrar la decisión del cliente | Ningún endpoint escribía en `cotizacion`; el diagnóstico solo entraba por la cola móvil. La transición `en_diagnostico → cotizada` exigía una cotización imposible de registrar. |
+| Fechas de garantía | La garantía del proveedor se calculaba solo con fecha de compra + meses de la regla; la tabla `cobertura` ya admitía períodos por artículo, pero el motor solo los usaba para la adicional. |
+| «Corregir con motivo» en la ficha del artículo | Botón deshabilitado sin función, aunque el endpoint `PUT /articulos/:id/datos-sensibles` existía. |
+
+## B. Lo implementado
+
+### Técnicos (`/tecnicos`, módulo de seguridad, tabla `tecnico` existente)
+- **Listar y buscar.** Búsqueda por texto, modalidad (ruta o planta) y estado laboral (activos, de baja, todos), con órdenes abiertas y estado de la cuenta.
+- **Ver.** Muestra sus órdenes abiertas, sus visitas programadas y las piezas que tiene en su bodega.
+- **Registrar**, con cuenta nueva (se crea con el rol `tecnico_ruta` o `tecnico_planta`) o enlazando una cuenta existente con ese rol.
+  - Valida la especialidad contra `categoria_articulo`.
+  - Rechaza duplicados (`TECNICO_DUPLICADO`).
+  - Crea su bodega de vehículo o de banco.
+- **Editar** especialidad, disponibilidad, nombre y modalidad.
+  - Cambiar la modalidad cambia el rol de la cuenta.
+  - Exige motivo y que el técnico no tenga órdenes abiertas.
+- **Dar de baja** sin borrar nada:
+  - Si tiene órdenes abiertas o visitas programadas, exige un técnico de reemplazo y el permiso `ordenes.asignar`.
+  - Cada orden se reasigna con el servicio de siempre y su motivo queda en el historial.
+  - Cada visita se reprograma al reemplazo en la misma fecha y franja.
+  - No se da de baja con piezas en su bodega, que primero deben devolverse.
+- **Reactivar.**
+- **Estados separados:** dar de baja al técnico no desactiva su cuenta, y viceversa.
+- **Permisos:** administra quien tiene `seguridad.usuario.gestionar`; consulta además quien tiene `ordenes.asignar`. Todo queda en la bitácora.
+
+### Asignación y transiciones
+- **Despacho.** Quien tiene `ordenes.asignar` da los pasos de despacho:
+  - `registrada → asignada`;
+  - `asignada → en_ruta / en_cola_taller`;
+  - `en_cola_taller → en_diagnostico`;
+  - `autorizada → asignada`.
+- **Administrador.** Pasa la regla del responsable.
+- **Requisitos para todos.** Evidencia, técnico, visita, diagnóstico, cotización y repuestos se exigen igual a todos. Un agente telefónico sigue sin poder despachar, y el despacho no da los pasos del técnico.
+- **Acciones en la ficha.** La ficha incluye `acciones`: cada destino evaluado para el usuario por la misma máquina de estados que decide al mover. El panel muestra solo las permitidas y explica las demás.
+- **Selector de técnico.** Muestra el técnico guardado (aunque esté inactivo) y el aviso con la respuesta real del backend. Reasignar exige motivo y confirmación.
+
+### Estado `autorizada`
+- **Flujo.** `cotizada → esperando_autorizacion → autorizada →` siguiente etapa:
+  - **visita particular sin diagnóstico:** `asignada`;
+  - **reparación autorizada:** `en_reparacion` o `esperando_repuesto`.
+
+  Nada avanza solo: la autorización no programa visitas, no recibe repuestos ni repara.
+- **Quién autoriza.** `esperando_autorizacion → autorizada` es el botón **«Autorizar orden»**. Solo lo da quien tiene `taller.cotizacion.autorizar`; el responsable del estado no basta si le falta ese permiso. El evento registra quién, cuándo (hora del servidor) y con qué base se autorizó.
+- **Requisitos de la autorización:**
+  - si hay cotización o diagnóstico: cotización aceptada;
+  - si es una **visita particular a domicilio con cargo de visita** y sin diagnóstico: pago registrado en la bitácora y confirmado por **otra persona** con `taller.cotizacion.autorizar`;
+  - en cualquier otro caso no hay requisito de pago, y la orden no queda bloqueada.
+- **Entrada a «esperando autorización».** Esa visita particular puede entrar desde `registrada` o `asignada`; las demás órdenes llegan desde la cotización.
+- **Cambio de comportamiento justificado.** Una reparación **particular** ya no puede saltar de `cotizada` o `en_diagnostico` a `en_reparacion` o `esperando_repuesto`: debe pasar por la autorización. Las cubiertas por garantía no cambian.
+- **Reconocimiento del estado.** Etiquetas, filtros (generados del enumerado), portal del cliente, mensajes del técnico y el reporte de retrasadas reconocen `autorizada`.
+- **Sin plazo.** No se definió una **regla de plazo** para `autorizada`: es un parámetro de negocio y las reglas de plazo las carga la siembra. Mientras no exista, una orden en `autorizada` no tiene plazo vencible. **Pendiente de decisión de negocio.**
+
+### Diagnóstico, cotización y no cobertura
+- **Endpoints**, sobre las tablas existentes `diagnostico` y `cotizacion`:
+  - `GET /ordenes/:id/taller`;
+  - `POST /ordenes/:id/diagnostico`;
+  - `POST /ordenes/:id/cotizaciones`;
+  - `POST /ordenes/:id/cotizaciones/decision`.
+- **Exclusión en el diagnóstico.** Si el diagnóstico registra una exclusión (golpe, mal uso) o la regla excluye la falla, la orden pasa a `particular`. El evento dice de qué garantía venía y por qué. La **modalidad** (ruta o taller) no cambia, y no se inventan coberturas, cotizaciones ni pagos.
+
+### Bitácora
+- **Endpoint.** `POST /ordenes/:id/bitacora` con `{ texto, tipo? }`.
+- **Almacenamiento sin tabla nueva.** Es un asiento de la tabla `bitacora` (`tabla='orden_servicio'`, `campo='bitacora…'`), protegida por el disparador de solo agregar de la migración 0023.
+- **Autor y fecha** los pone el servidor; un `autor` o `momento` enviados se ignoran. Validado por prueba.
+- **Correcciones.** Se corrige con otra entrada que apunta a la corregida.
+- **Panel.** Botón «Registrar bitácora» en el historial: ventana modal con texto, Guardar y Cancelar. La tabla se actualiza sin recargar y muestra el tipo **BITÁCORA**, el texto y el autor real.
+- **Constancia de pago.** Para la constancia de pago, el modal ofrece marcar la entrada como «Registro del pago» o «Confirmo el pago», solo en visitas particulares con cargo. Así se distingue de forma fiable la confirmación válida de un comentario común, sin convertir la bitácora en un módulo de pagos.
+- **Quién puede escribir.** Escribe quien opera órdenes: `ordenes.crear`, `ordenes.asignar`, `ordenes.cerrar`, `ordenes.entregar`, `taller.diagnostico.registrar`, `campo.evidencia.cargar`, `inventario.solicitud.gestionar` y `taller.validacion.registrar`. El usuario de consulta no escribe.
+- **Mejora propuesta (requiere autorización):** un permiso propio `ordenes.bitacora.registrar`. Cambiaría el catálogo sembrado, por eso no se hizo.
+
+### Garantías por artículo
+- **Una sola decisión.** La garantía de proveedor registrada en la ficha (tabla `cobertura`) **manda** sobre el cálculo por meses de la regla. Si no hay ninguna registrada, se calcula como antes. Es la misma máquina de decisión, no un sistema paralelo.
+- **Resumen en la evaluación.** `POST /coberturas/evaluar` devuelve, para la garantía del proveedor y la adicional:
+  - la **vigencia** (vigente, vencida o no registrada) y la fecha de vencimiento;
+  - si se calculó por la regla o está registrada;
+  - si **aplica** al solicitante y el motivo si no aplica.
+- **Nueva orden.** Muestra ese estado y pregunta la modalidad: garantía del proveedor, garantía adicional o servicio particular.
+  - El servidor rechaza una garantía vencida o ajena (`GARANTIA_NO_APLICABLE`).
+  - Particular siempre se puede elegir.
+  - Si no se envía la elección (la cola móvil), decide el motor, como antes.
+- **Ficha del artículo:**
+  - registrar las fechas de garantía de proveedor o adicional, con documento;
+  - corregir una garantía: desactivarla con motivo (`POST /articulos/:id/coberturas/:idCobertura/desactivar`, auditado) y registrar la correcta;
+  - corregir la fecha de compra con motivo.
+- **Órdenes cerradas.** Nunca cambian. Las abiertas del artículo se reevalúan al registrar o corregir una cobertura; es la regla existente (`reevaluarOrdenesAbiertas`), no se agregó.
+- **Reglas de garantía.** No se eliminaron. Siguen aportando:
+  - los meses cuando no hay fecha registrada;
+  - la exigencia de tienda del grupo;
+  - las fallas excluidas que usa el diagnóstico;
+  - la versión que cada orden congela.
+
+  Ninguna configuración quedó innecesaria.
+
+## C. Seguridad y consistencia
+- **Comprobación en el servidor.** Todas las reglas anteriores las comprueba el servidor. El panel solo refleja las acciones que el servidor evaluó.
+- **Autoría desde la sesión.** La identidad de quien autoriza, comenta, confirma un pago o reasigna sale de la sesión.
+- **Atomicidad.** Las operaciones críticas van en transacción. La baja de un técnico con sus reasignaciones y reprogramaciones es atómica: si una visita choca de franja, no se aplica nada.
+- **Concurrencia.** La autorización y la confirmación de pago toman la orden con `FOR UPDATE`, así que dos confirmaciones simultáneas quedan en fila.
+
+## D. Siembra
+- **Cambio en el código.** En `distribucion-estados.ts` y `responsables.ts` se agregó solo la clave `autorizada` (con 0 órdenes y sin responsable), porque los mapas están tipados con `Record<EstadoOrden, …>`.
+- **Verificación.** Se ejecutó la siembra **anterior** (commit `5c3a6c8`) y la **nueva** con la misma fecha fija (`2026-10-09T12:00Z`) en dos bases nuevas. La huella de órdenes, eventos, clientes, usuarios, técnicos, movimientos, reglas de plazo, excepciones y bitácora fue **idéntica**.
+- **Fecha de ejecución.** La siembra usa la fecha del día, así que dos ejecuciones en días distintos difieren aunque el código sea el mismo.
+- **Prueba de la siembra.** `distribucion-estados.prueba.ts` ahora recorre solo los estados que la siembra genera.
+
+## E. Pruebas de esta etapa
+- **Integración.** `flujo-comercial.prueba.ts`, 20 casos contra API y PostgreSQL:
+  - asignación y reasignación con historial;
+  - responsable tras reasignar;
+  - despacho por el gestor y bloqueo del agente;
+  - acciones del panel iguales al backend;
+  - límites del administrador;
+  - cotización, autorización explícita y comentario que no autoriza;
+  - autorización que no crea visita;
+  - garantía vencida rechazada y particular a domicilio;
+  - fechas registradas que mandan;
+  - órdenes cerradas intactas;
+  - golpe que pasa a particular sin cambiar la modalidad;
+  - visita con pago registrado y confirmado por otra persona (y rechazo de la confirmación propia);
+  - orden sin pago previo no retenida;
+  - bitácora: autor y hora del servidor, vacío rechazado, consulta 403, inmutable y corrección;
+  - técnicos: alta, duplicado, especialidad inválida, permisos, edición, baja bloqueada sin reemplazo, baja con reasignación e historial, reactivación.
+- **Unidad.** Máquina de estados: autorizar solo con el permiso, el destino `autorizada` no avanza solo, pago confirmado por otra persona, despacho, administrador.
+- **Prueba de migraciones.** Ahora espera 14 estados, con `autorizada` en su posición.
+
+## F. Pendientes y dependencias
+- **Plazo de `autorizada`.** Definir el plazo (`regla_plazo`) para el estado nuevo; es una decisión de negocio.
+- **Permiso de bitácora.** Si se quiere, un permiso propio `ordenes.bitacora.registrar`; requiere cambiar el catálogo sembrado.
+- **Técnicos y zonas.** No existe una relación técnico–zona en el esquema; no se inventó.
+- **Selección de modalidad elegida a mano.** La reevaluación de órdenes abiertas al registrar una cobertura (regla existente) puede cambiar una modalidad elegida a mano en una orden aún abierta. Si eso no es deseable, hace falta marcar en la orden que la modalidad fue elegida, lo que requiere una columna nueva y autorización.
+
+## G. Resultado de la verificación (tercera etapa)
+
+Ejecutado en Linux con PostgreSQL 16 local, sobre bases de prueba (nunca la de trabajo):
+
+| Verificación | Resultado |
+|---|---|
+| `npm run verificar-tipos` | sin errores |
+| `npm run construir -w panel` | correcto |
+| `npm run prueba` (servidor) | **39 archivos, 540 pruebas, todas aprobadas** |
+| `npm run prueba -w panel` | **114 pruebas aprobadas** |
+| Migración 0024 sobre la base de desarrollo (30 000 órdenes) | aplicada; 30 000 órdenes intactas; `autorizada` entre `esperando_autorizacion` y `esperando_repuesto` |
+| Siembra anterior vs. nueva, misma fecha fija | huellas idénticas |
+| Navegador (Chromium) | asignar muestra el técnico guardado; «Registrar bitácora» guarda y aparece como BITÁCORA con el autor real; «Autorizar orden» explica lo que falta; pestaña Técnicos; nueva orden con estado de garantías y modalidad; sin errores de consola ni 5xx |
+
+No se probó en Windows; los comandos de la sección 6 siguen valiendo
+(`npm run migrar` aplica la 0024).
