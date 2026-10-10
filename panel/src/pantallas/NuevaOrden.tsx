@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  MODALIDAD_SERVICIO,
+  FRANJAS_HORARIAS, MODALIDAD_SERVICIO, esFechaValida, ultimoDiaCubierto,
   type CatalogosDeApoyo, type EvaluacionCobertura, type FichaArticulo, type FichaCliente,
   type FichaOrden, type ResumenArticulo, type ResumenCliente,
 } from '@servitotal/compartido';
@@ -27,12 +27,13 @@ import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
 import { Aviso, Cargando, Tarjeta, cordobas } from '../componentes/piezas.js';
 import { ErrorDeApi, type PaginaDeDatos } from '../api/cliente.js';
+import { tienePermiso } from '../sesion/navegacion.js';
 
 /** Lo que se espera desde la ultima tecla al buscar cliente. */
 const RETARDO_MS = 300;
 
 export function NuevaOrden(): JSX.Element {
-  const { api } = useSesion();
+  const { api, usuario } = useSesion();
   const navegar = useNavigate();
   const [parametros] = useSearchParams();
 
@@ -47,7 +48,13 @@ export function NuevaOrden(): JSX.Element {
   const [nuevoArticulo, setNuevoArticulo] = useState({
     idMarca: '', idCategoria: '', idTiendaOrigen: '',
     modelo: '', numeroSerie: '', fechaCompra: '', facturaReferencia: '',
+    conGarantiaAdicional: false, fechaContratacion: '', mesesAdicional: '',
   });
+  const mesesAdicional = Number(nuevoArticulo.mesesAdicional);
+  const adicionalCompleta = nuevoArticulo.conGarantiaAdicional
+    && esFechaValida(nuevoArticulo.fechaContratacion) && Number.isInteger(mesesAdicional) && mesesAdicional >= 1 && mesesAdicional <= 120;
+  // Vista previa: la misma funcion que usa el servidor, que es quien guarda.
+  const venceAdicional = adicionalCompleta ? ultimoDiaCubierto(nuevoArticulo.fechaContratacion, mesesAdicional) : null;
 
   // ── paso 3: cobertura (la calcula el servidor) ──
   const [cobertura, setCobertura] = useState<EvaluacionCobertura | null>(null);
@@ -60,7 +67,15 @@ export function NuevaOrden(): JSX.Element {
 
   // ── paso 4: falla y asignacion ──
   const [fallaReportada, setFallaReportada] = useState('');
-  const [modalidad, setModalidad] = useState<'ruta' | 'taller'>(MODALIDAD_SERVICIO.RUTA);
+  /*
+   * Modalidad de SERVICIO: visita a domicilio (ruta) o el cliente lleva el
+   * articulo al taller. Sin valor por defecto: se elige siempre, a la
+   * vista, antes de guardar. No tiene que ver con la garantia.
+   */
+  const [modalidad, setModalidad] = useState<'' | 'ruta' | 'taller'>('');
+  const [fechaVisita, setFechaVisita] = useState('');
+  const [franjaVisita, setFranjaVisita] = useState('');
+  const [idTecnicoVisita, setIdTecnicoVisita] = useState('');
   const [idZona, setIdZona] = useState('');
   const [direccionServicio, setDireccionServicio] = useState('');
   const [referenciaUbicacion, setReferenciaUbicacion] = useState('');
@@ -177,6 +192,9 @@ export function NuevaOrden(): JSX.Element {
           fechaCompra: nuevoArticulo.fechaCompra === '' ? null : nuevoArticulo.fechaCompra,
           facturaReferencia: nuevoArticulo.facturaReferencia.trim() === ''
             ? null : nuevoArticulo.facturaReferencia.trim(),
+          garantiaAdicional: adicionalCompleta
+            ? { fechaContratacion: nuevoArticulo.fechaContratacion, meses: mesesAdicional }
+            : null,
         },
       });
       setCreandoArticulo(false);
@@ -202,6 +220,15 @@ export function NuevaOrden(): JSX.Element {
           idArticulo,
           modalidad,
           tipoGarantiaElegida: modalidadGarantia,
+          ...(modalidad === MODALIDAD_SERVICIO.RUTA && fechaVisita !== '' && franjaVisita !== ''
+            ? {
+              visita: {
+                fechaProgramada: fechaVisita,
+                franjaHoraria: franjaVisita,
+                ...(idTecnicoVisita === '' ? {} : { idTecnico: idTecnicoVisita }),
+              },
+            }
+            : {}),
           fallaReportada: fallaReportada.trim(),
           ...(telefonoContacto.trim() === '' ? {} : { telefonoContacto: telefonoContacto.trim() }),
           ...(modalidad === MODALIDAD_SERVICIO.RUTA
@@ -229,7 +256,12 @@ export function NuevaOrden(): JSX.Element {
   );
 
   const listo = cliente !== null && idArticulo !== '' && fallaReportada.trim().length >= 10
-    && modalidadGarantia !== '';
+    && modalidadGarantia !== '' && modalidad !== ''
+    && (modalidad !== MODALIDAD_SERVICIO.RUTA || (direccionServicio.trim() !== '' && telefonoContacto.trim() !== ''))
+    // Fecha y franja van juntas; el tecnico, solo si hay fecha y franja.
+    && (fechaVisita === '') === (franjaVisita === '')
+    && (idTecnicoVisita === '' || fechaVisita !== '');
+  const puedeProgramar = tienePermiso(usuario, 'ordenes.asignar') && tienePermiso(usuario, 'agenda.programar');
   const articuloElegido = (articulos.datos?.datos ?? []).find((articulo) => articulo.id === idArticulo) ?? null;
 
   return (
@@ -427,6 +459,44 @@ export function NuevaOrden(): JSX.Element {
                 </div>
               </div>
 
+              <fieldset style={{ border: '1px solid var(--line)', margin: '10px 0', padding: '8px 12px' }}>
+                <legend style={{ fontSize: 12.5, fontWeight: 600 }}>Garantia adicional (opcional)</legend>
+                <label className="opcion">
+                  <input
+                    type="checkbox" checked={nuevoArticulo.conGarantiaAdicional}
+                    onChange={(e) => setNuevoArticulo({ ...nuevoArticulo, conGarantiaAdicional: e.target.checked })}
+                  />
+                  El cliente compro una garantia adicional
+                </label>
+                {nuevoArticulo.conGarantiaAdicional ? (
+                  <div className="g g3">
+                    <div>
+                      <label>Fecha de contratacion *</label>
+                      <input
+                        type="date" value={nuevoArticulo.fechaContratacion}
+                        onChange={(e) => setNuevoArticulo({ ...nuevoArticulo, fechaContratacion: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label>Duracion en meses *</label>
+                      <input
+                        type="number" min={1} max={120} value={nuevoArticulo.mesesAdicional}
+                        onChange={(e) => setNuevoArticulo({ ...nuevoArticulo, mesesAdicional: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label>Vence (calculado)</label>
+                      <input readOnly value={venceAdicional ?? '—'} />
+                    </div>
+                  </div>
+                ) : <small className="tenue">Si no la compro, deje esto sin marcar: no hace falta ninguna fecha.</small>}
+                <small className="tenue" style={{ display: 'block' }}>
+                  Es distinta de la garantia del fabricante, que se calcula con la fecha de compra. El vencimiento lo
+                  calcula el servidor al guardar: cubre hasta el dia anterior al mismo dia, N meses despues
+                  (o hasta el ultimo dia del mes si ese dia no existe).
+                </small>
+              </fieldset>
+
               <Aviso tono="warn">
                 <b>La tienda de origen y la fecha de compra deciden quien paga.</b> Un articulo
                 del grupo lo cubre el proveedor; el mismo articulo como externo lo paga el
@@ -439,7 +509,8 @@ export function NuevaOrden(): JSX.Element {
                   type="button"
                   className="btn pri"
                   disabled={guardando || nuevoArticulo.idMarca === ''
-                    || nuevoArticulo.idCategoria === '' || nuevoArticulo.idTiendaOrigen === ''}
+                    || nuevoArticulo.idCategoria === '' || nuevoArticulo.idTiendaOrigen === ''
+                    || (nuevoArticulo.conGarantiaAdicional && !adicionalCompleta)}
                   onClick={() => void registrarArticulo()}
                 >
                   Registrar articulo
@@ -503,20 +574,22 @@ export function NuevaOrden(): JSX.Element {
               {cobertura.garantias === undefined ? null : (
                 <>
                   <table className="d" style={{ marginTop: 8 }}>
-                    <thead><tr><th>Garantia</th><th>Vigencia</th><th>Vence</th><th>¿Se puede usar?</th></tr></thead>
+                    <thead><tr><th>Garantia</th><th>Desde</th><th>Meses</th><th>Vence</th><th>Vigencia</th><th>¿Se puede usar?</th></tr></thead>
                     <tbody>
                       {(['proveedor', 'adicional'] as const).map((clave) => {
                         const estado = cobertura.garantias![clave];
                         return (
                           <tr key={clave}>
-                            <td>{clave === 'proveedor' ? 'Del proveedor' : 'Adicional'}</td>
+                            <td>{clave === 'proveedor' ? 'Del proveedor (fabricante)' : 'Adicional'}</td>
+                            <td>{estado.desde ?? '—'}<br /><small className="tenue">{clave === 'proveedor' ? 'compra' : 'contratacion'}</small></td>
+                            <td>{estado.meses ?? '—'}</td>
+                            <td>{estado.venceEl ?? '—'}</td>
                             <td>
                               <span className={estado.vigencia === 'vigente' ? 'tag t-t' : estado.vigencia === 'vencida' ? 'tag t-r' : 'tag t-g'}>
                                 {estado.vigencia === 'no_registrada' ? 'no registrada' : estado.vigencia}
                               </span>
                               {estado.origen === 'regla' ? <small className="tenue"> (calculada por la regla)</small> : null}
                             </td>
-                            <td>{estado.venceEl ?? '—'}</td>
                             <td>{estado.aplicable ? 'si' : <span className="tenue">no · {estado.motivo}</span>}</td>
                           </tr>
                         );
@@ -525,7 +598,7 @@ export function NuevaOrden(): JSX.Element {
                   </table>
 
                   <fieldset style={{ border: '1px solid var(--line)', marginTop: 10, padding: '8px 12px' }}>
-                    <legend style={{ fontSize: 12.5, fontWeight: 600 }}>¿Con que modalidad se atendera? *</legend>
+                    <legend style={{ fontSize: 12.5, fontWeight: 600 }}>¿Con que garantia se atendera? *</legend>
                     {([
                       { valor: 'proveedor', nombre: 'Garantia del proveedor', posible: cobertura.garantias.proveedor.aplicable },
                       { valor: 'adicional', nombre: 'Garantia adicional', posible: cobertura.garantias.adicional.aplicable },
@@ -553,79 +626,120 @@ export function NuevaOrden(): JSX.Element {
         </Tarjeta>
       )}
 
-      {/* ── 4 · Falla y asignación ── */}
+      {/* ── 4 · Modalidad de servicio: domicilio o taller ── */}
       {idArticulo === '' ? null : (
-        <Tarjeta titulo="4 · Falla y modalidad">
+        <Tarjeta titulo="4 · Modalidad de servicio *" acento="var(--amber)">
+          <p className="tenue" style={{ fontSize: 12.5, marginTop: 0 }}>
+            Es independiente de la garantia elegida arriba: un servicio a domicilio o en taller puede ser de
+            garantia o particular.
+          </p>
           <div className="g g2">
-            <div>
-              <label>Falla reportada por el cliente</label>
-              <textarea
-                rows={3}
-                value={fallaReportada}
-                onChange={(evento) => setFallaReportada(evento.target.value)}
-                placeholder="No enfria la parte baja. El motor enciende pero se apaga a los pocos minutos."
-              />
-              {fallaReportada.trim().length > 0 && fallaReportada.trim().length < 10 ? (
-                <p className="mensaje-error">Describa la falla con algo mas de detalle.</p>
-              ) : null}
-            </div>
-            <div>
-              <label>Modalidad</label>
-              <select
-                value={modalidad}
-                onChange={(evento) => setModalidad(evento.target.value as 'ruta' | 'taller')}
+            {([
+              { valor: MODALIDAD_SERVICIO.RUTA, titulo: 'Visita a domicilio (ruta)', texto: 'Un tecnico va a la casa del cliente.' },
+              { valor: MODALIDAD_SERVICIO.TALLER, titulo: 'El cliente lleva el articulo al taller', texto: 'Recepcion en el centro, cola de taller, diagnostico y reparacion. Sin visita.' },
+            ] as const).map((opcion) => (
+              <label
+                key={opcion.valor} className="opcion"
+                style={{ border: `2px solid ${modalidad === opcion.valor ? 'var(--ink)' : 'var(--line)'}`, borderRadius: 4, padding: 10, cursor: 'pointer' }}
               >
-                <option value={MODALIDAD_SERVICIO.RUTA}>Ruta — visita a domicilio</option>
-                <option value={MODALIDAD_SERVICIO.TALLER}>Taller — el cliente traslada el articulo</option>
-              </select>
+                <input
+                  type="radio" name="modalidad-servicio" value={opcion.valor}
+                  checked={modalidad === opcion.valor} onChange={() => setModalidad(opcion.valor)}
+                />
+                <span><b>{opcion.titulo}</b><br /><small className="tenue">{opcion.texto}</small></span>
+              </label>
+            ))}
+          </div>
 
-              {modalidad === MODALIDAD_SERVICIO.RUTA ? (
-                <>
-                  <div style={{ marginTop: 10 }}>
-                    <label>Zona</label>
-                    <select value={idZona} onChange={(evento) => setIdZona(evento.target.value)}>
-                      <option value="">Tomar la del cliente</option>
-                      {(catalogos.datos?.zonas ?? []).map((zona) => (
-                        <option key={zona.id} value={zona.id}>
-                          {zona.nombre} · {cordobas(zona.cargoVisita)}
+          {modalidad === MODALIDAD_SERVICIO.RUTA ? (
+            <>
+              <div className="g g3" style={{ marginTop: 10 }}>
+                <div>
+                  <label>Direccion de la visita *</label>
+                  <input value={direccionServicio} onChange={(evento) => setDireccionServicio(evento.target.value)} />
+                </div>
+                <div>
+                  <label>Referencia</label>
+                  <input
+                    value={referenciaUbicacion} onChange={(evento) => setReferenciaUbicacion(evento.target.value)}
+                    placeholder="Porton verde, frente a la pulperia"
+                  />
+                </div>
+                <div>
+                  <label>Telefono de contacto *</label>
+                  <input value={telefonoContacto} onChange={(evento) => setTelefonoContacto(evento.target.value)} />
+                </div>
+                <div>
+                  <label>Zona</label>
+                  <select value={idZona} onChange={(evento) => setIdZona(evento.target.value)}>
+                    <option value="">Tomar la del cliente</option>
+                    {(catalogos.datos?.zonas ?? []).map((zona) => (
+                      <option key={zona.id} value={zona.id}>{zona.nombre} · {cordobas(zona.cargoVisita)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label>Fecha {puedeProgramar ? 'de la visita' : 'solicitada por el cliente'}</label>
+                  <input type="date" value={fechaVisita} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setFechaVisita(e.target.value)} />
+                </div>
+                <div>
+                  <label>Franja horaria</label>
+                  <select value={franjaVisita} onChange={(e) => setFranjaVisita(e.target.value)}>
+                    <option value="">Sin franja</option>
+                    {FRANJAS_HORARIAS.map((franja) => <option key={franja} value={franja}>{franja}</option>)}
+                  </select>
+                </div>
+                {puedeProgramar ? (
+                  <div>
+                    <label>Tecnico (opcional)</label>
+                    <select value={idTecnicoVisita} onChange={(e) => setIdTecnicoVisita(e.target.value)}>
+                      <option value="">Asignar despues</option>
+                      {(catalogos.datos?.tecnicos ?? []).filter((t) => t.tipo === 'ruta').map((tecnico) => (
+                        <option key={tecnico.id} value={tecnico.id}>
+                          {tecnico.nombre} · {tecnico.cargaActual} abiertas{tecnico.disponible ? '' : ' · no disponible'}
                         </option>
                       ))}
                     </select>
                   </div>
-                  <div style={{ marginTop: 10 }}>
-                    <label>Direccion del servicio</label>
-                    <input
-                      value={direccionServicio}
-                      onChange={(evento) => setDireccionServicio(evento.target.value)}
-                    />
-                  </div>
-                  <div style={{ marginTop: 10 }}>
-                    <label>Referencia</label>
-                    <input
-                      value={referenciaUbicacion}
-                      onChange={(evento) => setReferenciaUbicacion(evento.target.value)}
-                      placeholder="Porton verde, frente a la pulperia"
-                    />
-                  </div>
-                </>
+                ) : null}
+              </div>
+              {(fechaVisita === '') !== (franjaVisita === '') ? (
+                <p className="mensaje-error">Indique fecha y franja juntas, o deje las dos vacias.</p>
               ) : null}
-            </div>
-          </div>
-
-          {modalidad === MODALIDAD_SERVICIO.RUTA ? (
-            <Aviso tono="info">
-              La direccion, la zona y el cargo por visita{' '}
-              {zonaElegida === undefined ? '' : `(${cordobas(zonaElegida.cargoVisita)}) `}
-              se <b>congelan</b> en la orden al crearla: describen como eran las cosas cuando
-              ocurrio el servicio, y cambiarlos despues en la ficha del cliente no las altera
-              (RN-22).
-            </Aviso>
+              <Aviso tono="info">
+                {idTecnicoVisita !== '' && fechaVisita !== ''
+                  ? 'Al guardar se asigna el tecnico y la visita queda en su agenda para esa fecha y franja.'
+                  : fechaVisita !== ''
+                    ? 'La fecha y franja quedan anotadas como solicitud del cliente; la jefatura de tecnicos asigna y programa la visita.'
+                    : 'La visita se programa despues desde la agenda.'}
+                {' '}La direccion, la zona y el cargo por visita{' '}
+                {zonaElegida === undefined ? '' : `(${cordobas(zonaElegida.cargoVisita)}) `}
+                se <b>congelan</b> en la orden al crearla (RN-22).
+              </Aviso>
+            </>
           ) : null}
 
-          <p style={{ fontSize: 11.5, color: 'var(--soft)', margin: '10px 0 0' }}>
-            El tecnico se asigna despues, desde la agenda o la cola de taller: quien reparte el
-            trabajo es la jefatura de tecnicos y ve la carga de cada uno.
-          </p>
+          {modalidad === MODALIDAD_SERVICIO.TALLER ? (
+            <Aviso tono="info">
+              El cliente entrega el articulo en el centro. No se pide direccion ni franja: la orden sigue
+              recepcion, cola de taller, diagnostico y reparacion.
+            </Aviso>
+          ) : null}
+        </Tarjeta>
+      )}
+
+      {/* ── 5 · Falla reportada ── */}
+      {idArticulo === '' ? null : (
+        <Tarjeta titulo="5 · Falla reportada por el cliente">
+          <textarea
+            rows={3}
+            value={fallaReportada}
+            onChange={(evento) => setFallaReportada(evento.target.value)}
+            placeholder="No enfria la parte baja. El motor enciende pero se apaga a los pocos minutos."
+          />
+          {fallaReportada.trim().length > 0 && fallaReportada.trim().length < 10 ? (
+            <p className="mensaje-error">Describa la falla con algo mas de detalle.</p>
+          ) : null}
         </Tarjeta>
       )}
 

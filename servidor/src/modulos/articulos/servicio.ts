@@ -11,7 +11,7 @@ import type {
   PeticionCrearArticulo, PeticionRegistrarCobertura, PeticionTransferirArticulo,
   ResultadoCambioSensible, ResumenArticulo,
 } from '@servitotal/compartido';
-import { ACCION_BITACORA } from '@servitotal/compartido';
+import { ACCION_BITACORA, TIPO_GARANTIA, ultimoDiaCubierto } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import type { Ejecutor } from '../../comun/transacciones.js';
 import { enTransaccion } from '../../comun/transacciones.js';
@@ -112,6 +112,26 @@ export async function crear(actor: Actor, peticion: PeticionCrearArticulo): Prom
       tabla: 'articulo', idRegistro: id, accion: ACCION_BITACORA.CREAR,
       valorNuevo: serie ?? '(sin serie legible)', idUsuario: actor.id,
     }]);
+
+    // Garantia adicional comprada junto con el articulo: se guarda como
+    // cobertura (tabla existente), con el vencimiento calculado AQUI.
+    const adicional = peticion.garantiaAdicional ?? null;
+    if (adicional !== null) {
+      const idCobertura = await repositorio.insertarCobertura(cliente, {
+        idArticulo: id,
+        tipo: TIPO_GARANTIA.ADICIONAL,
+        vigenteDesde: adicional.fechaContratacion,
+        vigenteHasta: ultimoDiaCubierto(adicional.fechaContratacion, adicional.meses),
+        documentoRespaldo: adicional.documentoRespaldo ?? null,
+        idClienteContratante: peticion.idCliente,
+        creadoPor: actor.id,
+      });
+      await auditar(cliente, [{
+        tabla: 'cobertura', idRegistro: idCobertura, accion: ACCION_BITACORA.CREAR,
+        campo: 'tipo', valorNuevo: `adicional · ${adicional.meses} meses desde ${adicional.fechaContratacion}`,
+        idUsuario: actor.id,
+      }]);
+    }
     return id;
   });
 
@@ -220,11 +240,16 @@ export async function registrarCobertura(
   await enTransaccion(async (cliente) => {
     const previo = await exigirArticulo(idArticulo, cliente);
 
+    // Con duracion en meses, el ultimo dia lo calcula el servidor con la
+    // misma regla que el motor de garantias; no se acepta del navegador.
+    const vigenteHasta = peticion.meses !== undefined
+      ? ultimoDiaCubierto(peticion.vigenteDesde, peticion.meses)
+      : peticion.vigenteHasta!;
     const id = await repositorio.insertarCobertura(cliente, {
       idArticulo,
       tipo: peticion.tipo,
       vigenteDesde: peticion.vigenteDesde,
-      vigenteHasta: peticion.vigenteHasta,
+      vigenteHasta,
       documentoRespaldo: peticion.documentoRespaldo ?? null,
       // RN-28: la poliza es de quien la contrato. Si no se indica, se toma
       // el dueno registrado, que es a quien se le vendio.

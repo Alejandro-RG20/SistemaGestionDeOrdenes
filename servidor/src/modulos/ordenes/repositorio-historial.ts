@@ -144,11 +144,17 @@ export async function deOrden(
          JOIN tecnico t ON t.id = v.id_tecnico JOIN usuario ut ON ut.id = t.id_usuario
          LEFT JOIN usuario u ON u.id = v.creado_por
         WHERE v.id_orden = $1
-       UNION ALL -- Visitas: el resultado
+       UNION ALL -- Visitas: llegada real al domicilio
+       SELECT v.id::text || '-lleg', v.hora_llegada, 'visita',
+              'Llegada al domicilio (programada ' || to_char(v.fecha_programada, 'DD/MM') || ' ' || v.franja_horaria || ')',
+              NULL, ut.nombres, false
+         FROM visita v JOIN tecnico t ON t.id = v.id_tecnico JOIN usuario ut ON ut.id = t.id_usuario
+        WHERE v.id_orden = $1 AND v.hora_llegada IS NOT NULL
+       UNION ALL -- Visitas: salida y resultado
        SELECT v.id::text || '-res', coalesce(v.hora_salida, v.hora_llegada), 'visita',
               'Resultado de la visita: ' || ${LEGIBLE('v.resultado')}, v.motivo, ut.nombres, false
          FROM visita v JOIN tecnico t ON t.id = v.id_tecnico JOIN usuario ut ON ut.id = t.id_usuario
-        WHERE v.id_orden = $1 AND v.hora_llegada IS NOT NULL
+        WHERE v.id_orden = $1 AND v.resultado <> 'programada'
 
        UNION ALL -- Autorizacion del cliente
        SELECT c.id::text || '-cot', c.creado_en, 'autorizacion',

@@ -211,7 +211,10 @@ export async function buscarContextoTransicion(
     `SELECT o.id, o.codigo, o.numero, o.estado, o.modalidad::text AS modalidad,
             o.tipo_garantia::text AS tipo_garantia, o.id_tecnico,
             o.id_responsable_actual, o.id_centro, o.id_tienda, o.creado_por,
-            EXISTS (SELECT 1 FROM visita v WHERE v.id_orden = o.id AND v.vigente) AS tiene_visita,
+            -- Una visita por hacer: vigente y sin resultado. Una ya realizada
+            -- sigue vigente pero no sirve para volver a mandar la orden a ruta.
+            EXISTS (SELECT 1 FROM visita v WHERE v.id_orden = o.id AND v.vigente
+                     AND v.resultado = 'programada') AS tiene_visita,
             EXISTS (SELECT 1 FROM diagnostico d WHERE d.id_orden = o.id) AS tiene_diagnostico,
             EXISTS (SELECT 1 FROM cotizacion c WHERE c.id_orden = o.id) AS tiene_cotizacion,
             EXISTS (SELECT 1 FROM cotizacion c WHERE c.id_orden = o.id AND c.aceptada) AS cotizacion_aceptada,

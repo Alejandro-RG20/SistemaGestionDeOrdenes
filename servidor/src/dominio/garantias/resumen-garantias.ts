@@ -14,10 +14,10 @@
  * Usa las mismas especificaciones que el motor: no es un segundo sistema
  * de decision. Codigo puro.
  */
-import { TIPO_GARANTIA } from '@servitotal/compartido';
+import { TIPO_GARANTIA, mesesDeLaVigencia, ultimoDiaCubierto } from '@servitotal/compartido';
 import type { ContextoCobertura } from './contexto-cobertura.js';
 import {
-  cumpleLaExigenciaDeTienda, dentroDelPlazoDeFabrica, esElCompradorRegistrado,
+  cubreElDia, cumpleLaExigenciaDeTienda, dentroDelPlazoDeFabrica, esElCompradorRegistrado,
   garantiasDeProveedorRegistradas, tienePolizaExtendidaVigente,
 } from './especificaciones-cobertura.js';
 
@@ -25,7 +25,11 @@ export type VigenciaGarantia = 'vigente' | 'vencida' | 'no_registrada';
 
 export interface EstadoDeGarantia {
   readonly vigencia: VigenciaGarantia;
-  /** Fecha de vencimiento (AAAA-MM-DD), si se conoce. */
+  /** Desde cuando cubre: compra o contratacion (AAAA-MM-DD). */
+  readonly desde: string | null;
+  /** Duracion en meses, si las fechas corresponden a meses exactos. */
+  readonly meses: number | null;
+  /** Ultimo dia cubierto (AAAA-MM-DD), si se conoce. */
   readonly venceEl: string | null;
   /** De donde sale la fecha: registrada en la ficha, o calculada por la regla. */
   readonly origen: 'registrada' | 'regla' | null;
@@ -42,14 +46,8 @@ export interface ResumenGarantias {
 
 const fecha = (valor: Date): string => valor.toISOString().slice(0, 10);
 
-function sumarMeses(desde: Date, meses: number): Date {
-  const resultado = new Date(desde.getTime());
-  resultado.setUTCMonth(resultado.getUTCMonth() + meses);
-  return resultado;
-}
-
 function vigenciaEntre(desde: Date, hasta: Date, momento: Date): VigenciaGarantia {
-  return desde.getTime() <= momento.getTime() && hasta.getTime() >= momento.getTime() ? 'vigente' : 'vencida';
+  return cubreElDia(desde, hasta, momento) ? 'vigente' : 'vencida';
 }
 
 export function resumirGarantias(contexto: ContextoCobertura): ResumenGarantias {
@@ -58,24 +56,30 @@ export function resumirGarantias(contexto: ContextoCobertura): ResumenGarantias 
   // ── proveedor ──
   const registradas = [...garantiasDeProveedorRegistradas(contexto)]
     .sort((una, otra) => otra.vigenteHasta.getTime() - una.vigenteHasta.getTime());
-  let proveedorBase: Pick<EstadoDeGarantia, 'vigencia' | 'venceEl' | 'origen'>;
+  let proveedorBase: Pick<EstadoDeGarantia, 'vigencia' | 'venceEl' | 'origen' | 'desde' | 'meses'>;
   if (registradas.length > 0) {
     const vigente = registradas.find((p) => vigenciaEntre(p.vigenteDesde, p.vigenteHasta, contexto.momento) === 'vigente');
     const elegida = vigente ?? registradas[0]!;
     proveedorBase = {
       vigencia: vigente === undefined ? 'vencida' : 'vigente',
+      desde: fecha(elegida.vigenteDesde),
+      meses: mesesDeLaVigencia(fecha(elegida.vigenteDesde), fecha(elegida.vigenteHasta)),
       venceEl: fecha(elegida.vigenteHasta),
       origen: 'registrada',
     };
   } else if (contexto.articulo.fechaCompra !== null) {
-    const vence = sumarMeses(contexto.articulo.fechaCompra, contexto.regla.mesesCobertura);
+    // El mismo computo que la regla: cubre mientras no se cumplan los meses.
+    const compra = fecha(contexto.articulo.fechaCompra);
+    const meses = contexto.regla.mesesCobertura;
     proveedorBase = {
       vigencia: dentroDelPlazoDeFabrica.seCumple(contexto) ? 'vigente' : 'vencida',
-      venceEl: fecha(vence),
+      desde: compra,
+      meses,
+      venceEl: meses >= 1 ? ultimoDiaCubierto(compra, meses) : null,
       origen: 'regla',
     };
   } else {
-    proveedorBase = { vigencia: 'no_registrada', venceEl: null, origen: null };
+    proveedorBase = { vigencia: 'no_registrada', desde: null, meses: null, venceEl: null, origen: null };
   }
   const tienda = cumpleLaExigenciaDeTienda.seCumple(contexto);
   const proveedorAplica = proveedorBase.vigencia === 'vigente' && comprador && tienda;
@@ -97,7 +101,7 @@ export function resumirGarantias(contexto: ContextoCobertura): ResumenGarantias 
   let adicional: EstadoDeGarantia;
   if (polizas.length === 0) {
     adicional = {
-      vigencia: 'no_registrada', venceEl: null, origen: null, aplicable: false,
+      vigencia: 'no_registrada', desde: null, meses: null, venceEl: null, origen: null, aplicable: false,
       motivo: 'El articulo no tiene garantia adicional registrada.',
     };
   } else {
@@ -105,6 +109,8 @@ export function resumirGarantias(contexto: ContextoCobertura): ResumenGarantias 
     const elegida = vigente ?? polizas[0]!;
     adicional = {
       vigencia: vigente === undefined ? 'vencida' : 'vigente',
+      desde: fecha(elegida.vigenteDesde),
+      meses: mesesDeLaVigencia(fecha(elegida.vigenteDesde), fecha(elegida.vigenteHasta)),
       venceEl: fecha(elegida.vigenteHasta),
       origen: 'registrada',
       aplicable: adicionalAplica,

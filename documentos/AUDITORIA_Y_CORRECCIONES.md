@@ -410,3 +410,91 @@ Ejecutado en Linux con PostgreSQL 16 local, sobre bases de prueba (nunca la de t
 
 No se probó en Windows; los comandos de la sección 6 siguen valiendo
 (`npm run migrar` aplica la 0024).
+
+---
+
+# Cuarta etapa · Modalidad de servicio, visitas con horas reales y garantía adicional por meses
+
+**Sin cambios de esquema ni migraciones**, y sin tocar la siembra: no se modificó ningún archivo de `servidor/src/infraestructura/semillas/` ni de `base-datos/`.
+Se reutilizaron:
+- `orden_servicio.modalidad` (`ruta`/`taller`);
+- la tabla `visita`, que ya tenía `hora_llegada`, `hora_salida`, `resultado` y `motivo`;
+- la tabla `cobertura`, para la garantía adicional.
+
+## Lo que faltaba o fallaba
+
+| Problema | Causa |
+|---|---|
+| Modalidad poco clara al crear la orden | Era un desplegable con «Ruta» preseleccionado; no se elegía de forma explícita y las visitas no se podían programar desde el alta. |
+| No se podía registrar llegada y salida desde el panel | Solo la cola del móvil cerraba la visita, de una vez, con las horas del dispositivo. |
+| Una segunda visita era imposible | Una visita realizada sigue «vigente», y programar otra chocaba con ella («ya tiene una visita programada»). |
+| Se podía programar visita a una orden de taller o cerrada | `programarVisita` no miraba la modalidad ni el estado. |
+| Un técnico veía en la agenda las visitas de todos | `GET /agenda` no aplicaba el cerco por técnico. |
+| Conteos de la agenda incompletos | Se contaban en el navegador sobre la página visible y faltaban «realizadas», «en curso» y «no autorizadas». |
+| Vencimientos a fin de mes | El resumen de garantías sumaba meses con `setUTCMonth`, de modo que el 31 de enero más un mes daba el 3 de marzo. Además, una póliza dejaba de valer a las 00:00 de su último día. |
+
+## Lo implementado
+
+### Modalidad de servicio (sección 22)
+- **Selección obligatoria en «Nueva orden».** «4 · Modalidad de servicio» es una tarjeta visible con dos opciones: **Visita a domicilio (ruta)** y **El cliente lleva el artículo al taller**. No hay valor por defecto; sin elegir, no se puede guardar.
+- **Ruta.** Pide dirección y teléfono (obligatorios), referencia, zona, fecha y franja.
+  - **Técnico.** El técnico se ofrece solo a quien despacha (`ordenes.asignar` y `agenda.programar`). Si se indica, el servidor **asigna y programa la visita en la misma transacción**: si la franja del técnico está ocupada, no se crea nada (verificado en el navegador).
+  - **Fecha solicitada.** Sin técnico, la fecha y franja quedan anotadas en el evento de registro como solicitud del cliente.
+  - **Dirección.** El servidor exige la dirección de la visita.
+- **Taller.** No pide dirección ni franja. El servidor **rechaza** una visita en una orden de taller (400 al crear, `ORDEN_DE_TALLER` al programar).
+- **Detalle de la orden.** La cabecera muestra «Modalidad de servicio» y, aparte, «Garantía (quién paga)»: son independientes.
+
+### Visitas y horas reales (sección 23)
+- **Endpoints.** `POST /visitas/:id/llegada` y `POST /visitas/:id/salida` (`{ resultado, observaciones }`).
+  - **Horas.** Llegada y salida las pone el reloj del servidor y no se sobrescriben (`LLEGADA_YA_REGISTRADA`). La salida exige la llegada (`SIN_LLEGADA`). Una visita con resultado no se modifica (`VISITA_YA_REGISTRADA`).
+  - **Quién registra.** Las registra el técnico de esa visita o quien programa la agenda; otro técnico recibe un rechazo.
+  - **Observaciones.** Se guardan en `visita.motivo`, la columna existente para «reprogramación o visita fallida».
+- **Varias visitas por orden.** Ahora solo choca con una visita **pendiente** (vigente y sin resultado). La realizada conserva su llegada, salida, resultado y observaciones, y aparece en el historial como «Llegada al domicilio» y «Resultado de la visita».
+- **Agenda.** Consulta por rango de fechas y técnico (ruta y planta), con horas programadas y reales, observaciones y las acciones de llegada y salida.
+  - Un técnico solo ve sus visitas.
+  - Conteos del servidor (`GET /agenda/resumen`) sobre todas las visitas vigentes del filtro: programadas, en curso, realizadas, resueltas en sitio, requieren traslado, cliente ausente y no autorizadas.
+- **Pestaña «Visitas» de la orden.** Muestra cada visita con su técnico, horas reales, resultado y observaciones, y permite programar la siguiente. En taller explica que no lleva visita.
+- **Requisito «tiene visita programada».** El requisito para pasar a `en_ruta` cuenta solo una visita pendiente.
+- **Sin cambios en estados, resultados ni tablas.** Las evidencias obligatorias siguen las reglas existentes de evidencia por estado.
+
+### Garantía adicional por meses (sección 24)
+- **Cálculo único.** `compartido/src/dominio/fechas.ts`, función `ultimoDiaCubierto`, es la misma regla del motor de garantías: cubre mientras no se cumplan los N meses. El último día cubierto es:
+  - el anterior al mismo día N meses después;
+  - o el último día del mes si ese día no existe. Por ejemplo, del 31 de enero más un mes resulta el 28 o 29 de febrero, y del 29 de febrero más 12 meses, el 28 de febrero.
+  - **Mismo cálculo en los dos lados.** Lo usan el servidor (que decide) y el panel (vista previa).
+  - **Coincidencia con la regla.** Una prueba compara el resultado con `mesesTranscurridos` del motor.
+- **Alta del artículo.** Acepta `garantiaAdicional: { fechaContratacion, meses }` de forma opcional: sin ella no se piden fechas.
+  - **Vencimiento.** Lo calcula el servidor.
+  - **Validaciones:** meses de 1 a 120, fechas reales del calendario, sin fechas futuras, y contratación no anterior a la compra.
+- **Ficha del artículo.** Registrar una garantía admite `meses` en lugar de la fecha de fin, y el servidor la calcula.
+- **Presentación por separado.** En la ficha del artículo y al crear la orden, proveedor (fabricante) y adicional aparecen por separado, cada una con desde (compra o contratación), meses, vencimiento y vigencia (vigente, vencida o no registrada). Los meses se deducen de las fechas; no se guardó ninguna columna nueva.
+- **Vigencia por día.** Se compara por día de calendario: el último día cubre entero.
+- **Historial.** Las órdenes anteriores no cambian: conservan la garantía con la que se atendieron.
+
+## Verificación (sección 25)
+
+| Caso | Prueba |
+|---|---|
+| 1-3 Crear ruta y taller, campos y acciones de cada una | integración y navegador |
+| 4 Programar visita con fecha y franja | integración y navegador |
+| 5 Llegada y salida reales | integración y navegador |
+| 6 Visitas anteriores de la misma orden | integración (dos visitas, la primera intacta) |
+| 7 Técnico correcto | integración (técnico ajeno rechazado; la agenda del técnico solo trae las suyas) |
+| 8-9 Artículo sin y con garantía adicional | integración |
+| 10-11 Vencimiento y fin de mes | unidad (`fechas-garantia.prueba.ts`) e integración (31/01 + 13 → 28/02) |
+| 12 Garantías al crear la orden | integración y navegador |
+| 13 Modalidad de servicio frente a garantía | integración (ruta y taller particulares) y pantalla |
+
+### Resultados
+
+| Verificación | Resultado |
+|---|---|
+| `npm run verificar-tipos` | sin errores |
+| `npm run construir -w panel` | correcto |
+| `npm run prueba` (servidor) | **41 archivos, 558 pruebas, todas aprobadas** (nuevas: `modalidad-visitas-garantia.prueba.ts`, 13; `fechas-garantia.prueba.ts`, 5) |
+| `npm run prueba -w panel` | **114 aprobadas** |
+| Navegador (Chromium) | sin errores de consola ni respuestas 5xx; franja ocupada rechazada sin dejar una orden a medias |
+
+### Pendiente o a decidir
+- **Fecha solicitada sin técnico.** Queda solo en el evento de registro de la orden; no hay una columna «fecha solicitada». Si se quiere filtrar por ella en la agenda, hace falta una columna (cambio de esquema, requiere autorización).
+- **Observaciones de la visita.** Se guardan en `visita.motivo`. Si se reprograma una visita ya cerrada, no se toca, porque solo se reprograman visitas pendientes.

@@ -1,8 +1,16 @@
 /** Validacion de lo que entra al modulo de articulos. */
 import { z } from 'zod';
-import { TIPO_GARANTIA, type TipoGarantia } from '@servitotal/compartido';
+import { TIPO_GARANTIA, esFechaValida, type TipoGarantia } from '@servitotal/compartido';
 
-const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha debe venir como AAAA-MM-DD.');
+const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha debe venir como AAAA-MM-DD.')
+  .refine(esFechaValida, 'La fecha no existe en el calendario.');
+
+const meses = z.number({ invalid_type_error: 'La duracion debe ser un numero de meses.' })
+  .int('La duracion debe ser un numero entero de meses.')
+  .min(1, 'La duracion debe ser de al menos un mes.')
+  .max(120, 'La duracion no puede pasar de 120 meses.');
+
+const hoy = (): string => new Date().toISOString().slice(0, 10);
 
 const motivo = z.string().trim()
   .min(10, 'Escriba el motivo: al menos 10 caracteres. Queda registrado en la bitacora.')
@@ -21,14 +29,24 @@ export const esquemaCrearArticulo = z.object({
   modelo: z.string().trim().max(60).nullish(),
   numeroSerie: numeroSerie.nullish(),
   sinSerieLegible: z.boolean().default(false),
-  fechaCompra: fecha.nullish(),
+  fechaCompra: fecha.refine((valor) => valor <= hoy(), 'La fecha de compra no puede ser futura.').nullish(),
   facturaReferencia: z.string().trim().max(60).nullish(),
+  garantiaAdicional: z.object({
+    fechaContratacion: fecha.refine((valor) => valor <= hoy(), 'La fecha de contratacion no puede ser futura.'),
+    meses,
+    documentoRespaldo: z.string().trim().max(120).nullish(),
+  }).nullish(),
 }).refine(
   (valor) => valor.sinSerieLegible || (valor.numeroSerie != null && valor.numeroSerie !== ''),
   {
     message: 'Indique el numero de serie o marque que la placa no es legible.',
     path: ['numeroSerie'],
   },
+).refine(
+  // La garantia adicional se compra con el articulo o despues, nunca antes.
+  (valor) => valor.garantiaAdicional == null || valor.fechaCompra == null
+    || valor.garantiaAdicional.fechaContratacion >= valor.fechaCompra,
+  { message: 'La garantia adicional no puede contratarse antes de la compra del articulo.', path: ['garantiaAdicional', 'fechaContratacion'] },
 );
 
 export const esquemaActualizarArticulo = z.object({
@@ -61,10 +79,14 @@ const tiposDeCobertura = Object.values(TIPO_GARANTIA) as [TipoGarantia, ...TipoG
 export const esquemaRegistrarCobertura = z.object({
   tipo: z.enum(tiposDeCobertura, { errorMap: () => ({ message: 'El tipo de cobertura no es valido.' }) }),
   vigenteDesde: fecha,
-  vigenteHasta: fecha,
+  vigenteHasta: fecha.optional(),
+  meses: meses.optional(),
   documentoRespaldo: z.string().trim().max(120).nullish(),
   idClienteContratante: z.string().uuid('El contratante indicado no es valido.').nullish(),
 }).refine(
-  (valor) => valor.vigenteHasta > valor.vigenteDesde,
+  (valor) => (valor.vigenteHasta === undefined) !== (valor.meses === undefined),
+  { message: 'Indique la fecha de vencimiento o la duracion en meses (una de las dos).', path: ['meses'] },
+).refine(
+  (valor) => valor.vigenteHasta === undefined || valor.vigenteHasta > valor.vigenteDesde,
   { message: 'La fecha de fin debe ser posterior a la de inicio.', path: ['vigenteHasta'] },
 );

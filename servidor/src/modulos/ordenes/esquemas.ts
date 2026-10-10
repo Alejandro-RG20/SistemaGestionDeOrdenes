@@ -1,5 +1,6 @@
 /** Validacion de lo que entra al modulo de ordenes. */
 import { z } from 'zod';
+import { FRANJAS_HORARIAS } from '@servitotal/compartido';
 import { ESTADO_ORDEN, MODALIDAD_SERVICIO, type EstadoOrden } from '@servitotal/compartido';
 
 const estados = Object.values(ESTADO_ORDEN) as [EstadoOrden, ...EstadoOrden[]];
@@ -32,6 +33,14 @@ export const esquemaCrearOrden = z.object({
   referenciaUbicacion: z.string().trim().max(300).nullish(),
   idZona: z.string().uuid('La zona indicada no es valida.').nullish(),
   levantadaEnCampo: z.boolean().default(false),
+  visita: z.object({
+    fechaProgramada: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha de la visita debe venir como AAAA-MM-DD.')
+      .refine((valor) => valor >= new Date().toISOString().slice(0, 10), 'La visita no puede ser en una fecha pasada.'),
+    franjaHoraria: z.enum(FRANJAS_HORARIAS as unknown as [string, ...string[]], {
+      errorMap: () => ({ message: `La franja debe ser una de: ${FRANJAS_HORARIAS.join(', ')}.` }),
+    }),
+    idTecnico: z.string().uuid('El tecnico indicado no es valido.').nullish(),
+  }).nullish(),
   tipoGarantiaElegida: z.enum(['proveedor', 'adicional', 'particular'], {
     errorMap: () => ({ message: 'Elija garantia del proveedor, garantia adicional o servicio particular.' }),
   }).optional(),

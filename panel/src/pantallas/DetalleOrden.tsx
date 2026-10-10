@@ -19,7 +19,6 @@ import { Link, useParams } from 'react-router-dom';
 import {
   ESTADO_ORDEN,
   type CatalogosDeApoyo, type EstadoOrden, type EventoDeHistorial, type FichaOrden,
-  type ResumenVisita,
 } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
@@ -32,6 +31,7 @@ import { tienePermiso } from '../sesion/navegacion.js';
 import { EvidenciasDeOrden } from './EvidenciasDeOrden.js';
 import { ModalBitacora, avisoDeEntrada } from './BitacoraDeOrden.js';
 import { TallerDeOrden } from './TallerDeOrden.js';
+import { VisitasDeOrden } from './VisitasDeOrden.js';
 import { RepuestosDeOrden } from './RepuestosDeOrden.js';
 
 const PESTANAS = ['Resumen', 'Repuestos', 'Evidencia', 'Visitas', 'Historial'] as const;
@@ -82,12 +82,7 @@ export function DetalleOrden(): JSX.Element {
   const idTecnicoGuardado = ficha.datos?.idTecnico ?? null;
   useEffect(() => { setIdTecnicoNuevo(idTecnicoGuardado ?? ''); }, [idTecnicoGuardado]);
 
-  const visitas = useRecurso<readonly ResumenVisita[]>(
-    () => (pestana === 'Visitas'
-      ? api.pedir<readonly ResumenVisita[]>(`/ordenes/${id}/visitas`)
-      : Promise.resolve([])),
-    [id, pestana],
-  );
+
 
   if (ficha.cargando) return <Cargando que="la orden" />;
   if (ficha.error !== null) return <Fallo error={ficha.error} alReintentar={ficha.recargar} />;
@@ -201,6 +196,11 @@ export function DetalleOrden(): JSX.Element {
           pequena
         />
         <Cifra valor={orden.tecnico ?? 'sin asignar'} etiqueta="Tecnico asignado" pequena />
+        <Cifra
+          valor={orden.modalidad === 'ruta' ? 'Visita a domicilio (ruta)' : 'El cliente lo lleva al taller'}
+          etiqueta="Modalidad de servicio" pequena
+        />
+        <Cifra valor={<Garantia tipo={orden.tipoGarantia} />} etiqueta="Garantia (quien paga)" pequena />
       </div>
 
       <div className="tabs">
@@ -360,29 +360,7 @@ export function DetalleOrden(): JSX.Element {
       {pestana === 'Repuestos' ? <RepuestosDeOrden orden={orden} /> : null}
 
       {pestana === 'Visitas' ? (
-        <Tarjeta titulo="Visitas programadas y realizadas">
-          {visitas.cargando ? <Cargando que="las visitas" /> : null}
-          {visitas.datos === null || visitas.datos.length === 0 ? (
-            <Vacio>Esta orden no tiene visitas programadas.</Vacio>
-          ) : (
-            <table className="d">
-              <thead>
-                <tr><th>Fecha</th><th>Franja</th><th>Tecnico</th><th>Resultado</th><th>Vigente</th></tr>
-              </thead>
-              <tbody>
-                {visitas.datos.map((visita) => (
-                  <tr key={visita.id}>
-                    <td>{visita.fechaProgramada}</td>
-                    <td style={{ fontFamily: 'IBM Plex Mono, monospace' }}>{visita.franjaHoraria}</td>
-                    <td>{visita.tecnico}</td>
-                    <td><span className="tag t-b">{visita.resultado.replace(/_/g, ' ')}</span></td>
-                    <td>{visita.vigente ? 'si' : <span className="tenue">reprogramada</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Tarjeta>
+        <VisitasDeOrden orden={orden} alCambiar={() => { ficha.recargar(); historial.recargar(); }} />
       ) : null}
 
       {pestana === 'Historial' ? (

@@ -13,7 +13,7 @@
  */
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import type { EvaluacionCobertura, FichaArticulo } from '@servitotal/compartido';
+import { esFechaValida, ultimoDiaCubierto, type EvaluacionCobertura, type FichaArticulo } from '@servitotal/compartido';
 import { ErrorDeApi } from '../api/cliente.js';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
@@ -45,7 +45,11 @@ export function Articulo(): JSX.Element {
   const [falla, setFalla] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [compra, setCompra] = useState({ fechaCompra: '', motivo: '' });
-  const [garantia, setGarantia] = useState({ tipo: 'proveedor', vigenteDesde: '', vigenteHasta: '', documentoRespaldo: '' });
+  const [garantia, setGarantia] = useState({ tipo: 'proveedor', vigenteDesde: '', vigenteHasta: '', meses: '', documentoRespaldo: '' });
+  // Con meses, el vencimiento lo calcula el servidor; esto es solo la vista previa (misma funcion).
+  const mesesGarantia = Number(garantia.meses);
+  const venceCalculado = garantia.meses !== '' && esFechaValida(garantia.vigenteDesde) && Number.isInteger(mesesGarantia)
+    && mesesGarantia >= 1 && mesesGarantia <= 120 ? ultimoDiaCubierto(garantia.vigenteDesde, mesesGarantia) : null;
 
   async function enviar(ruta: string, metodo: 'POST' | 'PUT', cuerpo: unknown, mensaje: string): Promise<void> {
     setGuardando(true); setFalla(null); setAviso(null);
@@ -149,16 +153,18 @@ export function Articulo(): JSX.Element {
       {evaluacion.datos?.garantias === undefined || evaluacion.datos === null ? null : (
         <Tarjeta titulo="Garantias del articulo hoy" extra="vigencia por fecha; la cobertura de una reparacion la decide el diagnostico">
           <table className="d">
-            <thead><tr><th>Garantia</th><th>Vigencia</th><th>Vence</th><th>Aplica al titular</th></tr></thead>
+            <thead><tr><th>Garantia</th><th>Desde</th><th>Meses</th><th>Vence</th><th>Vigencia</th><th>Aplica al titular</th></tr></thead>
             <tbody>
               {(['proveedor', 'adicional'] as const).map((clave) => {
                 const estado = evaluacion.datos!.garantias![clave];
                 return (
                   <tr key={clave}>
-                    <td>{clave === 'proveedor' ? 'Del proveedor' : 'Adicional'}</td>
+                    <td>{clave === 'proveedor' ? 'Del proveedor (fabricante)' : 'Adicional'}</td>
+                    <td>{estado.desde ?? '—'} <small className="tenue">{clave === 'proveedor' ? 'compra' : 'contratacion'}</small></td>
+                    <td>{estado.meses ?? '—'}</td>
+                    <td>{estado.venceEl ?? '—'}</td>
                     <td>{estado.vigencia === 'no_registrada' ? 'no registrada' : estado.vigencia}
                       {estado.origen === 'regla' ? <small className="tenue"> (calculada por la regla de cobertura)</small> : null}</td>
-                    <td>{estado.venceEl ?? '—'}</td>
                     <td>{estado.aplicable ? 'si' : <span className="tenue">no · {estado.motivo}</span>}</td>
                   </tr>
                 );
@@ -182,6 +188,7 @@ export function Articulo(): JSX.Element {
                   <td><Garantia tipo={cobertura.tipo} /></td>
                   <td>
                     {fechaCorta(cobertura.vigenteDesde)} – {fechaCorta(cobertura.vigenteHasta)}
+                    {cobertura.meses === null ? null : <small className="tenue"> · {cobertura.meses} meses</small>}
                   </td>
                   <td className="tenue">{cobertura.documentoRespaldo ?? '—'}</td>
                   <td>
@@ -225,19 +232,30 @@ export function Articulo(): JSX.Element {
               <label>Garantia</label>
               <select value={garantia.tipo} onChange={(e) => setGarantia({ ...garantia, tipo: e.target.value })}>
                 <option value="proveedor">Del proveedor</option>
-                <option value="adicional">Adicional (opcional)</option>
+                <option value="adicional">Adicional (la que compro el cliente)</option>
               </select>
             </div>
-            <div><label>Desde *</label><input type="date" value={garantia.vigenteDesde} onChange={(e) => setGarantia({ ...garantia, vigenteDesde: e.target.value })} /></div>
-            <div><label>Vence *</label><input type="date" value={garantia.vigenteHasta} onChange={(e) => setGarantia({ ...garantia, vigenteHasta: e.target.value })} /></div>
+            <div><label>{garantia.tipo === 'adicional' ? 'Fecha de contratacion *' : 'Desde *'}</label><input type="date" value={garantia.vigenteDesde} onChange={(e) => setGarantia({ ...garantia, vigenteDesde: e.target.value })} /></div>
+            <div>
+              <label>Duracion en meses</label>
+              <input type="number" min={1} max={120} value={garantia.meses} onChange={(e) => setGarantia({ ...garantia, meses: e.target.value, vigenteHasta: '' })} />
+            </div>
+            <div>
+              <label>{garantia.meses === '' ? 'Vence *' : 'Vence (calculado)'}</label>
+              {garantia.meses === ''
+                ? <input type="date" value={garantia.vigenteHasta} onChange={(e) => setGarantia({ ...garantia, vigenteHasta: e.target.value })} />
+                : <input readOnly value={venceCalculado ?? '—'} />}
+            </div>
             <div><label>Documento de respaldo</label><input value={garantia.documentoRespaldo} onChange={(e) => setGarantia({ ...garantia, documentoRespaldo: e.target.value })} placeholder="Factura, poliza…" /></div>
             <div className="tools">
               <button
                 type="button" className="btn pri"
-                disabled={guardando || garantia.vigenteDesde === '' || garantia.vigenteHasta === '' || garantia.vigenteHasta <= garantia.vigenteDesde}
+                disabled={guardando || garantia.vigenteDesde === ''
+                  || (garantia.meses === '' ? (garantia.vigenteHasta === '' || garantia.vigenteHasta <= garantia.vigenteDesde) : venceCalculado === null)}
                 onClick={() => {
                   void enviar(`/articulos/${articulo.id}/coberturas`, 'POST', {
-                    tipo: garantia.tipo, vigenteDesde: garantia.vigenteDesde, vigenteHasta: garantia.vigenteHasta,
+                    tipo: garantia.tipo, vigenteDesde: garantia.vigenteDesde,
+                    ...(garantia.meses === '' ? { vigenteHasta: garantia.vigenteHasta } : { meses: mesesGarantia }),
                     documentoRespaldo: garantia.documentoRespaldo.trim() === '' ? null : garantia.documentoRespaldo.trim(),
                   }, 'Garantia registrada. Las ordenes cerradas conservan la cobertura con la que se atendieron.');
                 }}

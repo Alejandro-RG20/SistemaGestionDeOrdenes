@@ -4,7 +4,7 @@ import { ejecutorPorDefecto } from '../../comun/transacciones.js';
 import type { FilaDiaNoLaborable, FilaJornada, FilaVisita } from './dto.js';
 
 const CAMPOS = `
-  v.id, v.id_orden, o.numero AS numero_orden, v.id_tecnico,
+  v.id, v.id_orden, o.numero AS numero_orden, o.codigo AS codigo_orden, v.id_tecnico,
   u.nombres AS tecnico, v.fecha_programada, v.franja_horaria, v.orden_recorrido,
   v.hora_llegada, v.hora_salida, v.resultado, v.vigente, v.motivo,
   o.direccion_servicio, z.nombre AS zona`;
@@ -128,9 +128,83 @@ export async function buscarVigenteDeOrden(
   idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
 ): Promise<FilaVisita | null> {
   const { rows } = await ejecutor.query<FilaVisita>(
-    `SELECT ${CAMPOS} ${DESDE} WHERE v.id_orden = $1 AND v.vigente LIMIT 1`, [idOrden],
+    `SELECT ${CAMPOS} ${DESDE} WHERE v.id_orden = $1 AND v.vigente
+      ORDER BY (v.resultado = 'programada') DESC, v.fecha_programada DESC LIMIT 1`, [idOrden],
   );
   return rows[0] ?? null;
+}
+
+/**
+ * La visita de la orden que todavia no se hizo: vigente y sin resultado.
+ *
+ * Una visita ya realizada sigue «vigente» (solo deja de serlo al
+ * reprogramarla), asi que «vigente» no basta para saber si hay una visita
+ * por hacer. Sin esta distincion, despues de una primera visita no se
+ * podia programar otra: el servidor decia que ya habia una.
+ */
+export async function buscarPendienteDeOrden(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(), bloquear = false,
+): Promise<FilaVisita | null> {
+  const { rows } = await ejecutor.query<FilaVisita>(
+    `SELECT ${CAMPOS} ${DESDE} WHERE v.id_orden = $1 AND v.vigente AND v.resultado = 'programada'
+      ORDER BY v.fecha_programada LIMIT 1 ${bloquear ? 'FOR UPDATE OF v' : ''}`, [idOrden],
+  );
+  return rows[0] ?? null;
+}
+
+export async function buscarParaRegistrar(
+  idVisita: string, ejecutor: Ejecutor,
+): Promise<(FilaVisita & { estado_orden: string; id_tienda: string | null; creado_por_orden: string | null; id_tecnico_orden: string | null }) | null> {
+  const { rows } = await ejecutor.query<FilaVisita & {
+    estado_orden: string; id_tienda: string | null; creado_por_orden: string | null; id_tecnico_orden: string | null;
+  }>(
+    `SELECT ${CAMPOS}, o.estado::text AS estado_orden, o.id_tienda, o.creado_por AS creado_por_orden,
+            o.id_tecnico AS id_tecnico_orden
+       ${DESDE} WHERE v.id = $1 FOR UPDATE OF v`,
+    [idVisita],
+  );
+  return rows[0] ?? null;
+}
+
+/** Hora real de llegada: la pone el reloj del servidor. */
+export async function anotarLlegada(ejecutor: Ejecutor, idVisita: string): Promise<void> {
+  await ejecutor.query(
+    'UPDATE visita SET hora_llegada = now() WHERE id = $1 AND hora_llegada IS NULL', [idVisita],
+  );
+}
+
+/** Hora real de salida, resultado y observaciones del tecnico. */
+export async function anotarSalida(
+  ejecutor: Ejecutor, datos: { idVisita: string; resultado: string; observaciones: string | null },
+): Promise<void> {
+  await ejecutor.query(
+    `UPDATE visita SET hora_salida = now(), resultado = $2::resultado_visita,
+            motivo = coalesce($3, motivo)
+      WHERE id = $1 AND resultado = 'programada'`,
+    [datos.idVisita, datos.resultado, datos.observaciones],
+  );
+}
+
+export interface ResumenDeAgenda {
+  readonly programadas: number; readonly en_curso: number; readonly realizadas: number;
+  readonly resueltas_en_sitio: number; readonly requiere_traslado_taller: number;
+  readonly cliente_ausente: number; readonly no_autorizada: number;
+}
+
+/** Conteos de las visitas vigentes del filtro (las reprogramadas no cuentan dos veces). */
+export async function resumir(filtro: FiltroAgenda, ejecutor: Ejecutor = ejecutorPorDefecto()): Promise<ResumenDeAgenda> {
+  const { rows } = await ejecutor.query<ResumenDeAgenda>(
+    `SELECT count(*) FILTER (WHERE v.resultado = 'programada' AND v.hora_llegada IS NULL)::int AS programadas,
+            count(*) FILTER (WHERE v.resultado = 'programada' AND v.hora_llegada IS NOT NULL)::int AS en_curso,
+            count(*) FILTER (WHERE v.resultado <> 'programada')::int AS realizadas,
+            count(*) FILTER (WHERE v.resultado = 'resuelta_en_sitio')::int AS resueltas_en_sitio,
+            count(*) FILTER (WHERE v.resultado = 'requiere_traslado_taller')::int AS requiere_traslado_taller,
+            count(*) FILTER (WHERE v.resultado = 'cliente_ausente')::int AS cliente_ausente,
+            count(*) FILTER (WHERE v.resultado = 'no_autorizada')::int AS no_autorizada
+       FROM visita v ${DONDE.replace('($4::boolean IS FALSE OR v.vigente)', 'v.vigente')}`,
+    parametros(filtro).slice(0, 3),
+  );
+  return rows[0]!;
 }
 
 export async function tecnicoExiste(
@@ -151,8 +225,9 @@ export async function registrarResultado(
   },
 ): Promise<void> {
   await ejecutor.query(
+    // Si la llegada ya se marco en linea, se respeta: es la hora real.
     `UPDATE visita
-        SET resultado = $2::resultado_visita, hora_llegada = $3, hora_salida = $4,
+        SET resultado = $2::resultado_visita, hora_llegada = coalesce(hora_llegada, $3), hora_salida = $4,
             motivo = coalesce($5, motivo)
       WHERE id = $1`,
     [datos.id, datos.resultado, datos.horaLlegada, datos.horaSalida, datos.motivo],
@@ -167,4 +242,13 @@ export async function tecnicoDeUsuario(
     'SELECT id FROM tecnico WHERE id_usuario = $1 AND activo', [idUsuario],
   );
   return rows[0]?.id ?? null;
+}
+
+export async function ordenParaVisita(
+  idOrden: string, ejecutor: Ejecutor,
+): Promise<{ estado: string; modalidad: string } | null> {
+  const { rows } = await ejecutor.query<{ estado: string; modalidad: string }>(
+    'SELECT estado::text AS estado, modalidad::text AS modalidad FROM orden_servicio WHERE id = $1', [idOrden],
+  );
+  return rows[0] ?? null;
 }

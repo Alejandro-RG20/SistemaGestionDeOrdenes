@@ -1,4 +1,6 @@
 /** Filas de articulo y su traduccion a los contratos publicos. */
+import { mesesDeLaVigencia } from '@servitotal/compartido';
+import { cubreElDia } from '../../dominio/garantias/indice.js';
 import type {
   CoberturaArticulo, FichaArticulo, OrdenDelHistorial, ResumenArticulo, TipoGarantia,
 } from '@servitotal/compartido';
@@ -74,9 +76,9 @@ export function aCobertura(fila: FilaCobertura, hoy: Date): CoberturaArticulo {
     documentoRespaldo: fila.documento_respaldo,
     idClienteContratante: fila.id_cliente_contratante,
     activa: fila.activa,
-    vigenteHoy: fila.activa
-      && fila.vigente_desde.getTime() <= hoy.getTime()
-      && fila.vigente_hasta.getTime() >= hoy.getTime(),
+    // Por dia de calendario: el ultimo dia cubierto cuenta entero.
+    vigenteHoy: fila.activa && cubreElDia(fila.vigente_desde, fila.vigente_hasta, hoy),
+    meses: mesesDeLaVigencia(comoFecha(fila.vigente_desde)!, comoFecha(fila.vigente_hasta)!),
   };
 }
 

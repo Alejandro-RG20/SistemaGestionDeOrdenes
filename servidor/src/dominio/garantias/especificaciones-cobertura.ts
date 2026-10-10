@@ -29,8 +29,7 @@ export const tienePolizaExtendidaVigente: EspecificacionCobertura = especificaci
   (contexto) => contexto.polizas.some((poliza) =>
     poliza.activa
     && poliza.tipo === TIPO_GARANTIA.ADICIONAL
-    && poliza.vigenteDesde.getTime() <= contexto.momento.getTime()
-    && poliza.vigenteHasta.getTime() >= contexto.momento.getTime()
+    && cubreElDia(poliza.vigenteDesde, poliza.vigenteHasta, contexto.momento)
     // Una poliza sin contratante anotado se considera del comprador
     // registrado, que es a quien pertenece la ficha del articulo.
     && (poliza.idClienteContratante ?? contexto.articulo.idCliente) === contexto.idClienteSolicitante),
@@ -66,9 +65,7 @@ export const dentroDelPlazoDeFabrica: EspecificacionCobertura = especificacion(
     // con la fecha de compra y los meses de la regla vigente.
     const registradas = garantiasDeProveedorRegistradas(contexto);
     if (registradas.length > 0) {
-      return registradas.some((poliza) =>
-        poliza.vigenteDesde.getTime() <= contexto.momento.getTime()
-        && poliza.vigenteHasta.getTime() >= contexto.momento.getTime());
+      return registradas.some((poliza) => cubreElDia(poliza.vigenteDesde, poliza.vigenteHasta, contexto.momento));
     }
     return contexto.articulo.fechaCompra !== null
       && mesesTranscurridos(contexto.articulo.fechaCompra, contexto.momento) < contexto.regla.mesesCobertura;
@@ -110,3 +107,14 @@ export const TODAS_LAS_CONDICIONES: readonly EspecificacionCobertura[] = [
   dentroDelPlazoDeFabrica,
   fallaExcluidaPorLaRegla,
 ];
+
+/**
+ * La cobertura incluye el dia de `momento`. Las vigencias son fechas de
+ * calendario: el ultimo dia cuenta entero. Antes se comparaba contra la
+ * medianoche del ultimo dia, y una poliza dejaba de valer a las 00:00 del
+ * dia en que todavia estaba vigente.
+ */
+export function cubreElDia(desde: Date, hasta: Date, momento: Date): boolean {
+  const dia = momento.toISOString().slice(0, 10);
+  return desde.toISOString().slice(0, 10) <= dia && hasta.toISOString().slice(0, 10) >= dia;
+}

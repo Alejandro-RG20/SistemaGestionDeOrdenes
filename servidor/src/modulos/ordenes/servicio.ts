@@ -17,7 +17,9 @@ import type { Ejecutor } from '../../comun/transacciones.js';
 import { enTransaccion } from '../../comun/transacciones.js';
 import type { ParametrosPagina } from '../../comun/paginacion.js';
 import { construirPaginacion } from '../../comun/paginacion.js';
-import { ErrorConflicto, ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
+import {
+  ErrorAutorizacion, ErrorConflicto, ErrorDominio, ErrorNoEncontrado, ErrorValidacion,
+} from '../../comun/errores.js';
 import { TECNICO_ASIGNADO, definicionDe, destinosPosibles } from '../../dominio/ordenes/indice.js';
 import { horasParaVencer, sumarHorasLaborables, type CalendarioLaboral } from '../../dominio/plazos/indice.js';
 import * as servicioAgenda from '../agenda/servicio.js';
@@ -185,8 +187,45 @@ function conModalidadElegida(
  * ubicacion se COPIAN de la ficha viva del cliente y a partir de aqui
  * quedan congelados: que el cliente se mude no mueve esta orden.
  */
+/**
+ * Crea la orden y, si es de ruta y viene con visita, la programa.
+ *
+ * Todo en una transaccion: si la franja del tecnico esta ocupada, no queda
+ * una orden a medias. La modalidad (ruta o taller) es independiente de la
+ * garantia: cualquiera de las dos combina con cualquier garantia.
+ */
 export async function crear(actor: Actor, peticion: PeticionCrearOrden): Promise<FichaOrden> {
-  const idOrden = await enTransaccion(async (cliente) => {
+  const esRuta = peticion.modalidad === MODALIDAD_SERVICIO.RUTA;
+  const visita = peticion.visita ?? null;
+  if (!esRuta && visita !== null) {
+    throw new ErrorValidacion(
+      'En una orden de taller el cliente lleva el articulo: no se programa visita a domicilio.',
+      { visita: 'No aplica a taller.' },
+    );
+  }
+  if (visita?.idTecnico != null
+    && !(actor.permisos.includes('ordenes.asignar') && actor.permisos.includes('agenda.programar'))) {
+    throw new ErrorAutorizacion(
+      'Asignar el tecnico y programar la visita corresponde a quien despacha. Registre la orden con la '
+        + 'fecha solicitada y la jefatura de tecnicos la programara.',
+    );
+  }
+
+  const idOrden = await enTransaccion(async () => {
+    const id = await crearRegistro(actor, peticion);
+    if (visita?.idTecnico != null) {
+      await asignarTecnico(actor, id, { idTecnico: visita.idTecnico });
+      await servicioAgenda.programarVisita(actor, id, {
+        idTecnico: visita.idTecnico, fechaProgramada: visita.fechaProgramada, franjaHoraria: visita.franjaHoraria,
+      });
+    }
+    return id;
+  });
+  return obtenerFicha(actor, idOrden);
+}
+
+async function crearRegistro(actor: Actor, peticion: PeticionCrearOrden): Promise<string> {
+  return enTransaccion(async (cliente) => {
     // Reenviar la misma orden desde el movil no la duplica.
     if (peticion.id !== undefined && await repositorio.existeOrden(peticion.id, cliente)) {
       throw new ErrorConflicto(
@@ -256,6 +295,14 @@ export async function crear(actor: Actor, peticion: PeticionCrearOrden): Promise
 
     const esRuta = peticion.modalidad === MODALIDAD_SERVICIO.RUTA;
     const idZona = esRuta ? peticion.idZona ?? congelables.id_zona : null;
+    // Una visita a domicilio necesita a donde ir. En taller no se pide.
+    const direccionServicio = esRuta ? peticion.direccionServicio?.trim() || congelables.detalle : null;
+    if (esRuta && (direccionServicio === null || direccionServicio.trim() === '')) {
+      throw new ErrorValidacion(
+        'Una visita a domicilio necesita la direccion donde se hara. El cliente no tiene ninguna registrada.',
+        { direccionServicio: 'Indique la direccion de la visita.' },
+      );
+    }
     const cargoVisita = esRuta ? Number(congelables.cargo_visita ?? 0) : 0;
 
     const calendario = await servicioAgenda.obtenerCalendarioLaboral(actor.idCentro, cliente);
@@ -277,7 +324,7 @@ export async function crear(actor: Actor, peticion: PeticionCrearOrden): Promise
       idReglaCobertura: cobertura.idReglaCobertura,
       idResponsableActual: actor.id,
       telefonoContacto: telefono,
-      direccionServicio: esRuta ? peticion.direccionServicio ?? congelables.detalle : null,
+      direccionServicio,
       referenciaUbicacion: esRuta ? peticion.referenciaUbicacion ?? congelables.referencia : null,
       idZona,
       cargoVisita,
@@ -294,16 +341,21 @@ export async function crear(actor: Actor, peticion: PeticionCrearOrden): Promise
       estadoAnterior: null,
       estadoNuevo: ESTADO_ORDEN.REGISTRADA,
       idResponsable: actor.id,
-      observacion: `Orden registrada. Cobertura: ${cobertura.tipo}. ${cobertura.motivo}`
+      observacion: `Orden registrada. ${esRuta ? 'Visita a domicilio (ruta)' : 'El cliente lleva el articulo al taller'}. `
+        + `Cobertura: ${cobertura.tipo}. ${cobertura.motivo}`
         + (peticion.tipoGarantiaElegida === undefined || peticion.tipoGarantiaElegida === evaluacion.tipo
           ? ''
-          : ` (Elegida por quien registro; la evaluacion indicaba ${evaluacion.tipo}.)`),
+          : ` (Elegida por quien registro; la evaluacion indicaba ${evaluacion.tipo}.)`)
+        // La fecha que pide el cliente queda en el registro de la orden aunque
+        // todavia no haya tecnico: la programa despues quien despacha.
+        + (peticion.visita != null && peticion.visita.idTecnico == null
+          ? ` Visita solicitada por el cliente para el ${peticion.visita.fechaProgramada}, franja `
+            + `${peticion.visita.franjaHoraria}; pendiente de asignar tecnico y programar.`
+          : ''),
     });
 
     return creada.id;
   });
-
-  return obtenerFicha(actor, idOrden);
 }
 
 export async function asignarTecnico(

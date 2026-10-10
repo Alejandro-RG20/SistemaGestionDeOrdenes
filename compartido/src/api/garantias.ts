@@ -52,6 +52,11 @@ export type VigenciaGarantia = 'vigente' | 'vencida' | 'no_registrada';
 
 export interface EstadoGarantiaArticulo {
   readonly vigencia: VigenciaGarantia;
+  /** Compra (proveedor) o contratacion (adicional). */
+  readonly desde: string | null;
+  /** Duracion en meses, si las fechas son meses exactos. */
+  readonly meses: number | null;
+  /** Ultimo dia cubierto. */
   readonly venceEl: string | null;
   readonly origen: 'registrada' | 'regla' | null;
   readonly aplicable: boolean;

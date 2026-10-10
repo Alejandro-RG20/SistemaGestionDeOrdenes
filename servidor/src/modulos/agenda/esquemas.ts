@@ -18,3 +18,12 @@ export const esquemaReprogramarVisita = esquemaProgramarVisita.extend({
     .min(10, 'Escriba por que se reprograma: al menos 10 caracteres.')
     .max(300),
 });
+
+const resultados = ['resuelta_en_sitio', 'requiere_traslado_taller', 'cliente_ausente', 'no_autorizada'] as const;
+
+export const esquemaSalidaDeVisita = z.object({
+  resultado: z.enum(resultados, {
+    errorMap: () => ({ message: 'Indique el resultado: resuelta en sitio, requiere traslado, cliente ausente o no autorizada.' }),
+  }),
+  observaciones: z.string().trim().max(1000).nullish(),
+});

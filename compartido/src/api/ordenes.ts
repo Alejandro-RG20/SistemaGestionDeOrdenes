@@ -116,6 +116,16 @@ export interface PeticionCrearOrden {
    * aplica. Si se omite (la cola del movil), decide el motor de garantias.
    */
   readonly tipoGarantiaElegida?: 'proveedor' | 'adicional' | 'particular';
+  /**
+   * Solo para modalidad ruta: fecha y franja de la visita. Con tecnico, se
+   * asigna y se programa al crear (quien despacha); sin tecnico, la fecha
+   * solicitada queda anotada en la orden para programarla despues.
+   */
+  readonly visita?: {
+    readonly fechaProgramada: string;
+    readonly franjaHoraria: string;
+    readonly idTecnico?: string | null;
+  } | null;
 }
 
 export interface PeticionAsignarTecnico {

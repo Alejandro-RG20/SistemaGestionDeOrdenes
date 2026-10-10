@@ -5,6 +5,7 @@ export interface FilaVisita {
   readonly id: string;
   readonly id_orden: string;
   readonly numero_orden: number;
+  readonly codigo_orden?: string | null;
   readonly id_tecnico: string;
   readonly tecnico: string;
   readonly fecha_programada: Date;
@@ -37,6 +38,7 @@ export function aResumenVisita(fila: FilaVisita): ResumenVisita {
     id: fila.id,
     idOrden: fila.id_orden,
     numeroOrden: fila.numero_orden,
+    codigoOrden: fila.codigo_orden ?? null,
     idTecnico: fila.id_tecnico,
     tecnico: fila.tecnico,
     fechaProgramada: comoFecha(fila.fecha_programada),

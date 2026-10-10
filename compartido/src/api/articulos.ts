@@ -15,6 +15,8 @@ export interface CoberturaArticulo {
   readonly idClienteContratante: string | null;
   readonly activa: boolean;
   readonly vigenteHoy: boolean;
+  /** Duracion en meses, si las fechas corresponden a meses exactos. */
+  readonly meses: number | null;
 }
 
 export interface ResumenArticulo {
@@ -62,6 +64,16 @@ export interface PeticionCrearArticulo {
   readonly sinSerieLegible?: boolean;
   readonly fechaCompra?: string | null;
   readonly facturaReferencia?: string | null;
+  /**
+   * Garantia adicional que el cliente compro, si la compro. Se omite (o
+   * null) cuando no la tiene: no hay que inventar fechas. El vencimiento lo
+   * calcula el servidor con `ultimoDiaCubierto`.
+   */
+  readonly garantiaAdicional?: {
+    readonly fechaContratacion: string;
+    readonly meses: number;
+    readonly documentoRespaldo?: string | null;
+  } | null;
 }
 
 /** Cambios que no alteran la cobertura y no exigen jefatura. */
@@ -95,7 +107,10 @@ export interface PeticionTransferirArticulo {
 export interface PeticionRegistrarCobertura {
   readonly tipo: TipoGarantia;
   readonly vigenteDesde: string;
-  readonly vigenteHasta: string;
+  /** Ultimo dia cubierto. Si se indican `meses`, lo calcula el servidor. */
+  readonly vigenteHasta?: string;
+  /** Duracion en meses; alternativa a `vigenteHasta`. */
+  readonly meses?: number;
   readonly documentoRespaldo?: string | null;
   readonly idClienteContratante?: string | null;
 }

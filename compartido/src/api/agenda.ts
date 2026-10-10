@@ -11,6 +11,8 @@ export interface ResumenVisita {
   readonly id: string;
   readonly idOrden: string;
   readonly numeroOrden: number;
+  /** Codigo legible de la orden (OS-AAAA-NNNNNN). */
+  readonly codigoOrden: string | null;
   readonly idTecnico: string;
   readonly tecnico: string;
   readonly fechaProgramada: string;
@@ -20,6 +22,7 @@ export interface ResumenVisita {
   readonly horaSalida: string | null;
   readonly resultado: ResultadoVisita;
   readonly vigente: boolean;
+  /** Motivo de reprogramacion u observaciones del tecnico al cerrar la visita. */
   readonly motivo: string | null;
   readonly direccionServicio: string | null;
   readonly zona: string | null;
@@ -45,4 +48,23 @@ export interface JornadaDelCentro {
 export interface CalendarioDelCentro {
   readonly jornadas: readonly JornadaDelCentro[];
   readonly diasNoLaborables: readonly { readonly fecha: string; readonly motivo: string | null }[];
+}
+
+/** Conteo de las visitas vigentes de un periodo (agenda e indicadores). */
+export interface ResumenAgenda {
+  /** Programadas, todavia sin llegada. */
+  readonly programadas: number;
+  /** Con llegada registrada y sin salida. */
+  readonly enCurso: number;
+  /** Con resultado registrado. */
+  readonly realizadas: number;
+  readonly resueltasEnSitio: number;
+  readonly requiereTrasladoTaller: number;
+  readonly clienteAusente: number;
+  readonly noAutorizada: number;
+}
+
+export interface PeticionSalidaDeVisita {
+  readonly resultado: 'resuelta_en_sitio' | 'requiere_traslado_taller' | 'cliente_ausente' | 'no_autorizada';
+  readonly observaciones?: string | null;
 }
