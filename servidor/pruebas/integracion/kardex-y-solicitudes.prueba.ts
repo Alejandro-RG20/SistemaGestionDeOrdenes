@@ -109,7 +109,7 @@ describe('la aritmetica del inventario cuadra con el kardex', () => {
     const orden = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: base[0]!.id_cliente, idArticulo: base[0]!.id,
-        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Para probar la aritmetica del inventario',
+        modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'proveedor', fallaReportada: 'Para probar la aritmetica del inventario',
       }).expect(201);
     await peticion(entorno.aplicacion)
       .put(`${RAIZ}/ordenes/${orden.body.data.id}/tecnico`).set(jefatura)
@@ -214,7 +214,7 @@ describe('el recorrido de la solicitud de repuesto', () => {
     const orden = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: base[0]!.id_cliente, idArticulo: base[0]!.id,
-        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Para probar el recorrido de la solicitud',
+        modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'proveedor', fallaReportada: 'Para probar el recorrido de la solicitud',
       }).expect(201);
     await peticion(entorno.aplicacion)
       .put(`${RAIZ}/ordenes/${orden.body.data.id}/tecnico`).set(jefatura)

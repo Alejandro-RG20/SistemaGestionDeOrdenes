@@ -140,7 +140,7 @@ describe('el ciclo completo de una orden, sin cobros ni pagos', () => {
     const creada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id,
-        modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'No enfria y hace ruido al arrancar',
+        modalidad: MODALIDAD_SERVICIO.TALLER, tipoGarantiaElegida: 'proveedor', fallaReportada: 'No enfria y hace ruido al arrancar',
       }).expect(201);
     ciclo.idOrden = creada.body.data.id;
     expect(creada.body.data.codigo).toMatch(/^OS-\d{4}-\d{6}$/);

@@ -1,9 +1,10 @@
 /**
- * Articulos y motor de garantias contra la base real.
+ * Articulos y estado de sus garantias contra la base real.
  *
- * Lo que se comprueba aqui es la regla mas cara de equivocar: quien paga la
- * reparacion, y que cambiar un dato del articulo recalcule las ordenes
- * abiertas sin tocar las cerradas.
+ * El sistema ya no decide quien paga: informa la vigencia de cada garantia
+ * y advierte. Lo que se comprueba aqui es que esa informacion sea correcta
+ * y que cambiar un dato del articulo NO cambie en silencio la garantia de
+ * las ordenes ya creadas.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import peticion from 'supertest';
@@ -11,7 +12,7 @@ import { CODIGO_ROL, TIPO_GARANTIA } from '@servitotal/compartido';
 import { CONTRASENA_DE_PRUEBA, montarApi, usuarioConRol, type EntornoApi } from '../apoyo/entorno-api.js';
 
 const RAIZ = '/api/v1';
-const MOTIVO = 'Prueba automatizada del motor de garantias';
+const MOTIVO = 'Prueba automatizada de garantias';
 let entorno: EntornoApi;
 let jefatura: { Authorization: string };
 let agente: { Authorization: string };
@@ -66,8 +67,11 @@ async function crearArticulo(datos: Record<string, unknown>): Promise<string> {
   return respuesta.body.data.id;
 }
 
-async function evaluar(idArticulo: string, extras: Record<string, unknown> = {}): Promise<{
-  tipo: string; motivo: string; detieneLaOrden: boolean; idReglaCobertura: string;
+interface EstadoGarantia { vigencia: string; aplicable: boolean; motivo: string | null; origen: string | null }
+async function consultar(idArticulo: string, extras: Record<string, unknown> = {}): Promise<{
+  garantias: { proveedor: EstadoGarantia; adicional: EstadoGarantia };
+  advertencias: string[];
+  idReglaReferencia: string | null;
 }> {
   const respuesta = await peticion(entorno.aplicacion).post(`${RAIZ}/coberturas/evaluar`)
     .set(jefatura).send({ idArticulo, ...extras }).expect(200);
@@ -139,50 +143,53 @@ describe('alta de articulos', () => {
   });
 });
 
-describe('el motor decide con el articulo, no con el cliente', () => {
-  it('tienda del grupo y dentro de plazo: la cubre el fabricante', async () => {
+describe('la consulta informa con el articulo y no decide', () => {
+  it('tienda del grupo y dentro de plazo: proveedor vigente y aplicable, sin advertencias', async () => {
     const base = await catalogo();
     const id = await crearArticulo({
       idCliente: base.idCliente, idMarca: base.idMarca, idCategoria: base.idCategoria,
       idTiendaOrigen: base.idTiendaGrupo, fechaCompra: haceMeses(6),
     });
-    const evaluacion = await evaluar(id);
-    expect(evaluacion.tipo).toBe(TIPO_GARANTIA.PROVEEDOR);
-    expect(evaluacion.idReglaCobertura).toBeTypeOf('string');
+    const consulta = await consultar(id);
+    expect(consulta.garantias.proveedor).toMatchObject({ vigencia: 'vigente', aplicable: true, origen: 'regla' });
+    expect(consulta.idReglaReferencia).toBeTypeOf('string');
+    expect(consulta.advertencias).toEqual([]);
+    // No hay veredicto: la garantia la elige una persona.
+    expect(consulta).not.toHaveProperty('tipo');
   });
 
-  it('comprado fuera del grupo: lo paga el cliente', async () => {
+  it('comprado fuera del grupo: lo advierte', async () => {
     const base = await catalogo();
     const id = await crearArticulo({
       idCliente: base.idCliente, idMarca: base.idMarca, idCategoria: base.idCategoria,
       idTiendaOrigen: base.idTiendaExterna, fechaCompra: haceMeses(2),
     });
-    const evaluacion = await evaluar(id);
-    expect(evaluacion.tipo).toBe(TIPO_GARANTIA.PARTICULAR);
-    expect(evaluacion.motivo).toMatch(/tienda del grupo/);
+    const consulta = await consultar(id);
+    expect(consulta.garantias.proveedor.aplicable).toBe(false);
+    expect(consulta.advertencias.join(' ')).toMatch(/tienda del grupo/);
   });
 
-  it('fuera de plazo: lo paga el cliente', async () => {
+  it('fuera de plazo: vencida', async () => {
     const base = await catalogo();
     const id = await crearArticulo({
       idCliente: base.idCliente, idMarca: base.idMarca, idCategoria: base.idCategoria,
       idTiendaOrigen: base.idTiendaGrupo, fechaCompra: haceMeses(80),
     });
-    expect((await evaluar(id)).tipo).toBe(TIPO_GARANTIA.PARTICULAR);
+    const consulta = await consultar(id);
+    expect(consulta.garantias.proveedor.vigencia).toBe('vencida');
+    expect(consulta.advertencias.join(' ')).toMatch(/Vencio/);
   });
 
-  it('la garantia no se traslada: otro solicitante pierde la cobertura', async () => {
+  it('la garantia no se traslada: para otro solicitante no aplica', async () => {
     const base = await catalogo();
     const id = await crearArticulo({
       idCliente: base.idCliente, idMarca: base.idMarca, idCategoria: base.idCategoria,
       idTiendaOrigen: base.idTiendaGrupo, fechaCompra: haceMeses(6),
     });
-
-    expect((await evaluar(id)).tipo).toBe(TIPO_GARANTIA.PROVEEDOR);
-
-    const deSegundaMano = await evaluar(id, { idClienteSolicitante: base.idOtroCliente });
-    expect(deSegundaMano.tipo).toBe(TIPO_GARANTIA.PARTICULAR);
-    expect(deSegundaMano.motivo).toMatch(/cambia de dueno/i);
+    expect((await consultar(id)).garantias.proveedor.aplicable).toBe(true);
+    const deSegundaMano = await consultar(id, { idClienteSolicitante: base.idOtroCliente });
+    expect(deSegundaMano.garantias.proveedor.aplicable).toBe(false);
+    expect(deSegundaMano.advertencias.join(' ')).toMatch(/otra persona/i);
   });
 
   it('la poliza extendida tampoco se traslada', async () => {
@@ -199,32 +206,9 @@ describe('el motor decide con el articulo, no con el cliente', () => {
         documentoRespaldo: 'POL-999888',
       }).expect(201);
 
-    expect((await evaluar(id)).tipo).toBe(TIPO_GARANTIA.ADICIONAL);
-    expect((await evaluar(id, { idClienteSolicitante: base.idOtroCliente })).tipo)
-      .toBe(TIPO_GARANTIA.PARTICULAR);
-  });
-
-  it('una falla excluida degrada la cobertura y detiene la orden', async () => {
-    const base = await catalogo();
-    const id = await crearArticulo({
-      idCliente: base.idCliente, idMarca: base.idMarca, idCategoria: base.idCategoria,
-      idTiendaOrigen: base.idTiendaGrupo, fechaCompra: haceMeses(3),
-    });
-
-    // Se fija una regla con exclusion conocida para no depender del azar de la siembra.
-    await peticion(entorno.aplicacion).post(`${RAIZ}/coberturas/reglas`).set(jefatura)
-      .send({
-        idMarca: base.idMarca, idCategoria: base.idCategoria, mesesCobertura: 24,
-        exigeTiendaGrupo: true, fallasExcluidas: ['sobrecarga_electrica', 'golpe'],
-        motivo: `${MOTIVO}: se fija la exclusion por sobrecarga`,
-      }).expect(201);
-
-    expect((await evaluar(id)).tipo).toBe(TIPO_GARANTIA.PROVEEDOR);
-
-    const tras = await evaluar(id, { fallaReal: 'Tarjeta quemada por sobrecarga electrica' });
-    expect(tras.tipo).toBe(TIPO_GARANTIA.PARTICULAR);
-    expect(tras.detieneLaOrden).toBe(true);
-    expect(tras.motivo).toMatch(/detenida/);
+    expect((await consultar(id)).garantias.adicional).toMatchObject({ vigencia: 'vigente', aplicable: true });
+    expect((await consultar(id, { idClienteSolicitante: base.idOtroCliente })).garantias.adicional.aplicable)
+      .toBe(false);
   });
 });
 
@@ -302,7 +286,7 @@ describe('datos sensibles del articulo', () => {
   });
 });
 
-describe('reevaluacion de las ordenes abiertas', () => {
+describe('cambios del articulo y ordenes abiertas', () => {
   /** Toma una orden abierta de la siembra y la deja en un estado conocido. */
   async function ordenAbiertaConArticuloPropio(): Promise<{
     idOrden: string; idArticulo: string; numero: number; idCliente: string;
@@ -335,7 +319,7 @@ describe('reevaluacion de las ordenes abiertas', () => {
     };
   }
 
-  it('cambiar la fecha de compra recalcula la cobertura de las ordenes abiertas', async () => {
+  it('cambiar la fecha de compra NO cambia la garantia de las ordenes abiertas: les deja una nota', async () => {
     const orden = await ordenAbiertaConArticuloPropio();
 
     const respuesta = await peticion(entorno.aplicacion)
@@ -345,29 +329,37 @@ describe('reevaluacion de las ordenes abiertas', () => {
         motivo: `${MOTIVO}: la fecha estaba mal digitada, el aparato es de 2018`,
       }).expect(200);
 
-    const reevaluada = respuesta.body.data.ordenesReevaluadas
+    const abierta = respuesta.body.data.ordenesAbiertas
       .find((o: { numero: number }) => o.numero === orden.numero);
-    expect(reevaluada).toBeDefined();
-    expect(reevaluada.tipoAnterior).toBe(TIPO_GARANTIA.PROVEEDOR);
-    expect(reevaluada.tipoNuevo).toBe(TIPO_GARANTIA.PARTICULAR);
-    expect(reevaluada.detenida).toBe(true);
+    expect(abierta).toBeDefined();
+    expect(abierta.tipoGarantia).toBe(TIPO_GARANTIA.PROVEEDOR);
+    expect(respuesta.body.data).not.toHaveProperty('ordenesReevaluadas');
 
-    const { rows } = await entorno.piscina.query<{ tipo_garantia: string; id_regla_cobertura: string }>(
-      'SELECT tipo_garantia, id_regla_cobertura FROM orden_servicio WHERE id = $1', [orden.idOrden],
+    const { rows } = await entorno.piscina.query<{ tipo_garantia: string }>(
+      'SELECT tipo_garantia FROM orden_servicio WHERE id = $1', [orden.idOrden],
     );
-    expect(rows[0]!.tipo_garantia).toBe(TIPO_GARANTIA.PARTICULAR);
-    expect(rows[0]!.id_regla_cobertura).toBeTypeOf('string');
+    expect(rows[0]!.tipo_garantia).toBe(TIPO_GARANTIA.PROVEEDOR);
+
+    const { rows: notas } = await entorno.piscina.query<{ observacion: string }>(
+      `SELECT observacion FROM evento_orden WHERE id_orden = $1 ORDER BY momento DESC LIMIT 1`, [orden.idOrden],
+    );
+    expect(notas[0]!.observacion).toMatch(/Cambio de datos del articulo/);
+    expect(notas[0]!.observacion).toMatch(/no se modifico/);
   });
 
-  it('deja el cambio en la bitacora inmutable de la orden', async () => {
-    const { rows } = await entorno.piscina.query<{ observacion: string }>(
-      `SELECT observacion FROM evento_orden
-        WHERE observacion LIKE 'Cobertura reevaluada%' ORDER BY momento DESC LIMIT 1`,
+  it('ni la bitacora registra un cambio de garantia que nadie decidio', async () => {
+    const orden = await ordenAbiertaConArticuloPropio();
+    await peticion(entorno.aplicacion)
+      .put(`${RAIZ}/articulos/${orden.idArticulo}/datos-sensibles`).set(jefatura)
+      .send({ fechaCompra: haceMeses(100), motivo: `${MOTIVO}: otra correccion de fecha` }).expect(200);
+    const { rows } = await entorno.piscina.query(
+      `SELECT 1 FROM bitacora WHERE tabla = 'orden_servicio' AND id_registro = $1
+          AND campo = 'tipo_garantia' AND accion = 'modificar'`, [orden.idOrden],
     );
-    expect(rows[0]!.observacion).toMatch(/de proveedor a particular/);
+    expect(rows).toHaveLength(0);
   });
 
-  it('transferir el articulo deja sin garantia a las ordenes abiertas', async () => {
+  it('transferir el articulo tampoco cambia la garantia de las ordenes abiertas', async () => {
     const base = await catalogo();
     const orden = await ordenAbiertaConArticuloPropio();
 
@@ -378,9 +370,13 @@ describe('reevaluacion de las ordenes abiertas', () => {
         motivo: `${MOTIVO}: el cliente vendio el aparato`,
       }).expect(200);
 
-    const reevaluada = respuesta.body.data.ordenesReevaluadas
+    const abierta = respuesta.body.data.ordenesAbiertas
       .find((o: { numero: number }) => o.numero === orden.numero);
-    expect(reevaluada.tipoNuevo).toBe(TIPO_GARANTIA.PARTICULAR);
+    expect(abierta.tipoGarantia).toBe(TIPO_GARANTIA.PROVEEDOR);
+    const { rows } = await entorno.piscina.query<{ tipo_garantia: string }>(
+      'SELECT tipo_garantia FROM orden_servicio WHERE id = $1', [orden.idOrden],
+    );
+    expect(rows[0]!.tipo_garantia).toBe(TIPO_GARANTIA.PROVEEDOR);
   });
 
   it('las ordenes ya entregadas no se tocan', async () => {
@@ -405,7 +401,7 @@ describe('reevaluacion de las ordenes abiertas', () => {
     expect(despues[0]!.tipo_garantia).toBe(entregada.tipo_garantia);
   });
 
-  it('si algo falla, ni el articulo cambia ni se reevalua nada', async () => {
+  it('si algo falla, ni el articulo cambia ni se anota nada', async () => {
     const base = await catalogo();
     const id = await crearArticulo({
       idCliente: base.idCliente, idMarca: base.idMarca, idCategoria: base.idCategoria,

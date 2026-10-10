@@ -59,7 +59,7 @@ async function crearOrden(cuerpo: Record<string, unknown> = {}): Promise<{ id: s
   const respuesta = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
     .send({
       idCliente: base.idCliente, idArticulo: base.idArticulo,
-      modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'No enfria bien',
+      modalidad: MODALIDAD_SERVICIO.TALLER, tipoGarantiaElegida: 'proveedor', fallaReportada: 'No enfria bien',
       ...cuerpo,
     }).expect(201);
   return { id: respuesta.body.data.id, numero: respuesta.body.data.numero };
@@ -126,7 +126,7 @@ describe('creacion de la orden', () => {
     const creada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         id: idPropio, idCliente: base.idCliente, idArticulo: base.idArticulo,
-        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Hace ruido al arrancar',
+        modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'proveedor', fallaReportada: 'Hace ruido al arrancar',
         levantadaEnCampo: true,
       }).expect(201);
 
@@ -138,7 +138,7 @@ describe('creacion de la orden', () => {
     const reenvio = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         id: idPropio, idCliente: base.idCliente, idArticulo: base.idArticulo,
-        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Hace ruido al arrancar',
+        modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'proveedor', fallaReportada: 'Hace ruido al arrancar',
       });
     expect(reenvio.status).toBe(409);
     expect(reenvio.body.error.message).toMatch(/ya llego bien/);
@@ -149,7 +149,7 @@ describe('creacion de la orden', () => {
     const creada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: base.idCliente, idArticulo: base.idArticulo,
-        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'No enciende',
+        modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'proveedor', fallaReportada: 'No enciende',
       }).expect(201);
 
     expect(creada.body.data.telefonoContacto).toMatch(/^\d{8}$/);
@@ -174,14 +174,34 @@ describe('creacion de la orden', () => {
     expect(ficha.body.data.direccionServicio).toBeNull();
   });
 
-  it('evalua la cobertura al crearse y congela la regla aplicada', async () => {
+  it('registra la garantia elegida, quien y cuando la decidio, y guarda la regla de referencia', async () => {
     const creada = await crearOrden();
     const ficha = await peticion(entorno.aplicacion)
       .get(`${RAIZ}/ordenes/${creada.id}`).set(agente).expect(200);
 
     expect(ficha.body.data.tipoGarantia).toBe(TIPO_GARANTIA.PROVEEDOR);
     expect(ficha.body.data.idReglaCobertura).toBeTypeOf('string');
-    expect(ficha.body.data.eventos[0].observacion).toMatch(/Cobertura: proveedor/);
+    expect(ficha.body.data.eventos[0].observacion).toMatch(/Garantia: proveedor\. Elegida al registrar/);
+
+    const { rows } = await entorno.piscina.query<{ valor_nuevo: string; id_usuario: string; momento: Date }>(
+      `SELECT valor_nuevo, id_usuario, momento FROM bitacora
+        WHERE tabla = 'orden_servicio' AND id_registro = $1 AND campo = 'tipo_garantia'`, [creada.id],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.valor_nuevo).toBe(TIPO_GARANTIA.PROVEEDOR);
+    expect(rows[0]!.id_usuario).toBeTypeOf('string');
+    expect(rows[0]!.momento).toBeInstanceOf(Date);
+  });
+
+  it('sin elegir la garantia no se registra la orden', async () => {
+    const base = await clienteConArticulo();
+    const respuesta = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
+      .send({
+        idCliente: base.idCliente, idArticulo: base.idArticulo,
+        modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'No enfria bien',
+      });
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.fields).toHaveProperty('tipoGarantiaElegida');
   });
 
   it('nace con plazo calculado y arranca en registrada', async () => {
@@ -201,7 +221,7 @@ describe('creacion de la orden', () => {
     const respuesta = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: base.idCliente, idArticulo: '00000000-0000-4000-8000-000000000000',
-        modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'Lo que sea',
+        modalidad: MODALIDAD_SERVICIO.TALLER, tipoGarantiaElegida: 'proveedor', fallaReportada: 'Lo que sea',
       });
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.fields.idArticulo).toBeTypeOf('string');
@@ -338,7 +358,7 @@ describe('conversion de ruta a taller', () => {
     const creada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: base.idCliente, idArticulo: base.idArticulo,
-        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'No enfria',
+        modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'proveedor', fallaReportada: 'No enfria',
       }).expect(201);
     const idOrden = creada.body.data.id;
     const numeroOriginal = creada.body.data.numero;

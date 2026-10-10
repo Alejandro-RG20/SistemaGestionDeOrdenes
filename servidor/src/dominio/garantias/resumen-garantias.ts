@@ -11,8 +11,9 @@
  * este cubierta: eso lo decide el diagnostico (golpes, mal uso, fallas
  * excluidas).
  *
- * Usa las mismas especificaciones que el motor: no es un segundo sistema
- * de decision. Codigo puro.
+ * Es INFORMATIVO: no decide quien paga. Las advertencias que produce se
+ * muestran a quien elige la garantia y quedan anotadas con su decision,
+ * pero no la sustituyen. Codigo puro.
  */
 import { TIPO_GARANTIA, mesesDeLaVigencia, ultimoDiaCubierto } from '@servitotal/compartido';
 import type { ContextoCobertura } from './contexto-cobertura.js';
@@ -67,8 +68,8 @@ export function resumirGarantias(contexto: ContextoCobertura): ResumenGarantias 
       venceEl: fecha(elegida.vigenteHasta),
       origen: 'registrada',
     };
-  } else if (contexto.articulo.fechaCompra !== null) {
-    // El mismo computo que la regla: cubre mientras no se cumplan los meses.
+  } else if (contexto.articulo.fechaCompra !== null && contexto.regla !== null) {
+    // Duracion de referencia: cubre mientras no se cumplan los meses.
     const compra = fecha(contexto.articulo.fechaCompra);
     const meses = contexto.regla.mesesCobertura;
     proveedorBase = {
@@ -79,7 +80,10 @@ export function resumirGarantias(contexto: ContextoCobertura): ResumenGarantias 
       origen: 'regla',
     };
   } else {
-    proveedorBase = { vigencia: 'no_registrada', desde: null, meses: null, venceEl: null, origen: null };
+    // Sin fecha de compra no hay desde donde contar; sin regla de
+    // referencia no se sabe cuantos meses. Se muestra la compra si la hay.
+    const compra = contexto.articulo.fechaCompra === null ? null : fecha(contexto.articulo.fechaCompra);
+    proveedorBase = { vigencia: 'no_registrada', desde: compra, meses: null, venceEl: null, origen: null };
   }
   const tienda = cumpleLaExigenciaDeTienda.seCumple(contexto);
   const proveedorAplica = proveedorBase.vigencia === 'vigente' && comprador && tienda;
@@ -87,7 +91,10 @@ export function resumirGarantias(contexto: ContextoCobertura): ResumenGarantias 
     ...proveedorBase,
     aplicable: proveedorAplica,
     motivo: proveedorAplica ? null
-      : proveedorBase.vigencia === 'no_registrada' ? 'No hay fecha de compra ni garantia de proveedor registrada.'
+      : proveedorBase.vigencia === 'no_registrada'
+        ? (contexto.articulo.fechaCompra === null
+          ? 'No hay fecha de compra ni garantia de proveedor registrada.'
+          : 'No hay garantia de proveedor registrada ni duracion de referencia para esta marca y categoria.')
       : proveedorBase.vigencia === 'vencida' ? `Vencio el ${proveedorBase.venceEl ?? ''}.`
       : !comprador ? 'El articulo esta a nombre de otra persona; la garantia no se traslada.'
       : 'La regla exige que se haya comprado en una tienda del grupo.',
@@ -121,4 +128,42 @@ export function resumirGarantias(contexto: ContextoCobertura): ResumenGarantias 
   }
 
   return { proveedor, adicional };
+}
+
+/** Nombre de cada garantia en las advertencias. */
+const NOMBRE: Readonly<Record<'proveedor' | 'adicional', string>> = {
+  proveedor: 'Garantia del proveedor',
+  adicional: 'Garantia adicional',
+};
+
+/**
+ * Advertencias informativas sobre las garantias del articulo.
+ *
+ * Con `elegida`, la que afecta a la garantia que la persona eligio (vencida,
+ * sin datos, a nombre de otro) va primero. No impiden nada: la decision es
+ * de quien registra, y la advertencia queda anotada junto a ella para que
+ * se sepa con que informacion se tomo.
+ */
+export function advertenciasDeGarantias(
+  resumen: ResumenGarantias,
+  elegida?: string,
+): readonly string[] {
+  const advertencias: string[] = [];
+  for (const clave of ['proveedor', 'adicional'] as const) {
+    const estado = resumen[clave];
+    if (estado.aplicable) continue;
+    const esLaElegida = elegida === clave;
+    // Que el articulo no tenga garantia adicional es lo normal: solo se
+    // advierte si es la que se eligio.
+    if (!esLaElegida && clave === 'adicional' && estado.vigencia === 'no_registrada') continue;
+    const texto = `${NOMBRE[clave]}${esLaElegida ? ' (la elegida)' : ''}: ${estado.motivo ?? 'no aplica.'}`;
+    if (esLaElegida) advertencias.unshift(texto);
+    else advertencias.push(texto);
+  }
+  return advertencias;
+}
+
+/** Solo las advertencias que afectan a la garantia elegida: las que se anotan con la decision. */
+export function advertenciasDeLaElegida(advertencias: readonly string[]): readonly string[] {
+  return advertencias.filter((texto) => texto.includes('(la elegida)'));
 }

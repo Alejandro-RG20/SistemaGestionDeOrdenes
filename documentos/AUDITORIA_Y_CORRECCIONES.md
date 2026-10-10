@@ -498,3 +498,53 @@ Se reutilizaron:
 ### Pendiente o a decidir
 - **Fecha solicitada sin técnico.** Queda solo en el evento de registro de la orden; no hay una columna «fecha solicitada». Si se quiere filtrar por ella en la agenda, hace falta una columna (cambio de esquema, requiere autorización).
 - **Observaciones de la visita.** Se guardan en `visita.motivo`. Si se reprograma una visita ya cerrada, no se toca, porque solo se reprograman visitas pendientes.
+
+---
+
+# Quinta etapa · Garantía elegida por una persona (retiro del motor automático)
+
+**Sin cambios de esquema ni migraciones, y sin tocar la siembra** (`servidor/src/infraestructura/semillas/`, incluido `garantia-provisional.ts`, y `base-datos/` sin modificar). No se borró ninguna tabla, columna, regla ni registro histórico.
+
+## Dependencias encontradas
+
+| Pieza | Uso antes | Ahora |
+|---|---|---|
+| `dominio/garantias/motor-garantias.ts`, `estrategias-cobertura.ts` | decidían quién paga al crear, al diagnosticar y al cambiar el artículo | **retirados** |
+| `especificacion.ts` (combinadores `y/o/no/siempre/desglosar`) | solo los usaba el motor | reducido a `especificacion()` |
+| `fallaExcluidaPorLaRegla`, `normalizar`, `fallaReal` del contexto | reevaluación tras diagnóstico | retirados |
+| `elegirReglaAplicable` | elegía la regla del motor | se conserva en `regla-referencia.ts`: da la **duración de referencia** de la garantía del proveedor |
+| `resumen-garantias.ts`, especificaciones de vigencia | estado de cada garantía | se conserva; ahora también produce **advertencias** y admite que no haya regla |
+| `reclasificacion.ts` | reglas escritas pero sin endpoint | simplificado y **usado** por la reclasificación manual |
+| `POST /coberturas/evaluar` | devolvía un veredicto (`tipo`, `motivo`, `desglose`) | devuelve solo `garantias`, `advertencias` e `idReglaReferencia` |
+| `GET/POST /coberturas/reglas` y pantalla «Reglas de garantía» | parámetros del motor | se conservan como **referencia** de duración; la pantalla lo dice y ahora lista todas las reglas y versiones (antes solo 25 vigentes) |
+| `servicio-reevaluacion.ts` (cambios del artículo) | cambiaba la garantía de las órdenes abiertas | `servicio-ordenes-del-articulo.ts`: **no cambia nada**, deja una nota en cada orden abierta y la respuesta devuelve `ordenesAbiertas` |
+| Diagnóstico del panel | pasaba la orden a particular | registra falla, componente, observaciones y posible exclusión como nota; **no cambia la garantía** |
+| Permiso `garantias.reclasificar` | existía sin uso | lo exige `POST /ordenes/:id/garantia` |
+| `garantias.evaluar`, `garantias.regla.gestionar` | — | sin cambios (sus descripciones están en el catálogo sembrado y no se tocaron) |
+
+## Comportamiento
+
+1. **Al crear la orden** la garantía es obligatoria (`tipoGarantiaElegida`: proveedor, adicional o particular); sin ella, 400. El servidor no la sustituye: si la elegida está vencida, sin datos o a nombre de otro, la orden se registra igual y la advertencia queda anotada. La decisión, con fecha y usuario, se escribe en la bitácora inmutable (`tabla='orden_servicio'`, `campo='tipo_garantia'`, `accion='crear'`). Solo una orden **levantada en campo** puede llegar sin elección: entra `por_validar` (valor ya existente del enumerado) y se confirma reclasificando.
+2. **Reclasificar** (`POST /ordenes/:id/garantia`, permiso `garantias.reclasificar`: jefatura de atención al cliente, jefatura de técnicos y administración) exige motivo de al menos 10 caracteres. Se rechaza a la misma clasificación, de vuelta a «por validar» y en órdenes cerradas (entregada, cerrada sin reparar, anulada). Queda en la bitácora con la clasificación anterior, la nueva, el usuario, la fecha y el motivo (más las advertencias de la nueva, si las hay). No toca `id_regla_cobertura`.
+3. **Detalle de la orden**: bloque «Garantía de la orden» (`GET /ordenes/:id/garantia`) con la decisión vigente, advertencias informativas, historial y el formulario de reclasificación si el usuario tiene permiso y la orden no está cerrada. El historial general muestra «Garantía elegida» y «Garantía reclasificada».
+4. **Órdenes existentes**: no se modifica ninguna. Si no tienen decisión anotada, se muestra su alta (quién y cuándo) como «sin decisión anotada»; los cambios que hizo el motor antes de retirarse (eventos «Cobertura reevaluada de X a Y…») se leen y se muestran como «cambio automático (sistema anterior)».
+
+## Cambio de regla de negocio a validar
+La regla anterior (sin endpoint que la aplicara) exigía **documento de respaldo** para pasar de particular a una garantía. Ahora basta permiso y motivo, como se pidió; el documento puede citarse en el motivo y la factura o póliza se registran en la ficha del artículo. Si se quiere volver a exigir un documento adjunto, hay que decidir dónde se guarda (hoy no hay columna para ello).
+
+## Verificación
+
+| Verificación | Resultado |
+|---|---|
+| `npm run verificar-tipos` | sin errores |
+| `npm run construir -w panel` | correcto |
+| `npm run prueba` (servidor) | **42 archivos, 554 pruebas, todas aprobadas**. Nuevas: `garantia-manual.prueba.ts` (decisión registrada, permisos, motivo, cerrada, campo, órdenes antiguas), `resumen-garantias.prueba.ts` (sustituye a la del motor), prueba de que una falla excluida por la regla **no** cambia la garantía, y de que los cambios del artículo no la cambian ni dejan asientos de reclasificación |
+| `npm run prueba -w panel` | **114 aprobadas** |
+| Navegador (Chromium, base de desarrollo local) | elegir garantía del proveedor vencida: la orden se registra con la advertencia anotada; reclasificar a particular con motivo aparece en el bloque y en el historial; la pantalla de reglas muestra 32 vigentes y 24 versiones anteriores; sin errores de consola ni 5xx |
+
+La prueba de navegador creó una orden de prueba en la base local de desarrollo (no en producción).
+
+## Pendiente o a decidir
+- **Retirar o no la pantalla y los endpoints de reglas.** Se conservaron porque dan la duración de referencia de la garantía del proveedor (requisito 2). Si esa duración se registrará siempre en la ficha del artículo, se pueden retirar la pantalla y `POST /coberturas/reglas`; la tabla y sus versiones deben quedarse porque hay órdenes que las referencian.
+- **Exclusiones de las reglas** (`fallas_excluidas`): ya no se aplican; se muestran como referencia.
+- **Descripción del permiso `garantias.evaluar`** («Evaluar y reevaluar la cobertura»): no se cambió porque está en el catálogo sembrado.

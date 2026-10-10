@@ -147,36 +147,30 @@ export async function obtenerFicha(actor: Actor, idOrden: string): Promise<Ficha
 }
 
 /**
- * Aplica la modalidad que eligio quien registra la orden.
+ * La garantia de la orden la elige quien la registra: proveedor, adicional
+ * o particular. El sistema no la decide ni la sustituye. Si la elegida esta
+ * vencida, le faltan datos o esta a nombre de otra persona, la orden se
+ * registra igual y la advertencia queda anotada con la decision.
  *
- * Particular se puede elegir siempre (por ejemplo, un golpe que ninguna
- * garantia cubre). Una garantia solo si esta vigente por fecha Y aplica a
- * quien pide el servicio: no se registra como cubierta una garantia
- * vencida o ajena.
+ * Solo una orden levantada en campo puede llegar sin eleccion (la cola del
+ * movil no la pide): entra "por validar" y la confirma despues quien tiene
+ * permiso de reclasificar.
  */
-function conModalidadElegida(
-  evaluacion: Awaited<ReturnType<typeof servicioGarantias.evaluar>>,
-  elegida: 'proveedor' | 'adicional' | 'particular' | undefined,
-): { tipo: TipoGarantia; idReglaCobertura: string; motivo: string } {
-  if (elegida === undefined) return evaluacion;
-  if (elegida === TIPO_GARANTIA.PARTICULAR) {
-    return { ...evaluacion, tipo: TIPO_GARANTIA.PARTICULAR, motivo: 'Servicio particular elegido al registrar la orden.' };
-  }
-  const estado = evaluacion.garantias?.[elegida];
-  if (estado === undefined || !estado.aplicable) {
-    const nombre = elegida === TIPO_GARANTIA.PROVEEDOR ? 'del proveedor' : 'adicional';
-    throw new ErrorDominio(
-      'GARANTIA_NO_APLICABLE',
-      `No se puede atender con la garantia ${nombre}: ${estado?.motivo ?? 'no esta registrada.'} `
-        + 'Elija otra modalidad o, si el cliente presenta un documento, registrelo en la ficha del articulo.',
-    );
-  }
-  return {
-    ...evaluacion,
-    tipo: elegida,
-    motivo: `Garantia ${elegida === TIPO_GARANTIA.PROVEEDOR ? 'del proveedor' : 'adicional'} elegida al registrar; `
-      + `vigente hasta ${estado.venceEl ?? '—'}.`,
-  };
+function garantiaElegida(peticion: PeticionCrearOrden): TipoGarantia {
+  if (peticion.tipoGarantiaElegida !== undefined) return peticion.tipoGarantiaElegida;
+  if (peticion.levantadaEnCampo === true) return TIPO_GARANTIA.POR_VALIDAR;
+  throw new ErrorValidacion(
+    'Seleccione con que garantia se atendera la orden: proveedor, adicional o particular.',
+    { tipoGarantiaElegida: 'Elija la garantia.' },
+  );
+}
+
+/** Texto de la decision tal como queda en la bitacora y en el historial. */
+function motivoDeLaDecision(tipo: TipoGarantia, advertencias: readonly string[]): string {
+  const base = tipo === TIPO_GARANTIA.POR_VALIDAR
+    ? 'Orden levantada en campo: garantia por validar.'
+    : 'Elegida al registrar la orden.';
+  return advertencias.length === 0 ? base : `${base} Advertencias al decidir: ${advertencias.join(' ')}`;
 }
 
 /**
@@ -267,12 +261,16 @@ async function crearRegistro(actor: Actor, peticion: PeticionCrearOrden): Promis
       );
     }
 
-    // La cobertura la decide el motor de garantias, con quien pide el
-    // servicio: si el articulo esta a nombre de otro, no hay garantia.
-    const evaluacion = await servicioGarantias.evaluar(
-      peticion.idArticulo, peticion.idCliente, undefined, cliente,
+    // La garantia la elige quien registra. La consulta solo aporta las
+    // advertencias (vencida, sin datos, a nombre de otro) y la regla de
+    // referencia, que se guarda como hasta ahora.
+    const tipoGarantia = garantiaElegida(peticion);
+    const consulta = await servicioGarantias.consultar(
+      peticion.idArticulo, peticion.idCliente, cliente, tipoGarantia,
     );
-    const cobertura = conModalidadElegida(evaluacion, peticion.tipoGarantiaElegida);
+    const motivoDecision = motivoDeLaDecision(
+      tipoGarantia, servicioGarantias.advertenciasDeLaElegida(consulta.advertencias),
+    );
 
     /*
      * DE QUE TIENDA SALE LA ORDEN.
@@ -306,7 +304,7 @@ async function crearRegistro(actor: Actor, peticion: PeticionCrearOrden): Promis
     const cargoVisita = esRuta ? Number(congelables.cargo_visita ?? 0) : 0;
 
     const calendario = await servicioAgenda.obtenerCalendarioLaboral(actor.idCentro, cliente);
-    const plazo = await repositorio.buscarPlazo(ESTADO_ORDEN.REGISTRADA, cobertura.tipo, cliente);
+    const plazo = await repositorio.buscarPlazo(ESTADO_ORDEN.REGISTRADA, tipoGarantia, cliente);
     // Un solo instante para el plazo y para el sello de recepcion: si cada
     // uno tomara su propia hora, el plazo no seria exactamente el prometido.
     const momentoRecepcion = new Date();
@@ -320,8 +318,8 @@ async function crearRegistro(actor: Actor, peticion: PeticionCrearOrden): Promis
       idCliente: peticion.idCliente,
       idArticulo: peticion.idArticulo,
       modalidad: peticion.modalidad,
-      tipoGarantia: cobertura.tipo,
-      idReglaCobertura: cobertura.idReglaCobertura,
+      tipoGarantia,
+      idReglaCobertura: consulta.idReglaReferencia,
       idResponsableActual: actor.id,
       telefonoContacto: telefono,
       direccionServicio,
@@ -342,10 +340,7 @@ async function crearRegistro(actor: Actor, peticion: PeticionCrearOrden): Promis
       estadoNuevo: ESTADO_ORDEN.REGISTRADA,
       idResponsable: actor.id,
       observacion: `Orden registrada. ${esRuta ? 'Visita a domicilio (ruta)' : 'El cliente lleva el articulo al taller'}. `
-        + `Cobertura: ${cobertura.tipo}. ${cobertura.motivo}`
-        + (peticion.tipoGarantiaElegida === undefined || peticion.tipoGarantiaElegida === evaluacion.tipo
-          ? ''
-          : ` (Elegida por quien registro; la evaluacion indicaba ${evaluacion.tipo}.)`)
+        + `Garantia: ${tipoGarantia.replace(/_/g, ' ')}. ${motivoDecision}`
         // La fecha que pide el cliente queda en el registro de la orden aunque
         // todavia no haya tecnico: la programa despues quien despacha.
         + (peticion.visita != null && peticion.visita.idTecnico == null
@@ -353,6 +348,14 @@ async function crearRegistro(actor: Actor, peticion: PeticionCrearOrden): Promis
             + `${peticion.visita.franjaHoraria}; pendiente de asignar tecnico y programar.`
           : ''),
     });
+
+    // La decision, con fecha y responsable, en la bitacora inmutable: es
+    // la primera entrada del historial de garantia de la orden.
+    await auditar(cliente, [{
+      tabla: 'orden_servicio', idRegistro: creada.id, accion: ACCION_BITACORA.CREAR,
+      campo: 'tipo_garantia', valorAnterior: null, valorNuevo: tipoGarantia,
+      motivo: motivoDecision, idUsuario: actor.id,
+    }]);
 
     return creada.id;
   });

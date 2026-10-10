@@ -41,7 +41,7 @@ async function ordenNueva(): Promise<string> {
   const creada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
     .send({
       idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id,
-      modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Para probar la carga de evidencias',
+      modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'proveedor', fallaReportada: 'Para probar la carga de evidencias',
     }).expect(201);
 
   await asignarAlTecnicoDeLaSesion(creada.body.data.id);

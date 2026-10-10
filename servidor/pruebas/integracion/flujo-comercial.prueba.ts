@@ -259,7 +259,7 @@ describe('garantia del proveedor y exclusion por daño (P-16 a P-18, P-24)', () 
   const recienteDelGrupo = `t.pertenece_al_grupo AND a.fecha_compra > current_date - interval '4 months'
     AND NOT EXISTS (SELECT 1 FROM cobertura cb WHERE cb.id_articulo = a.id)`;
 
-  it('muestra el estado de cada garantia y rechaza elegir una que no aplica', async () => {
+  it('muestra el estado de cada garantia y registra la elegida aunque este vencida, con la advertencia', async () => {
     const base = await articulo(`t.pertenece_al_grupo AND a.fecha_compra < current_date - interval '37 months'
       AND NOT EXISTS (SELECT 1 FROM cobertura cb WHERE cb.id_articulo = a.id)`);
     const evaluacion = await peticion(entorno.aplicacion).post(`${RAIZ}/coberturas/evaluar`).set(agente)
@@ -267,12 +267,17 @@ describe('garantia del proveedor y exclusion por daño (P-16 a P-18, P-24)', () 
     expect(evaluacion.body.data.garantias.proveedor.vigencia).toBe('vencida');
     expect(evaluacion.body.data.garantias.proveedor.aplicable).toBe(false);
     expect(evaluacion.body.data.garantias.adicional.vigencia).toBe('no_registrada');
+    expect(evaluacion.body.data.advertencias.join(' ')).toMatch(/Vencio/);
 
+    // La decision es de quien registra: la advertencia no la impide, queda anotada.
     const vencida = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente).send({
       ...base, modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'No enciende desde ayer', tipoGarantiaElegida: 'proveedor',
-    });
-    expect(vencida.status).toBe(422);
-    expect(vencida.body.error.code).toBe('GARANTIA_NO_APLICABLE');
+    }).expect(201);
+    expect(vencida.body.data.tipoGarantia).toBe('proveedor');
+    const decision = await peticion(entorno.aplicacion).get(`${RAIZ}/ordenes/${vencida.body.data.id}/garantia`)
+      .set(agente).expect(200);
+    expect(decision.body.data.vigente.origen).toBe('registro');
+    expect(decision.body.data.vigente.motivo).toMatch(/Advertencias al decidir: .*Vencio/);
 
     // Particular siempre se puede, aunque haya garantia.
     const particular = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente).send({
@@ -308,7 +313,7 @@ describe('garantia del proveedor y exclusion por daño (P-16 a P-18, P-24)', () 
     }
   });
 
-  it('un golpe constatado en el diagnostico pasa la orden a cargo del cliente sin cambiar su modalidad', async () => {
+  it('un golpe constatado en el diagnostico queda anotado y NO cambia la garantia; se reclasifica a mano', async () => {
     const id = await ordenDeTaller('proveedor', recienteDelGrupo);
     expect((await ficha(agente, id)).tipoGarantia).toBe('proveedor');
     await hastaDiagnostico(id);
@@ -316,11 +321,17 @@ describe('garantia del proveedor y exclusion por daño (P-16 a P-18, P-24)', () 
       .send({ fallaReal: 'Carcasa partida y tarjeta danada', exclusion: 'Golpe fuerte en la parte trasera' }).expect(201);
 
     const orden = await ficha(agente, id);
-    expect(orden.tipoGarantia).toBe('particular');
+    expect(orden.tipoGarantia).toBe('proveedor');
     expect(orden.modalidad).toBe('taller');
     const eventos = await historial(agente, id);
-    expect(eventos.some((e) => (e.detalle ?? '').includes('de proveedor a particular')
-      && (e.detalle ?? '').includes('Golpe fuerte'))).toBe(true);
+    expect(eventos.some((e) => (e.detalle ?? '').includes('Golpe fuerte')
+      && (e.detalle ?? '').includes('no cambia'))).toBe(true);
+
+    // Quien tiene permiso la reclasifica, con motivo.
+    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/garantia`).set(jefatura)
+      .send({ tipo: 'particular', motivo: 'Golpe constatado en el diagnostico; no lo cubre la garantia' }).expect(200);
+    expect((await ficha(agente, id)).tipoGarantia).toBe('particular');
+    expect((await ficha(agente, id)).modalidad).toBe('taller');
   });
 });
 
@@ -499,5 +510,42 @@ describe('gestion de tecnicos (P-8, P-9)', () => {
     const alta = await peticion(entorno.aplicacion).post(`${RAIZ}/tecnicos/${id}/activar`).set(jefatura)
       .send({ motivo: 'Fue recontratado por temporada' }).expect(200);
     expect(alta.body.data.activo).toBe(true);
+  });
+});
+
+describe('el diagnostico no cambia la garantia por si solo', () => {
+  it('ni una falla que figura como excluida en la regla de referencia', async () => {
+    const id = await ordenDeTaller('proveedor', `t.pertenece_al_grupo AND a.fecha_compra > current_date - interval '4 months'
+      AND NOT EXISTS (SELECT 1 FROM cobertura cb WHERE cb.id_articulo = a.id)`);
+    // Una regla con exclusion conocida para esa marca y categoria: antes, el
+    // motor pasaba la orden a particular con esta falla.
+    const { rows } = await entorno.piscina.query<{ id_marca: string; id_categoria: string }>(
+      `SELECT a.id_marca, a.id_categoria FROM orden_servicio o JOIN articulo a ON a.id = o.id_articulo
+        WHERE o.id = $1`, [id],
+    );
+    await peticion(entorno.aplicacion).post(`${RAIZ}/coberturas/reglas`).set(jefatura).send({
+      idMarca: rows[0]!.id_marca, idCategoria: rows[0]!.id_categoria, mesesCobertura: 24,
+      exigeTiendaGrupo: true, fallasExcluidas: ['sobrecarga_electrica'],
+      motivo: 'Prueba: exclusion de referencia por sobrecarga',
+    }).expect(201);
+
+    await hastaDiagnostico(id);
+    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/diagnostico`).set(tecnico).send({
+      fallaReal: 'Tarjeta quemada por sobrecarga electrica',
+      componente: 'tarjeta principal',
+      observaciones: 'Se midio el voltaje de la toma: 145 V',
+    }).expect(201);
+
+    expect((await ficha(agente, id)).tipoGarantia).toBe('proveedor');
+    const garantia = await peticion(entorno.aplicacion).get(`${RAIZ}/ordenes/${id}/garantia`).set(agente).expect(200);
+    expect(garantia.body.data.historial).toHaveLength(1);
+    expect(garantia.body.data.vigente.origen).toBe('registro');
+
+    const eventos = await historial(agente, id);
+    expect(eventos.some((e) => (e.detalle ?? '').includes('145 V'))).toBe(true);
+    const { rows: diagnosticos } = await entorno.piscina.query(
+      'SELECT falla_real, componente FROM diagnostico WHERE id_orden = $1', [id],
+    );
+    expect(diagnosticos).toEqual([{ falla_real: 'Tarjeta quemada por sobrecarga electrica', componente: 'tarjeta principal' }]);
   });
 });

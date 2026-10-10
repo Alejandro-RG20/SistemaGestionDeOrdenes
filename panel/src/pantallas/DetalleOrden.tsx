@@ -31,6 +31,7 @@ import { tienePermiso } from '../sesion/navegacion.js';
 import { EvidenciasDeOrden } from './EvidenciasDeOrden.js';
 import { ModalBitacora, avisoDeEntrada } from './BitacoraDeOrden.js';
 import { TallerDeOrden } from './TallerDeOrden.js';
+import { GarantiaDeOrden } from './GarantiaDeOrden.js';
 import { VisitasDeOrden } from './VisitasDeOrden.js';
 import { RepuestosDeOrden } from './RepuestosDeOrden.js';
 
@@ -278,6 +279,8 @@ export function DetalleOrden(): JSX.Element {
               {errorAsignacion === null ? null : <Aviso tono="warn">{errorAsignacion}</Aviso>}
             </Tarjeta>
           ) : null}
+
+          <GarantiaDeOrden orden={orden} alCambiar={() => { ficha.recargar(); historial.recargar(); }} />
 
           <TallerDeOrden orden={orden} alCambiar={() => { ficha.recargar(); historial.recargar(); }} />
 

@@ -67,7 +67,7 @@ async function ordenAbierta(): Promise<string> {
   const creada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
     .send({
       idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id,
-      modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'No enfria, para prueba de inventario',
+      modalidad: MODALIDAD_SERVICIO.TALLER, tipoGarantiaElegida: 'proveedor', fallaReportada: 'No enfria, para prueba de inventario',
     }).expect(201);
 
   /*

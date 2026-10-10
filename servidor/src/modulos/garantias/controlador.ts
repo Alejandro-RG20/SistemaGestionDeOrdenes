@@ -20,6 +20,5 @@ export async function crearVersionDeRegla(peticion: Request, respuesta: Response
 
 export async function evaluar(peticion: Request, respuesta: Response): Promise<void> {
   const datos = validar(esquemaEvaluar, peticion.body);
-  const evaluacion = await servicio.evaluar(datos.idArticulo, datos.idClienteSolicitante, datos.fallaReal);
-  responderDatos(respuesta, evaluacion);
+  responderDatos(respuesta, await servicio.consultar(datos.idArticulo, datos.idClienteSolicitante));
 }

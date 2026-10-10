@@ -83,7 +83,18 @@ export const esquemaRegistrarBitacora = z.object({
 export const esquemaRegistrarDiagnostico = z.object({
   fallaReal: z.string().trim().min(5, 'Describa la falla real encontrada (al menos 5 caracteres).').max(1000),
   componente: z.string().trim().max(120).nullish(),
+  observaciones: z.string().trim().max(1000).nullish(),
   exclusion: z.string().trim().max(500).nullish(),
+});
+
+/** Reclasificar la garantia: a cual, y por que (obligatorio). */
+export const esquemaReclasificarGarantia = z.object({
+  tipo: z.enum(['proveedor', 'adicional', 'particular'], {
+    errorMap: () => ({ message: 'Elija garantia del proveedor, garantia adicional o servicio particular.' }),
+  }),
+  motivo: z.string({ required_error: 'Escriba el motivo de la reclasificacion.' }).trim()
+    .min(10, 'Escriba el motivo de la reclasificacion: al menos 10 caracteres. Queda en la bitacora.')
+    .max(500),
 });
 
 const monto = (campo: string) => z.number({ invalid_type_error: `${campo} debe ser un numero.` })

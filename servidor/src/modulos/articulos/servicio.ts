@@ -3,8 +3,9 @@
  *
  * Aqui vive la regla mas delicada de la etapa: fecha de compra, tienda de
  * origen, marca y dueno son los datos DE LOS QUE DEPENDE LA COBERTURA.
- * Cambiar cualquiera de ellos exige rol de jefatura, motivo escrito, queda
- * en la bitacora y reevalua las ordenes abiertas del articulo.
+ * Cambiar cualquiera de ellos exige rol de jefatura, motivo escrito y queda
+ * en la bitacora. La garantia de las ordenes ya creadas NO cambia: se les
+ * deja una nota y, si corresponde, se reclasifican a mano con motivo.
  */
 import type {
   FichaArticulo, Paginacion, PeticionActualizarArticulo, PeticionCambiarDatosSensibles,
@@ -20,9 +21,9 @@ import { construirPaginacion } from '../../comun/paginacion.js';
 import { ErrorConflicto, ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import { auditar, type AsientoAuditoria } from '../../comun/auditoria.js';
 // La comunicacion entre modulos pasa por la capa de servicios, nunca por el
-// repositorio ajeno (regla de arquitectura 3). Reevaluar escribe sobre
-// ordenes, asi que lo hace el modulo de ordenes.
-import { reevaluarOrdenesAbiertas } from '../ordenes/servicio-reevaluacion.js';
+// repositorio ajeno (regla de arquitectura 3). Las notas se escriben sobre
+// ordenes, asi que las deja el modulo de ordenes.
+import { anotarCambioEnOrdenesAbiertas } from '../ordenes/servicio-ordenes-del-articulo.js';
 import * as repositorio from './repositorio.js';
 import { aFichaArticulo, aResumenArticulo, type FilaArticulo } from './dto.js';
 
@@ -138,7 +139,7 @@ export async function crear(actor: Actor, peticion: PeticionCrearArticulo): Prom
   return obtenerFicha(idArticulo);
 }
 
-/** Cambios que no alteran la cobertura: no exigen jefatura ni reevaluan nada. */
+/** Cambios que no alteran la cobertura: no exigen jefatura ni dejan notas en las ordenes. */
 export async function actualizar(
   actor: Actor, idArticulo: string, peticion: PeticionActualizarArticulo,
 ): Promise<FichaArticulo> {
@@ -169,13 +170,13 @@ export async function actualizar(
  * Cambio de fecha de compra, tienda de origen o marca.
  *
  * Todo ocurre en una transaccion: el cambio del articulo, los asientos de
- * bitacora y la reevaluacion de las ordenes abiertas se confirman juntos o
- * no ocurre ninguno.
+ * bitacora y las notas en las ordenes abiertas se confirman juntos o no
+ * ocurre ninguno. La garantia de esas ordenes no cambia.
  */
 export async function cambiarDatosSensibles(
   actor: Actor, idArticulo: string, peticion: PeticionCambiarDatosSensibles,
 ): Promise<ResultadoCambioSensible> {
-  const reevaluadas = await enTransaccion(async (cliente) => {
+  const ordenesAbiertas = await enTransaccion(async (cliente) => {
     const previo = await exigirArticulo(idArticulo, cliente);
     await exigirReferenciasValidas(cliente, {
       ...(peticion.idMarca !== undefined ? { idMarca: peticion.idMarca } : {}),
@@ -191,26 +192,26 @@ export async function cambiarDatosSensibles(
       ['id_marca', previo.id_marca, peticion.idMarca],
     ]));
 
-    return reevaluarOrdenesAbiertas(
+    return anotarCambioEnOrdenesAbiertas(
       cliente, actor, idArticulo, `Cambio de datos del articulo: ${peticion.motivo}`,
     );
   });
 
   const fila = await repositorio.buscarPorId(idArticulo);
-  return { articulo: aResumenArticulo(fila!), ordenesReevaluadas: reevaluadas };
+  return { articulo: aResumenArticulo(fila!), ordenesAbiertas };
 }
 
 /**
  * Cambio de dueno.
  *
  * Es tan sensible como los anteriores: ni la garantia del fabricante ni la
- * poliza extendida se trasladan al comprador de segunda mano, asi que este
- * cambio puede dejar sin cobertura a las ordenes abiertas.
+ * poliza extendida se trasladan al comprador de segunda mano. Las ordenes
+ * abiertas conservan su garantia y reciben una nota para revisarla.
  */
 export async function transferir(
   actor: Actor, idArticulo: string, peticion: PeticionTransferirArticulo,
 ): Promise<ResultadoCambioSensible> {
-  const reevaluadas = await enTransaccion(async (cliente) => {
+  const ordenesAbiertas = await enTransaccion(async (cliente) => {
     const previo = await exigirArticulo(idArticulo, cliente);
     if (previo.id_cliente === peticion.idClienteNuevo) {
       throw new ErrorDominio('MISMO_DUENO', 'El articulo ya esta a nombre de ese cliente.');
@@ -224,24 +225,24 @@ export async function transferir(
       motivo: peticion.motivo, idUsuario: actor.id,
     }]);
 
-    return reevaluarOrdenesAbiertas(
+    return anotarCambioEnOrdenesAbiertas(
       cliente, actor, idArticulo, `Cambio de dueno del articulo: ${peticion.motivo}`,
     );
   });
 
   const fila = await repositorio.buscarPorId(idArticulo);
-  return { articulo: aResumenArticulo(fila!), ordenesReevaluadas: reevaluadas };
+  return { articulo: aResumenArticulo(fila!), ordenesAbiertas };
 }
 
-/** Registrar una poliza tambien cambia la cobertura: se reevalua igual. */
+/** Registrar una garantia en la ficha: las ordenes abiertas reciben una nota, no un cambio. */
 export async function registrarCobertura(
   actor: Actor, idArticulo: string, peticion: PeticionRegistrarCobertura,
 ): Promise<FichaArticulo> {
   await enTransaccion(async (cliente) => {
     const previo = await exigirArticulo(idArticulo, cliente);
 
-    // Con duracion en meses, el ultimo dia lo calcula el servidor con la
-    // misma regla que el motor de garantias; no se acepta del navegador.
+    // Con duracion en meses, el ultimo dia lo calcula el servidor (la misma
+    // cuenta de meses de todo el sistema); no se acepta del navegador.
     const vigenteHasta = peticion.meses !== undefined
       ? ultimoDiaCubierto(peticion.vigenteDesde, peticion.meses)
       : peticion.vigenteHasta!;
@@ -262,8 +263,8 @@ export async function registrarCobertura(
       campo: 'tipo', valorNuevo: peticion.tipo, idUsuario: actor.id,
     }]);
 
-    await reevaluarOrdenesAbiertas(
-      cliente, actor, idArticulo, 'Se registro una cobertura nueva para el articulo',
+    await anotarCambioEnOrdenesAbiertas(
+      cliente, actor, idArticulo, `Se registro una garantia ${peticion.tipo} en la ficha del articulo`,
     );
   });
 
@@ -294,8 +295,8 @@ function asientosDeCambio(
 /**
  * Corregir una garantia registrada con fechas equivocadas: se desactiva,
  * con motivo en la bitacora, y se registra la correcta. La fila no se
- * borra ni se edita, y las ordenes ya cerradas conservan la cobertura con
- * la que se atendieron. Las abiertas se reevaluan, como al registrar una.
+ * borra ni se edita, y ninguna orden cambia de garantia por esto: las
+ * abiertas reciben una nota, como al registrar una.
  */
 export async function desactivarCobertura(
   actor: Actor, idArticulo: string, idCobertura: string, motivo: string,
@@ -313,7 +314,7 @@ export async function desactivarCobertura(
         + ` a ${cobertura.vigente_hasta.toISOString().slice(0, 10)}`,
       valorNuevo: 'desactivada', motivo, idUsuario: actor.id,
     }]);
-    await reevaluarOrdenesAbiertas(cliente, actor, idArticulo, `Se desactivo una cobertura del articulo: ${motivo}`);
+    await anotarCambioEnOrdenesAbiertas(cliente, actor, idArticulo, `Se desactivo una garantia de la ficha del articulo: ${motivo}`);
   });
   return obtenerFicha(idArticulo);
 }

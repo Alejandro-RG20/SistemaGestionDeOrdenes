@@ -45,6 +45,12 @@ export function rutasDeOrdenes(): Router {
   router.post('/ordenes/:id/cotizaciones/decision', exigirPermiso('taller.cotizacion.autorizar'),
     asincrono(controlador.registrarDecision));
 
+  // Garantia de la orden: decision vigente, historial y reclasificacion
+  // manual, con el permiso que ya existia para eso.
+  router.get('/ordenes/:id/garantia', consultar, asincrono(controlador.garantia));
+  router.post('/ordenes/:id/garantia', exigirPermiso('garantias.reclasificar'),
+    asincrono(controlador.reclasificarGarantia));
+
   router.post('/ordenes/:id/notas', exigirPermiso('ordenes.nota_correccion'), asincrono(controlador.agregarNota));
 
   return router;

@@ -1,5 +1,5 @@
 /**
- * Acceso a datos de reglas de cobertura, polizas y reevaluacion de ordenes.
+ * Acceso a datos de reglas de cobertura (de referencia) y garantias registradas.
  * Uso interno del modulo de garantias.
  */
 import type { Ejecutor } from '../../comun/transacciones.js';

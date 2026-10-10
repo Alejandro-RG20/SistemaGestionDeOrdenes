@@ -1,9 +1,14 @@
 /**
- * Servicio de garantias: arma el contexto, llama al motor y persiste lo que
- * el motor decide. La regla de negocio esta en dominio/garantias, no aqui.
+ * Servicio de garantias: arma el contexto y devuelve el estado INFORMATIVO
+ * de las garantias de un articulo. No decide quien paga una reparacion: lo
+ * elige una persona al registrar la orden y, despues, lo reclasifica con
+ * motivo quien tiene permiso (modulo de ordenes).
+ *
+ * Las reglas de cobertura quedan como referencia: dan la duracion habitual
+ * de la garantia del proveedor de una marca y categoria.
  */
 import type {
-  EvaluacionCobertura, Paginacion, PeticionNuevaVersionRegla, ResumenReglaCobertura,
+  ConsultaGarantias, Paginacion, PeticionNuevaVersionRegla, ResumenReglaCobertura,
 } from '@servitotal/compartido';
 import { ACCION_BITACORA } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
@@ -11,12 +16,14 @@ import type { Ejecutor } from '../../comun/transacciones.js';
 import { enTransaccion, ejecutorPorDefecto } from '../../comun/transacciones.js';
 import type { ParametrosPagina } from '../../comun/paginacion.js';
 import { construirPaginacion } from '../../comun/paginacion.js';
-import { ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
+import { ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import { auditar } from '../../comun/auditoria.js';
 import {
-  elegirReglaAplicable, evaluarCobertura, reevaluarTrasDiagnostico, resumirGarantias,
-  type ContextoCobertura, type ResultadoCobertura,
+  advertenciasDeGarantias, advertenciasDeLaElegida, elegirReglaAplicable, resumirGarantias,
+  type ContextoCobertura,
 } from '../../dominio/garantias/indice.js';
+
+export { advertenciasDeLaElegida };
 import * as repositorio from './repositorio.js';
 import { aArticuloDelDominio, aPolizaDelDominio, aReglaDelDominio, aResumenRegla } from './dto.js';
 
@@ -31,13 +38,13 @@ export async function listarReglas(
 }
 
 /**
- * Arma el contexto que el motor necesita: articulo, polizas y la regla
- * vigente mas especifica. Tres consultas, ninguna dentro de un bucle.
+ * Arma el contexto: articulo, polizas y la regla de referencia mas
+ * especifica. Tres consultas, ninguna dentro de un bucle. Que no haya regla
+ * no es un error: la vigencia sale entonces solo de lo registrado.
  */
 async function armarContexto(
   idArticulo: string,
   idClienteSolicitante: string | undefined,
-  fallaReal: string | undefined,
   ejecutor: Ejecutor,
 ): Promise<ContextoCobertura> {
   // En secuencia: `ejecutor` puede ser un cliente de transaccion, y esos no
@@ -50,76 +57,36 @@ async function armarContexto(
 
   const articulo = aArticuloDelDominio(filaArticulo);
   const reglas = filasRegla.map(aReglaDelDominio);
-  const regla = elegirReglaAplicable(reglas, articulo.idMarca, articulo.idCategoria);
-
-  if (regla === null) {
-    throw new ErrorDominio(
-      'SIN_REGLA_DE_COBERTURA',
-      'No hay ninguna regla de cobertura vigente que aplique a este articulo. ' +
-        'Pida a la jefatura que registre la regla general antes de continuar.',
-    );
-  }
 
   return {
     articulo,
     polizas: filasPoliza.map(aPolizaDelDominio),
-    regla,
+    regla: elegirReglaAplicable(reglas, articulo.idMarca, articulo.idCategoria),
     idClienteSolicitante: idClienteSolicitante ?? articulo.idCliente,
     momento: new Date(),
-    fallaReal,
   };
-}
-
-function aEvaluacion(resultado: ResultadoCobertura): EvaluacionCobertura {
-  return {
-    tipo: resultado.tipo,
-    idReglaCobertura: resultado.idReglaCobertura,
-    motivo: resultado.motivo,
-    detieneLaOrden: resultado.detieneLaOrden,
-    desglose: resultado.desglose.map((parte) => ({ nombre: parte.nombre, seCumplio: parte.seCumplio })),
-  };
-}
-
-/** Consulta de cobertura. No escribe nada: sirve para mostrarla antes de abrir la orden. */
-export async function evaluar(
-  idArticulo: string,
-  idClienteSolicitante: string | undefined,
-  fallaReal: string | undefined,
-  ejecutor: Ejecutor = ejecutorPorDefecto(),
-): Promise<EvaluacionCobertura> {
-  const contexto = await armarContexto(idArticulo, idClienteSolicitante, fallaReal, ejecutor);
-
-  // Con falla real se responde lo que quedaria TRAS el diagnostico, que es
-  // la reevaluacion sobre la cobertura que la orden habria tenido al abrirse.
-  const inicial = evaluarCobertura({ ...contexto, fallaReal: undefined });
-  const resultado = fallaReal === undefined
-    ? inicial
-    : reevaluarTrasDiagnostico(contexto, inicial.tipo);
-  return { ...aEvaluacion(resultado), garantias: resumirGarantias(contexto) };
 }
 
 /**
- * Evalua la cobertura del mismo articulo para varios solicitantes de una
- * vez.
+ * Estado de las garantias del articulo para quien pide el servicio, con
+ * advertencias. No escribe nada y no decide: se muestra antes de elegir la
+ * garantia de la orden y en la ficha del articulo.
  *
- * El contexto —articulo, polizas y reglas vigentes— se carga UNA sola vez y
- * se reutiliza; lo unico que cambia entre solicitantes es su identidad. Sin
- * esto, reevaluar las ordenes abiertas de un articulo seria tres consultas
- * por orden.
+ * Con `elegida`, la advertencia que afecta a esa garantia va primero.
  */
-export async function evaluarParaVariosSolicitantes(
+export async function consultar(
   idArticulo: string,
-  idsClienteSolicitante: readonly string[],
-  ejecutor: Ejecutor,
-): Promise<Map<string, EvaluacionCobertura>> {
-  const base = await armarContexto(idArticulo, undefined, undefined, ejecutor);
-  const resultados = new Map<string, EvaluacionCobertura>();
-
-  for (const idCliente of new Set(idsClienteSolicitante)) {
-    const contexto: ContextoCobertura = { ...base, idClienteSolicitante: idCliente };
-    resultados.set(idCliente, aEvaluacion(evaluarCobertura(contexto)));
-  }
-  return resultados;
+  idClienteSolicitante: string | undefined,
+  ejecutor: Ejecutor = ejecutorPorDefecto(),
+  elegida?: string,
+): Promise<ConsultaGarantias> {
+  const contexto = await armarContexto(idArticulo, idClienteSolicitante, ejecutor);
+  const garantias = resumirGarantias(contexto);
+  return {
+    garantias,
+    advertencias: advertenciasDeGarantias(garantias, elegida),
+    idReglaReferencia: contexto.regla?.id ?? null,
+  };
 }
 
 /** RF-86: no se edita una regla; se cierra la vigente y se abre la siguiente. */

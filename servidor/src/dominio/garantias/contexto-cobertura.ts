@@ -1,5 +1,7 @@
 /**
- * Lo que el motor de garantias necesita para decidir.
+ * Lo que hace falta para informar el estado de las garantias de un
+ * articulo. No decide quien paga: eso lo elige una persona al registrar la
+ * orden (y lo reclasifica, con motivo, quien tiene permiso).
  *
  * Todo lo que entra aqui viene del ARTICULO y de la REGLA vigente: tienda
  * de origen, fecha de compra, marca, poliza. Los datos de contacto del
@@ -47,12 +49,15 @@ export interface ReglaCoberturaVigente {
 export interface ContextoCobertura {
   readonly articulo: ArticuloParaCobertura;
   readonly polizas: readonly PolizaParaCobertura[];
-  readonly regla: ReglaCoberturaVigente;
+  /**
+   * Regla de referencia: aporta la duracion habitual de la garantia del
+   * proveedor cuando no hay una registrada en la ficha. Puede no haber
+   * ninguna; entonces la vigencia solo sale de lo registrado.
+   */
+  readonly regla: ReglaCoberturaVigente | null;
   /** Quien pide el servicio. Puede no ser el comprador si el aparato cambio de manos. */
   readonly idClienteSolicitante: string;
   readonly momento: Date;
-  /** Falla real del diagnostico. Ausente en la evaluacion inicial. */
-  readonly fallaReal?: string | undefined;
 }
 
 /** Meses completos transcurridos entre dos fechas. */
@@ -61,18 +66,4 @@ export function mesesTranscurridos(desde: Date, hasta: Date): number {
     + (hasta.getUTCMonth() - desde.getUTCMonth());
   // Si aun no se cumplio el dia del mes, el mes no esta completo.
   return hasta.getUTCDate() >= desde.getUTCDate() ? meses : meses - 1;
-}
-
-/**
- * Normaliza para comparar la falla real contra las fallas excluidas de la
- * regla, que se escriben como `sobrecarga_electrica` mientras el tecnico
- * escribe "Sobrecarga electrica en la tarjeta".
- */
-export function normalizar(texto: string): string {
-  return texto
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[_\s]+/g, ' ')
-    .trim();
 }

@@ -9,7 +9,7 @@
  */
 import { useState } from 'react';
 import {
-  ESTADO_ORDEN, TIPO_GARANTIA,
+  ESTADO_ORDEN,
   type DatosDeTaller, type FichaOrden,
 } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
@@ -31,7 +31,7 @@ export function TallerDeOrden({ orden, alCambiar }: { orden: FichaOrden; alCambi
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const [diagnostico, setDiagnostico] = useState({ fallaReal: '', componente: '', noCubierta: false, exclusion: '' });
+  const [diagnostico, setDiagnostico] = useState({ fallaReal: '', componente: '', observaciones: '', noCubierta: false, exclusion: '' });
   const [cotizacion, setCotizacion] = useState({ manoObra: '', totalRepuestos: '', cargoVisita: '' });
   const [decision, setDecision] = useState({ forma: 'llamada', observacion: '' });
 
@@ -87,27 +87,29 @@ export function TallerDeOrden({ orden, alCambiar }: { orden: FichaOrden; alCambi
           <div className="g g3">
             <div><label>Falla real encontrada *</label><input value={diagnostico.fallaReal} onChange={(e) => setDiagnostico({ ...diagnostico, fallaReal: e.target.value })} /></div>
             <div><label>Componente</label><input value={diagnostico.componente} onChange={(e) => setDiagnostico({ ...diagnostico, componente: e.target.value })} /></div>
-            {orden.tipoGarantia === TIPO_GARANTIA.PARTICULAR ? null : (
-              <div>
-                <label>¿La garantia cubre este daño?</label>
-                <select value={diagnostico.noCubierta ? '1' : ''} onChange={(e) => setDiagnostico({ ...diagnostico, noCubierta: e.target.value === '1' })}>
-                  <option value="">Si, o lo decide la regla de cobertura</option>
-                  <option value="1">No: golpe, mal uso u otra exclusion</option>
-                </select>
-              </div>
-            )}
+            <div>
+              <label>¿Constato una posible exclusion?</label>
+              <select value={diagnostico.noCubierta ? '1' : ''} onChange={(e) => setDiagnostico({ ...diagnostico, noCubierta: e.target.value === '1' })}>
+                <option value="">No</option>
+                <option value="1">Si: golpe, mal uso u otra</option>
+              </select>
+            </div>
           </div>
+          <label>Observaciones</label>
+          <textarea rows={2} value={diagnostico.observaciones} onChange={(e) => setDiagnostico({ ...diagnostico, observaciones: e.target.value })}
+            placeholder="Lo que encontro, pruebas realizadas, estado del articulo…" />
           {diagnostico.noCubierta ? (
             <>
-              <label>Motivo de la exclusion *</label>
+              <label>Exclusion constatada *</label>
               <input value={diagnostico.exclusion} onChange={(e) => setDiagnostico({ ...diagnostico, exclusion: e.target.value })}
                 placeholder="Golpe en la carcasa trasera; tarjeta con humedad…" />
-              <Aviso tono="warn">
-                La reparacion pasara a cargo del cliente: necesitara cotizacion y autorizacion. La garantia con
-                la que entro la orden queda en el historial.
-              </Aviso>
             </>
           ) : null}
+          <p className="tenue" style={{ fontSize: 11.5, margin: '6px 0 0' }}>
+            El diagnostico no cambia la garantia de la orden. Las observaciones y la exclusion quedan en el historial;
+            las fotos se cargan en la pestaña de evidencias. Si la garantia debe cambiar, la reclasifica quien tiene
+            permiso, con motivo, desde el bloque «Garantia de la orden».
+          </p>
           <button
             type="button" className="btn pri" style={{ marginTop: 8 }}
             disabled={guardando || diagnostico.fallaReal.trim().length < 5 || (diagnostico.noCubierta && diagnostico.exclusion.trim().length < 5)}
@@ -115,8 +117,10 @@ export function TallerDeOrden({ orden, alCambiar }: { orden: FichaOrden; alCambi
               void enviar(`/ordenes/${orden.id}/diagnostico`, {
                 fallaReal: diagnostico.fallaReal.trim(),
                 componente: diagnostico.componente.trim() === '' ? null : diagnostico.componente.trim(),
+                observaciones: diagnostico.observaciones.trim() === '' ? null : diagnostico.observaciones.trim(),
                 exclusion: diagnostico.noCubierta ? diagnostico.exclusion.trim() : null,
-              }, 'Diagnostico registrado.', () => setDiagnostico({ fallaReal: '', componente: '', noCubierta: false, exclusion: '' }));
+              }, 'Diagnostico registrado. La garantia de la orden no cambio.',
+              () => setDiagnostico({ fallaReal: '', componente: '', observaciones: '', noCubierta: false, exclusion: '' }));
             }}
           >
             Registrar diagnostico

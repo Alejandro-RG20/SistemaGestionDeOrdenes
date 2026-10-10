@@ -117,12 +117,14 @@ export interface PeticionRegistrarCobertura {
 
 export interface ResultadoCambioSensible {
   readonly articulo: ResumenArticulo;
-  /** Ordenes abiertas cuya cobertura se recalculo por este cambio. */
-  readonly ordenesReevaluadas: readonly {
+  /**
+   * Ordenes abiertas del articulo. Su garantia NO cambia por este cambio:
+   * se les deja una nota en el historial y, si corresponde, quien tiene
+   * permiso la reclasifica con motivo.
+   */
+  readonly ordenesAbiertas: readonly {
     readonly id: string;
     readonly numero: number;
-    readonly tipoAnterior: TipoGarantia;
-    readonly tipoNuevo: TipoGarantia;
-    readonly detenida: boolean;
+    readonly tipoGarantia: TipoGarantia;
   }[];
 }

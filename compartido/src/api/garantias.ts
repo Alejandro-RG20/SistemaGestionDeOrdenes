@@ -1,4 +1,4 @@
-/** Contratos del modulo de garantias: reglas de cobertura y evaluacion. */
+/** Contratos del modulo de garantias: reglas de referencia, consulta y decision manual. */
 import type { TipoGarantia } from '../dominio/orden.js';
 
 export interface ResumenReglaCobertura {
@@ -29,23 +29,18 @@ export interface PeticionNuevaVersionRegla {
   readonly motivo: string;
 }
 
-export interface CondicionEvaluada {
-  readonly nombre: string;
-  readonly seCumplio: boolean;
-}
-
-export interface EvaluacionCobertura {
-  readonly tipo: TipoGarantia;
-  readonly idReglaCobertura: string;
-  readonly motivo: string;
-  readonly detieneLaOrden: boolean;
-  readonly desglose: readonly CondicionEvaluada[];
-  /**
-   * Estado de cada garantia del articulo: vigencia por fecha y si aplica a
-   * quien pide el servicio. Que una este vigente no significa que cubra la
-   * reparacion: eso lo decide el diagnostico.
-   */
-  readonly garantias?: ResumenGarantiasArticulo;
+/**
+ * Estado informativo de las garantias de un articulo para un solicitante.
+ *
+ * No dice quien paga: eso lo elige una persona al registrar la orden. Las
+ * advertencias (vencida, sin datos, a nombre de otro) se muestran antes de
+ * elegir y quedan anotadas con la decision, pero no la sustituyen.
+ */
+export interface ConsultaGarantias {
+  readonly garantias: ResumenGarantiasArticulo;
+  readonly advertencias: readonly string[];
+  /** Regla de referencia de la que sale la duracion de la garantia del proveedor, si hay. */
+  readonly idReglaReferencia: string | null;
 }
 
 export type VigenciaGarantia = 'vigente' | 'vencida' | 'no_registrada';
@@ -76,6 +71,46 @@ export interface PeticionEvaluarCobertura {
    * manos y que, por tanto, la garantia no aplica.
    */
   readonly idClienteSolicitante?: string;
-  /** Falla real del diagnostico, para la reevaluacion posterior. */
-  readonly fallaReal?: string;
+}
+
+/** Como se tomo una decision de garantia de una orden. */
+export type OrigenDecisionGarantia =
+  /** Elegida por quien registro la orden. */
+  | 'registro'
+  /** Cambiada despues, con permiso y motivo. */
+  | 'reclasificacion'
+  /** Orden levantada en campo: queda por validar hasta que se confirme. */
+  | 'campo'
+  /** Cambio automatico hecho por el motor de reglas antes de retirarlo. */
+  | 'automatica_anterior'
+  /** Orden anterior a este registro: solo se conoce su alta. */
+  | 'sin_registro';
+
+export interface DecisionGarantia {
+  readonly tipoAnterior: TipoGarantia | null;
+  readonly tipo: TipoGarantia;
+  readonly origen: OrigenDecisionGarantia;
+  readonly momento: string;
+  readonly responsable: string | null;
+  readonly motivo: string | null;
+}
+
+/** La decision vigente de una orden y como se llego a ella. */
+export interface GarantiaDeOrden {
+  readonly tipoActual: TipoGarantia;
+  /** La ultima decision (la vigente). */
+  readonly vigente: DecisionGarantia;
+  /** Todas, de la mas antigua a la mas reciente. */
+  readonly historial: readonly DecisionGarantia[];
+  /** Estado informativo de las garantias del articulo, hoy. */
+  readonly advertencias: readonly string[];
+  readonly garantias: ResumenGarantiasArticulo | null;
+  /** Si quien consulta puede reclasificarla ahora. */
+  readonly puedeReclasificar: boolean;
+}
+
+export interface PeticionReclasificarGarantia {
+  readonly tipo: 'proveedor' | 'adicional' | 'particular';
+  /** Obligatorio: queda en la bitacora junto a la clasificacion anterior y la nueva. */
+  readonly motivo: string;
 }

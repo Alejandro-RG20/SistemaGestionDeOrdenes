@@ -1,16 +1,15 @@
 /**
- * W-15 · Reglas de cobertura.
+ * W-15 · Reglas de garantia (de referencia).
  *
- * Lo que esta pantalla demuestra es que **el motor de garantias es dirigido
- * por datos**: los meses de cobertura, las exclusiones y la exigencia de
- * tienda del grupo salen de esta tabla, no del codigo. Ajustar una regla no
- * necesita desplegar nada.
+ * Estas reglas YA NO deciden quien paga una reparacion: la garantia de cada
+ * orden la elige quien la registra y, despues, la reclasifica con motivo
+ * quien tiene permiso. Lo que siguen aportando es la DURACION de referencia
+ * de la garantia del proveedor por marca y categoria: con ella se calcula
+ * el vencimiento cuando la ficha del articulo no tiene una registrada, y
+ * se muestran advertencias informativas.
  *
- * Y son versionadas: modificar una no edita la anterior, la cierra y abre
- * una version nueva. Cada orden conserva la version que congelo al abrirse
- * (RF-86, RN-22) — si no, cambiar una regla hoy alteraria retroactivamente
- * quien pagaba una reparacion de hace seis meses, y el expediente ya
- * presentado al proveedor dejaria de coincidir.
+ * Son versionadas: una version nueva cierra la anterior, que no se borra
+ * (hay ordenes que guardaron la version vigente cuando se registraron).
  */
 import type { ResumenReglaCobertura } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
@@ -20,7 +19,8 @@ import { Aviso, Cargando, Fallo, Tarjeta, Vacio, fechaCorta } from '../component
 export function Coberturas(): JSX.Element {
   const { api } = useSesion();
   const { datos, cargando, error, recargar } = useRecurso<readonly ResumenReglaCobertura[]>(
-    () => api.pedir<readonly ResumenReglaCobertura[]>('/coberturas/reglas'), [],
+    // Todas, vigentes y cerradas: la lista completa cabe en una pagina.
+    () => api.pedir<readonly ResumenReglaCobertura[]>('/coberturas/reglas?soloVigentes=false&tamano=100'), [],
   );
 
   if (cargando) return <Cargando que="las reglas" />;
@@ -32,13 +32,14 @@ export function Coberturas(): JSX.Element {
 
   return (
     <>
-      <h2 className="scr">Reglas de cobertura</h2>
-      <p className="sub">Parametrizables sin intervencion de desarrollo · versionadas</p>
+      <h2 className="scr">Reglas de garantia (referencia)</h2>
+      <p className="sub">Duracion habitual de la garantia del proveedor por marca y categoria · versionadas</p>
 
       <Aviso tono="info">
-        El motor de garantias evalua cada orden contra estas reglas. Al modificarlas se crea una
-        version nueva, y <b>cada orden conserva la version vigente al momento de abrirse</b>{' '}
-        (RF-86, RN-22).
+        <b>Estas reglas no deciden la garantia de ninguna orden.</b> La elige quien registra la orden
+        y la reclasifica, con motivo, quien tiene permiso. Aqui solo se toma la duracion de referencia
+        para calcular el vencimiento de la garantia del proveedor cuando el articulo no tiene una
+        registrada; las exclusiones se muestran como referencia y no se aplican automaticamente.
       </Aviso>
 
       <Tarjeta titulo={`Reglas vigentes · ${vigentes.length}`}>
@@ -49,7 +50,7 @@ export function Coberturas(): JSX.Element {
             <thead>
               <tr>
                 <th>Marca</th><th>Categoria</th><th>Meses</th>
-                <th>Exige tienda del grupo</th><th>Exclusiones</th><th>Version</th>
+                <th>Exige tienda del grupo</th><th>Exclusiones (referencia)</th><th>Version</th>
               </tr>
             </thead>
             <tbody>
@@ -103,8 +104,8 @@ export function Coberturas(): JSX.Element {
             </tbody>
           </table>
           <p style={{ fontSize: 11.5, color: 'var(--soft)', margin: '10px 0 0' }}>
-            Estas versiones no se borran: hay ordenes que las congelaron y su cobertura se
-            explica con la version vigente cuando se registraron.
+            Estas versiones no se borran: hay ordenes que guardaron la version vigente cuando se
+            registraron.
           </p>
         </Tarjeta>
       )}

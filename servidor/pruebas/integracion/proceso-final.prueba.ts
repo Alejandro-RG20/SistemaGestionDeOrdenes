@@ -52,7 +52,7 @@ async function ordenNueva(): Promise<{ id: string; codigo: string }> {
   const creada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
     .send({
       idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id,
-      modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'Para probar el cierre del proceso',
+      modalidad: MODALIDAD_SERVICIO.TALLER, tipoGarantiaElegida: 'proveedor', fallaReportada: 'Para probar el cierre del proceso',
     }).expect(201);
   return { id: creada.body.data.id, codigo: creada.body.data.codigo };
 }
@@ -335,7 +335,7 @@ describe('tiendas', () => {
     const respuesta = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id,
-        modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'Con una tienda desactivada',
+        modalidad: MODALIDAD_SERVICIO.TALLER, tipoGarantiaElegida: 'proveedor', fallaReportada: 'Con una tienda desactivada',
         idTienda: creada.body.data.id,
       }).expect(400);
     expect(respuesta.body.error.fields.idTienda).toBeDefined();

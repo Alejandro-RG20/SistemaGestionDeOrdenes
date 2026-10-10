@@ -9,6 +9,8 @@ export function rutasDeGarantias(): Router {
   router.get('/coberturas/reglas', exigirPermiso('garantias.evaluar'), asincrono(controlador.listarReglas));
   router.post('/coberturas/reglas', exigirPermiso('garantias.regla.gestionar'),
     asincrono(controlador.crearVersionDeRegla));
+  // Consulta informativa: estado de las garantias del articulo y
+  // advertencias. No decide la garantia de ninguna orden.
   router.post('/coberturas/evaluar', exigirPermiso('garantias.evaluar'), asincrono(controlador.evaluar));
 
   return router;

@@ -537,9 +537,8 @@ export interface FilaOrdenAbierta {
 }
 
 /**
- * Ordenes del articulo que siguen abiertas. Solo estas se reevaluan cuando
- * cambia un dato del que depende la cobertura: una orden entregada o
- * cerrada no cambia de garantia hacia atras.
+ * Ordenes del articulo que siguen abiertas. Cuando cambia un dato del
+ * articulo se les deja una nota; su garantia no se toca.
  */
 export async function listarAbiertasDeArticulo(
   idArticulo: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
@@ -555,48 +554,84 @@ export async function listarAbiertasDeArticulo(
   return rows;
 }
 
-export interface CambioDeGarantia {
-  readonly idOrden: string;
+export interface FilaGarantiaDeOrden {
+  readonly id: string;
+  readonly numero: number;
   readonly estado: string;
-  readonly tipoGarantia: string;
-  readonly idReglaCobertura: string;
-  readonly observacion: string;
+  readonly tipo_garantia: string;
+  readonly id_articulo: string;
+  readonly id_cliente: string;
+  readonly levantada_en_campo: boolean;
+  readonly creado_en: Date;
+  readonly creador: string | null;
+}
+
+/** Lo que hace falta para mostrar o reclasificar la garantia de una orden. */
+export async function buscarGarantiaDeOrden(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(), bloquear = false,
+): Promise<FilaGarantiaDeOrden | null> {
+  const { rows } = await ejecutor.query<FilaGarantiaDeOrden>(
+    `SELECT o.id, o.numero, o.estado::text AS estado, o.tipo_garantia::text AS tipo_garantia,
+            o.id_articulo, o.id_cliente, o.levantada_en_campo, o.creado_en, u.nombres AS creador
+       FROM orden_servicio o LEFT JOIN usuario u ON u.id = o.creado_por
+      WHERE o.id = $1
+      ${bloquear ? 'FOR UPDATE OF o' : ''}`,
+    [idOrden],
+  );
+  return rows[0] ?? null;
+}
+
+export interface FilaDecisionGarantia {
+  readonly momento: Date;
+  readonly tipo_anterior: string | null;
+  readonly tipo: string;
+  readonly origen: 'registro' | 'reclasificacion' | 'automatica_anterior';
+  readonly responsable: string | null;
+  readonly motivo: string | null;
 }
 
 /**
- * Aplica todos los cambios de cobertura en UNA sentencia.
+ * Decisiones de garantia de la orden, de la mas antigua a la mas reciente.
  *
- * Reevaluar suele tocar una o dos ordenes, pero escribir dentro del bucle
- * seria un UPDATE por orden: el problema no se nota en desarrollo y si en
- * produccion, cuando una correccion de marca alcanza a docenas de ordenes.
+ * Las manuales estan en la bitacora (campo `tipo_garantia`). Los cambios
+ * que hacia el motor de reglas antes de retirarse quedaron como eventos de
+ * la orden ("Cobertura reevaluada de X a Y..."); se leen de ahi para no
+ * perder ese historial.
  */
-export async function aplicarCambiosDeGarantia(
-  ejecutor: Ejecutor, cambios: readonly CambioDeGarantia[], modificadoPor: string,
-): Promise<void> {
-  if (cambios.length === 0) return;
-  await ejecutor.query(
-    `UPDATE orden_servicio o
-        SET tipo_garantia = c.tipo::tipo_garantia,
-            id_regla_cobertura = c.id_regla,
-            modificado_en = now(), modificado_por = $4
-       FROM unnest($1::uuid[], $2::text[], $3::uuid[]) AS c(id_orden, tipo, id_regla)
-      WHERE o.id = c.id_orden`,
-    [cambios.map((c) => c.idOrden), cambios.map((c) => c.tipoGarantia),
-      cambios.map((c) => c.idReglaCobertura), modificadoPor],
+export async function decisionesDeGarantia(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<FilaDecisionGarantia[]> {
+  const { rows } = await ejecutor.query<FilaDecisionGarantia>(
+    `SELECT b.momento, b.valor_anterior AS tipo_anterior, b.valor_nuevo AS tipo,
+            CASE WHEN b.accion = 'crear' THEN 'registro' ELSE 'reclasificacion' END AS origen,
+            u.nombres AS responsable, b.motivo
+       FROM bitacora b LEFT JOIN usuario u ON u.id = b.id_usuario
+      WHERE b.tabla = 'orden_servicio' AND b.id_registro = $1 AND b.campo = 'tipo_garantia'
+     UNION ALL
+     SELECT e.momento,
+            substring(e.observacion FROM '^Cobertura reevaluada de ([a-z_]+) a ') AS tipo_anterior,
+            substring(e.observacion FROM '^Cobertura reevaluada de [a-z_]+ a ([a-z_]+)') AS tipo,
+            'automatica_anterior', u.nombres, e.observacion
+       FROM evento_orden e LEFT JOIN usuario u ON u.id = e.id_responsable
+      WHERE e.id_orden = $1 AND e.observacion LIKE 'Cobertura reevaluada de %'
+     ORDER BY 1`,
+    [idOrden],
   );
+  return rows;
 }
 
-/** La reevaluacion queda en la bitacora inmutable de la orden (RN-18). */
-export async function anotarEventosDeReevaluacion(
-  ejecutor: Ejecutor, cambios: readonly CambioDeGarantia[], idResponsable: string,
+/**
+ * Cambia la garantia de una orden. Solo la reclasificacion manual llama a
+ * esto; la regla de referencia que se guardo al registrarla no se toca.
+ */
+export async function cambiarTipoGarantia(
+  ejecutor: Ejecutor, idOrden: string, tipo: string, modificadoPor: string,
 ): Promise<void> {
-  if (cambios.length === 0) return;
   await ejecutor.query(
-    `INSERT INTO evento_orden (id_orden, estado_anterior, estado_nuevo, id_responsable, observacion)
-     SELECT c.id_orden, c.estado::estado_orden, c.estado::estado_orden, $4, c.observacion
-       FROM unnest($1::uuid[], $2::text[], $3::text[]) AS c(id_orden, estado, observacion)`,
-    [cambios.map((c) => c.idOrden), cambios.map((c) => c.estado),
-      cambios.map((c) => c.observacion), idResponsable],
+    `UPDATE orden_servicio
+        SET tipo_garantia = $2::tipo_garantia, modificado_en = now(), modificado_por = $3
+      WHERE id = $1`,
+    [idOrden, tipo, modificadoPor],
   );
 }
 

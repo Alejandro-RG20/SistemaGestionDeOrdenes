@@ -13,7 +13,7 @@
  */
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { esFechaValida, ultimoDiaCubierto, type EvaluacionCobertura, type FichaArticulo } from '@servitotal/compartido';
+import { esFechaValida, ultimoDiaCubierto, type ConsultaGarantias, type FichaArticulo } from '@servitotal/compartido';
 import { ErrorDeApi } from '../api/cliente.js';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
@@ -30,13 +30,13 @@ export function Articulo(): JSX.Element {
   const { datos, cargando, error, recargar } = useRecurso<FichaArticulo>(
     () => api.pedir<FichaArticulo>(`/articulos/${id}`), [id],
   );
-  // Estado de las garantias, calculado por el mismo motor que decide al
-  // abrir una orden. Si el perfil no puede evaluar coberturas, no se pide.
+  // Estado informativo de las garantias (vigencia, vencimiento). No decide
+  // la garantia de ninguna orden. Si el perfil no puede consultarlo, no se pide.
   const puedeEvaluar = tienePermiso(usuario, 'garantias.evaluar');
   const [version, setVersion] = useState(0);
-  const evaluacion = useRecurso<EvaluacionCobertura | null>(
+  const evaluacion = useRecurso<ConsultaGarantias | null>(
     () => (puedeEvaluar
-      ? api.pedir<EvaluacionCobertura>('/coberturas/evaluar', { metodo: 'POST', cuerpo: { idArticulo: id } }).catch(() => null)
+      ? api.pedir<ConsultaGarantias>('/coberturas/evaluar', { metodo: 'POST', cuerpo: { idArticulo: id } }).catch(() => null)
       : Promise.resolve(null)),
     [id, puedeEvaluar, version],
   );
@@ -107,10 +107,10 @@ export function Articulo(): JSX.Element {
         </div>
 
         <Aviso>
-          <b>Estos tres campos cambian quien paga la reparacion.</b> Un articulo comprado en el
-          grupo lo cubre el proveedor; el mismo articulo como externo lo paga el cliente.
-          Modificarlos exige rol de jefatura y motivo escrito, queda en bitacora inmutable y{' '}
-          <b>reevalua las ordenes abiertas del articulo</b> (RF-78, RN-24).
+          <b>Estos tres campos determinan la vigencia de las garantias del articulo.</b> Modificarlos
+          exige rol de jefatura y motivo escrito y queda en bitacora inmutable. <b>La garantia de las
+          ordenes ya creadas no cambia</b>: las abiertas reciben una nota y, si corresponde, se
+          reclasifican con motivo.
         </Aviso>
 
         {puedeCorregir ? (
@@ -130,7 +130,7 @@ export function Articulo(): JSX.Element {
                     onClick={() => {
                       void enviar(`/articulos/${articulo.id}/datos-sensibles`, 'PUT', {
                         fechaCompra: compra.fechaCompra === '' ? null : compra.fechaCompra, motivo: compra.motivo.trim(),
-                      }, 'Fecha de compra corregida. Las ordenes abiertas del articulo se reevaluaron; las cerradas no cambian.');
+                      }, 'Fecha de compra corregida. La garantia de las ordenes ya creadas no cambia: las abiertas recibieron una nota para revisarla.');
                     }}
                   >
                     Guardar
@@ -150,13 +150,13 @@ export function Articulo(): JSX.Element {
       {aviso === null ? null : <Aviso tono="ok">{aviso}</Aviso>}
       {falla === null ? null : <Aviso tono="warn">{falla}</Aviso>}
 
-      {evaluacion.datos?.garantias === undefined || evaluacion.datos === null ? null : (
-        <Tarjeta titulo="Garantias del articulo hoy" extra="vigencia por fecha; la cobertura de una reparacion la decide el diagnostico">
+      {evaluacion.datos === null || evaluacion.datos === undefined ? null : (
+        <Tarjeta titulo="Garantias del articulo hoy" extra="informativo: la garantia de cada orden la elige quien la registra">
           <table className="d">
             <thead><tr><th>Garantia</th><th>Desde</th><th>Meses</th><th>Vence</th><th>Vigencia</th><th>Aplica al titular</th></tr></thead>
             <tbody>
               {(['proveedor', 'adicional'] as const).map((clave) => {
-                const estado = evaluacion.datos!.garantias![clave];
+                const estado = evaluacion.datos!.garantias[clave];
                 return (
                   <tr key={clave}>
                     <td>{clave === 'proveedor' ? 'Del proveedor (fabricante)' : 'Adicional'}</td>
@@ -164,7 +164,7 @@ export function Articulo(): JSX.Element {
                     <td>{estado.meses ?? '—'}</td>
                     <td>{estado.venceEl ?? '—'}</td>
                     <td>{estado.vigencia === 'no_registrada' ? 'no registrada' : estado.vigencia}
-                      {estado.origen === 'regla' ? <small className="tenue"> (calculada por la regla de cobertura)</small> : null}</td>
+                      {estado.origen === 'regla' ? <small className="tenue"> (duracion de referencia)</small> : null}</td>
                     <td>{estado.aplicable ? 'si' : <span className="tenue">no · {estado.motivo}</span>}</td>
                   </tr>
                 );
@@ -267,8 +267,8 @@ export function Articulo(): JSX.Element {
           </div>
         ) : null}
         <p style={{ fontSize: 11.5, color: 'var(--soft)', margin: '10px 0 0' }}>
-          Si se registra la garantia del proveedor con sus fechas, esas fechas mandan sobre el calculo por meses de la
-          regla de cobertura. La garantia de proveedor acompana al <b>articulo</b>; la poliza extendida acompana al{' '}
+          Si se registra la garantia del proveedor con sus fechas, esas fechas mandan sobre la duracion de referencia
+          de la marca y categoria. Registrar o desactivar una garantia aqui no cambia la de las ordenes ya creadas. La garantia de proveedor acompana al <b>articulo</b>; la poliza extendida acompana al{' '}
           <b>contratante</b> (RN-28). Ninguna de las dos se traslada si el articulo se revende.
         </p>
       </Tarjeta>

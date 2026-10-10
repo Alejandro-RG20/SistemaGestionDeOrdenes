@@ -7,23 +7,21 @@
  * y la autorizacion del cliente no tenia donde anotarse. Esto usa las
  * tablas que ya existian (diagnostico, cotizacion) y las mismas reglas.
  *
- * DIAGNOSTICO Y GARANTIA. La garantia con la que entro la orden queda en
- * su historial. Si el diagnostico encuentra una falla excluida —por la
- * regla de cobertura o porque el tecnico registra golpe, mal uso u otra
- * exclusion— la reparacion pasa a cargo del cliente (tipo «particular»),
- * con un evento que dice de que garantia venia y por que. La modalidad
- * (ruta o taller) no cambia: una orden de garantia no se convierte en
- * «servicio particular a domicilio» por esto.
+ * DIAGNOSTICO Y GARANTIA. El diagnostico NO cambia la garantia de la
+ * orden. Registra la falla encontrada, el componente, las observaciones del
+ * tecnico y, si la constata, una posible exclusion (golpe, mal uso...). Las
+ * observaciones y la exclusion quedan como nota en el historial; las fotos
+ * se cargan como evidencias de la orden. Si la garantia tiene que cambiar,
+ * la reclasifica quien tiene permiso, con motivo (servicio-garantia).
  */
 import type {
   DatosDeTaller, PeticionDecisionCotizacion, PeticionRegistrarCotizacion, PeticionRegistrarDiagnostico,
 } from '@servitotal/compartido';
-import { ACCION_BITACORA, ESTADO_ORDEN, TIPO_GARANTIA } from '@servitotal/compartido';
+import { ACCION_BITACORA, ESTADO_ORDEN } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import { auditar } from '../../comun/auditoria.js';
 import { enTransaccion } from '../../comun/transacciones.js';
 import { ErrorDominio, ErrorNoEncontrado } from '../../comun/errores.js';
-import * as servicioGarantias from '../garantias/servicio.js';
 import { alcanceDe, exigirCerco } from './alcance.js';
 import * as repositorio from './repositorio.js';
 
@@ -82,28 +80,23 @@ export async function registrarDiagnostico(
       idOrden, idTecnico, fallaReal: peticion.fallaReal, componente: peticion.componente ?? null,
     });
 
-    // ¿Sigue cubierta? Primero la regla de cobertura con la falla real;
-    // despues la exclusion que registre el tecnico (golpe, mal uso...).
-    if (orden.tipo_garantia === TIPO_GARANTIA.PARTICULAR) return;
-
-    const evaluacion = await servicioGarantias.evaluar(orden.id_articulo, orden.id_cliente, peticion.fallaReal, cliente);
+    // Observaciones y posible exclusion: una nota en el historial de la
+    // orden. La garantia no se toca.
+    const observaciones = peticion.observaciones?.trim() ?? '';
     const exclusion = peticion.exclusion?.trim() ?? '';
-    const pasaAParticular = evaluacion.tipo === TIPO_GARANTIA.PARTICULAR || exclusion !== '';
-    if (!pasaAParticular) return;
-
-    const porQue = exclusion !== ''
-      ? `Diagnostico: no la cubre la garantia ${orden.tipo_garantia} — ${exclusion}.`
-      : evaluacion.motivo;
-    const cambio: repositorio.CambioDeGarantia = {
-      idOrden,
-      estado: orden.estado,
-      tipoGarantia: TIPO_GARANTIA.PARTICULAR,
-      idReglaCobertura: evaluacion.idReglaCobertura,
-      observacion: `Cobertura reevaluada de ${orden.tipo_garantia} a particular tras el diagnostico. ${porQue} `
-        + 'La reparacion requiere cotizacion y autorizacion del cliente.',
-    };
-    await repositorio.aplicarCambiosDeGarantia(cliente, [cambio], actor.id);
-    await repositorio.anotarEventosDeReevaluacion(cliente, [cambio], actor.id);
+    if (observaciones !== '' || exclusion !== '') {
+      await repositorio.anotarAvisosEnBitacora(cliente, [{
+        idOrden,
+        estado: orden.estado,
+        observacion: 'Diagnostico: '
+          + (observaciones === '' ? '' : `observaciones: ${observaciones}. `)
+          + (exclusion === ''
+            ? ''
+            : `Posible exclusion constatada por el tecnico: ${exclusion}. La garantia de la orden `
+              + `(${orden.tipo_garantia.replace(/_/g, ' ')}) no cambia por esto; si corresponde, `
+              + 'se reclasifica con motivo.'),
+      }], actor.id);
+    }
   });
   return obtener(actor, idOrden);
 }

@@ -65,6 +65,11 @@ export async function deOrden(
                      THEN 'Tecnico asignado: ' || coalesce(b.valor_nuevo, '')
                    WHEN b.campo = 'tecnico'
                      THEN 'Reasignada: ' || b.valor_anterior || ' → ' || coalesce(b.valor_nuevo, '')
+                   WHEN b.campo = 'tipo_garantia' AND b.valor_anterior IS NULL
+                     THEN 'Garantia elegida: ' || replace(coalesce(b.valor_nuevo, ''), '_', ' ')
+                   WHEN b.campo = 'tipo_garantia'
+                     THEN 'Garantia reclasificada: ' || replace(b.valor_anterior, '_', ' ')
+                          || ' → ' || replace(coalesce(b.valor_nuevo, ''), '_', ' ')
                    ELSE initcap(b.accion) || coalesce(' · ' || b.campo, '')
                         || coalesce(': ' || b.valor_anterior, '') || coalesce(' → ' || b.valor_nuevo, '')
               END,

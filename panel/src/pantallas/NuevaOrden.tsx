@@ -20,7 +20,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   FRANJAS_HORARIAS, MODALIDAD_SERVICIO, esFechaValida, ultimoDiaCubierto,
-  type CatalogosDeApoyo, type EvaluacionCobertura, type FichaArticulo, type FichaCliente,
+  type CatalogosDeApoyo, type ConsultaGarantias, type FichaArticulo, type FichaCliente,
   type FichaOrden, type ResumenArticulo, type ResumenCliente,
 } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
@@ -56,8 +56,8 @@ export function NuevaOrden(): JSX.Element {
   // Vista previa: la misma funcion que usa el servidor, que es quien guarda.
   const venceAdicional = adicionalCompleta ? ultimoDiaCubierto(nuevoArticulo.fechaContratacion, mesesAdicional) : null;
 
-  // ── paso 3: cobertura (la calcula el servidor) ──
-  const [cobertura, setCobertura] = useState<EvaluacionCobertura | null>(null);
+  // ── paso 3: garantia (la elige quien registra; el servidor informa) ──
+  const [cobertura, setCobertura] = useState<ConsultaGarantias | null>(null);
   /*
    * Con que se atendera: se pregunta antes de crear la orden, despues de
    * ver el estado de cada garantia. Vacio = todavia no se eligio.
@@ -152,10 +152,9 @@ export function NuevaOrden(): JSX.Element {
   );
 
   /**
-   * Pregunta al servidor quién paga. NO se calcula aquí: el motor de
-   * garantías vive en el servidor y es el mismo que reevalúa la cobertura
-   * tras el diagnóstico. Dos motores darían dos respuestas, y la mala saldría
-   * a la luz semanas después.
+   * Pide al servidor el estado de las garantías del artículo (vigencia,
+   * vencimiento, advertencias). Es información para quien decide: el
+   * servidor no elige la garantía de la orden.
    */
   async function evaluarCobertura(id: string): Promise<void> {
     if (id === '' || cliente === null) return;
@@ -163,13 +162,13 @@ export function NuevaOrden(): JSX.Element {
     setError(null);
     try {
       setModalidadGarantia('');
-      setCobertura(await api.pedir<EvaluacionCobertura>('/coberturas/evaluar', {
+      setCobertura(await api.pedir<ConsultaGarantias>('/coberturas/evaluar', {
         metodo: 'POST',
         cuerpo: { idArticulo: id, idClienteSolicitante: cliente.id },
       }));
     } catch (fallo) {
       setCobertura(null);
-      setError(fallo instanceof ErrorDeApi ? fallo.message : 'No se pudo evaluar la cobertura.');
+      setError(fallo instanceof ErrorDeApi ? fallo.message : 'No se pudo consultar el estado de las garantias.');
     } finally {
       setEvaluando(false);
     }
@@ -524,102 +523,80 @@ export function NuevaOrden(): JSX.Element {
         </Tarjeta>
       )}
 
-      {/* ── 3 · Cobertura: el veredicto del servidor ── */}
+      {/* ── 3 · Garantia: la elige quien registra; el sistema solo informa ── */}
       {idArticulo === '' ? null : (
-        <Tarjeta titulo="3 · Evaluacion de cobertura" acento="var(--blue)">
-          {evaluando ? <Cargando que="la cobertura" /> : null}
+        <Tarjeta titulo="3 · Garantia de la orden *" acento="var(--blue)">
+          {evaluando ? <Cargando que="el estado de las garantias" /> : null}
           {cobertura === null || evaluando ? null : (
             <>
-              <Aviso tono={cobertura.tipo === 'particular' ? 'warn' : 'info'}>
-                <b>El sistema determino: garantia {cobertura.tipo.replace(/_/g, ' ')}.</b>{' '}
-                {cobertura.motivo}{' '}
-                <b>
-                  {cobertura.tipo === 'particular'
-                    ? 'La reparacion necesitara la autorizacion del cliente tras el diagnostico.'
-                    : 'La reparacion esta cubierta por la garantia.'}
-                </b>
-              </Aviso>
-              {/* El desglose es lo que hace auditable el veredicto: no dice
-                  solo "particular", dice que condicion fallo. */}
-              <table className="d">
-                <thead>
-                  <tr><th>Condicion evaluada</th><th>Resultado</th></tr>
-                </thead>
-                <tbody>
-                  {cobertura.desglose.map((condicion) => (
-                    <tr key={condicion.nombre}>
-                      <td>{condicion.nombre.replace(/_/g, ' ')}</td>
-                      <td>
-                        <span className={condicion.seCumplio ? 'tag t-t' : 'tag t-r'}>
-                          {condicion.seCumplio ? 'se cumple' : 'no se cumple'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p style={{ fontSize: 11.5, color: 'var(--soft)', margin: '10px 0 0' }}>
-                La cobertura se reevalua tras el diagnostico: si la falla resulta excluida, la
-                orden se detiene y pasa a particular (RN-04, RN-05). Este veredicto lo emite el
-                mismo motor que reevalua la cobertura tras el diagnostico.
-              </p>
-
               {articuloElegido === null ? null : (
-                <p style={{ fontSize: 12.5, margin: '10px 0 0' }}>
+                <p style={{ fontSize: 12.5, margin: '0 0 8px' }}>
                   <b>Articulo:</b> {articuloElegido.marca} {articuloElegido.modelo ?? ''} · serie{' '}
                   {articuloElegido.numeroSerie ?? 'no registrada'} · compra {articuloElegido.fechaCompra ?? 'sin fecha'}
                 </p>
               )}
 
-              {cobertura.garantias === undefined ? null : (
-                <>
-                  <table className="d" style={{ marginTop: 8 }}>
-                    <thead><tr><th>Garantia</th><th>Desde</th><th>Meses</th><th>Vence</th><th>Vigencia</th><th>¿Se puede usar?</th></tr></thead>
-                    <tbody>
-                      {(['proveedor', 'adicional'] as const).map((clave) => {
-                        const estado = cobertura.garantias![clave];
-                        return (
-                          <tr key={clave}>
-                            <td>{clave === 'proveedor' ? 'Del proveedor (fabricante)' : 'Adicional'}</td>
-                            <td>{estado.desde ?? '—'}<br /><small className="tenue">{clave === 'proveedor' ? 'compra' : 'contratacion'}</small></td>
-                            <td>{estado.meses ?? '—'}</td>
-                            <td>{estado.venceEl ?? '—'}</td>
-                            <td>
-                              <span className={estado.vigencia === 'vigente' ? 'tag t-t' : estado.vigencia === 'vencida' ? 'tag t-r' : 'tag t-g'}>
-                                {estado.vigencia === 'no_registrada' ? 'no registrada' : estado.vigencia}
-                              </span>
-                              {estado.origen === 'regla' ? <small className="tenue"> (calculada por la regla)</small> : null}
-                            </td>
-                            <td>{estado.aplicable ? 'si' : <span className="tenue">no · {estado.motivo}</span>}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+              <table className="d">
+                <thead><tr><th>Garantia</th><th>Desde</th><th>Meses</th><th>Vence</th><th>Vigencia</th><th>Observacion</th></tr></thead>
+                <tbody>
+                  {(['proveedor', 'adicional'] as const).map((clave) => {
+                    const estado = cobertura.garantias[clave];
+                    return (
+                      <tr key={clave}>
+                        <td>{clave === 'proveedor' ? 'Del proveedor (fabricante)' : 'Adicional'}</td>
+                        <td>{estado.desde ?? '—'}<br /><small className="tenue">{clave === 'proveedor' ? 'compra' : 'contratacion'}</small></td>
+                        <td>{estado.meses ?? '—'}</td>
+                        <td>{estado.venceEl ?? '—'}</td>
+                        <td>
+                          <span className={estado.vigencia === 'vigente' ? 'tag t-t' : estado.vigencia === 'vencida' ? 'tag t-r' : 'tag t-g'}>
+                            {estado.vigencia === 'no_registrada' ? 'no registrada' : estado.vigencia}
+                          </span>
+                          {estado.origen === 'regla' ? <small className="tenue"> (duracion de referencia)</small> : null}
+                        </td>
+                        <td>{estado.aplicable ? '—' : <span className="tenue">{estado.motivo}</span>}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
 
-                  <fieldset style={{ border: '1px solid var(--line)', marginTop: 10, padding: '8px 12px' }}>
-                    <legend style={{ fontSize: 12.5, fontWeight: 600 }}>¿Con que garantia se atendera? *</legend>
-                    {([
-                      { valor: 'proveedor', nombre: 'Garantia del proveedor', posible: cobertura.garantias.proveedor.aplicable },
-                      { valor: 'adicional', nombre: 'Garantia adicional', posible: cobertura.garantias.adicional.aplicable },
-                      { valor: 'particular', nombre: 'Servicio particular (lo paga el cliente)', posible: true },
-                    ] as const).map((opcion) => (
-                      <label key={opcion.valor} className="opcion" style={{ opacity: opcion.posible ? 1 : 0.5 }}>
-                        <input
-                          type="radio" name="modalidad-garantia" value={opcion.valor}
-                          disabled={!opcion.posible}
-                          checked={modalidadGarantia === opcion.valor}
-                          onChange={() => setModalidadGarantia(opcion.valor)}
-                        />{' '}
-                        {opcion.nombre}{opcion.posible ? '' : ' — no disponible'}
-                      </label>
-                    ))}
-                    <small className="tenue">
-                      Una garantia vigente no garantiza que la reparacion quede cubierta: golpes, mal uso y fallas
-                      excluidas se determinan en el diagnostico. Si el daño ya es evidente, elija servicio particular.
-                    </small>
-                  </fieldset>
-                </>
+              <fieldset style={{ border: '1px solid var(--line)', marginTop: 10, padding: '8px 12px' }}>
+                <legend style={{ fontSize: 12.5, fontWeight: 600 }}>¿Con que garantia se atendera? *</legend>
+                {([
+                  { valor: 'proveedor', nombre: 'Garantia del proveedor' },
+                  { valor: 'adicional', nombre: 'Garantia adicional' },
+                  { valor: 'particular', nombre: 'Servicio particular (lo paga el cliente)' },
+                ] as const).map((opcion) => (
+                  <label key={opcion.valor} className="opcion">
+                    <input
+                      type="radio" name="modalidad-garantia" value={opcion.valor}
+                      checked={modalidadGarantia === opcion.valor}
+                      onChange={() => setModalidadGarantia(opcion.valor)}
+                    />{' '}
+                    {opcion.nombre}
+                    {opcion.valor !== 'particular' && !cobertura.garantias[opcion.valor].aplicable
+                      ? <small className="tenue"> — con advertencia</small> : null}
+                  </label>
+                ))}
+                <small className="tenue">
+                  La decision es de quien registra. El sistema no la cambia: ni el diagnostico ni un cambio en la
+                  ficha del articulo la sustituyen. Si despues hay que cambiarla, la reclasifica quien tiene permiso,
+                  con motivo.
+                </small>
+              </fieldset>
+
+              {/* Advertencias: informan, no impiden. Quedan anotadas con la decision. */}
+              {cobertura.advertencias.length === 0 ? null : (
+                <Aviso tono="warn">
+                  <b>Advertencias (informativas):</b>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                    {cobertura.advertencias.map((texto) => <li key={texto}>{texto}</li>)}
+                  </ul>
+                  {modalidadGarantia !== '' && modalidadGarantia !== 'particular'
+                    && !cobertura.garantias[modalidadGarantia].aplicable
+                    ? <span>Puede registrar la orden con la garantia elegida: la advertencia queda anotada con su decision.</span>
+                    : null}
+                </Aviso>
               )}
             </>
           )}

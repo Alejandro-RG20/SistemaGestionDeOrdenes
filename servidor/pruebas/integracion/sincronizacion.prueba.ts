@@ -180,7 +180,7 @@ describe('idempotencia: reenviar no duplica', () => {
     const orden = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: base.idCliente, idArticulo: base.idArticulo,
-        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Para probar consumo repetido',
+        modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'proveedor', fallaReportada: 'Para probar consumo repetido',
       }).expect(201);
     await encargarAlTecnico(orden.body.data.id);
 
@@ -228,7 +228,7 @@ describe('nada de lo registrado en campo se descarta', () => {
     const orden = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: base.idCliente, idArticulo: base.idArticulo,
-        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'El tecnico ya salio a atenderla',
+        modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'proveedor', fallaReportada: 'El tecnico ya salio a atenderla',
       }).expect(201);
 
     /*
@@ -278,7 +278,7 @@ describe('nada de lo registrado en campo se descarta', () => {
     const orden = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: base.idCliente, idArticulo: base.idArticulo,
-        modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'Para probar transicion invalida',
+        modalidad: MODALIDAD_SERVICIO.TALLER, tipoGarantiaElegida: 'proveedor', fallaReportada: 'Para probar transicion invalida',
       }).expect(201);
 
     const op = operacion(TIPO_OPERACION.ORDEN_CAMBIAR_ESTADO, {
@@ -341,7 +341,7 @@ describe('prevalece lo que ocurrio en el domicilio', () => {
     const orden = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: base.idCliente, idArticulo: base.idArticulo,
-        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'El tecnico instalo una pieza que no figuraba',
+        modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'proveedor', fallaReportada: 'El tecnico instalo una pieza que no figuraba',
       }).expect(201);
     await encargarAlTecnico(orden.body.data.id);
 
@@ -393,7 +393,7 @@ describe('prevalece lo que ocurrio en el domicilio', () => {
     const orden = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: base.idCliente, idArticulo: base.idArticulo,
-        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Para probar el precio firmado',
+        modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'proveedor', fallaReportada: 'Para probar el precio firmado',
       }).expect(201);
     await encargarAlTecnico(orden.body.data.id);
 
@@ -459,7 +459,7 @@ describe('la cola no deja hacer lo que el panel no deja', () => {
     const orden = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente)
       .send({
         idCliente: base.idCliente, idArticulo: base.idArticulo,
-        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Orden para probar el cerco de la cola',
+        modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'proveedor', fallaReportada: 'Orden para probar el cerco de la cola',
       }).expect(201);
     return orden.body.data.id as string;
   }

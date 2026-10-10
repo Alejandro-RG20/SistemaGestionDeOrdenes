@@ -112,8 +112,9 @@ export interface PeticionCrearOrden {
   /**
    * Con que se atendera, elegido por quien registra tras ver el estado de
    * las garantias: garantia del proveedor, garantia adicional o servicio
-   * particular. El servidor rechaza una garantia que no esta vigente o no
-   * aplica. Si se omite (la cola del movil), decide el motor de garantias.
+   * particular. Obligatorio. Si la elegida esta vencida o le faltan datos,
+   * el servidor la acepta igual y anota la advertencia con la decision.
+   * Solo una orden levantada en campo puede omitirlo: entra "por validar".
    */
   readonly tipoGarantiaElegida?: 'proveedor' | 'adicional' | 'particular';
   /**
@@ -258,9 +259,12 @@ export interface DatosDeTaller {
 export interface PeticionRegistrarDiagnostico {
   readonly fallaReal: string;
   readonly componente?: string | null;
+  /** Observaciones del tecnico sobre lo encontrado. */
+  readonly observaciones?: string | null;
   /**
-   * Golpe, mal uso u otra exclusion que el tecnico constata. Si se indica y
-   * la orden estaba cubierta, la reparacion pasa a cargo del cliente.
+   * Golpe, mal uso u otra posible exclusion que el tecnico constata. Queda
+   * anotada; NO cambia la garantia de la orden. Si corresponde, quien tiene
+   * permiso la reclasifica con motivo.
    */
   readonly exclusion?: string | null;
 }

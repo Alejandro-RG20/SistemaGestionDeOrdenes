@@ -215,7 +215,7 @@ function Privado(): JSX.Element {
       } />
 
       <Route path="/coberturas" element={
-        <Pantalla codigo="W-15" miga="Garantias › Reglas de cobertura"><Coberturas /></Pantalla>
+        <Pantalla codigo="W-15" miga="Garantias › Reglas de referencia"><Coberturas /></Pantalla>
       } />
       <Route path="/excepciones" element={
         <Pantalla codigo="W-10" miga="Excepciones de sincronizacion"><Excepciones /></Pantalla>

@@ -5,6 +5,7 @@ import { leerParametrosPagina } from '../../comun/paginacion.js';
 import { actorDe } from '../../comun/autenticacion.js';
 import { esquemaIdentificador, validar } from '../seguridad/esquemas.js';
 import {
+  esquemaReclasificarGarantia,
   esquemaAsignarTecnico, esquemaCrearOrden, esquemaNotaCorreccion, esquemaTransicion, esquemaRegistrarBitacora,
   esquemaDecisionCotizacion, esquemaRegistrarCotizacion, esquemaRegistrarDiagnostico,
 } from './esquemas.js';
@@ -12,6 +13,7 @@ import * as servicio from './servicio.js';
 import * as transiciones from './servicio-transiciones.js';
 import * as servicioBitacora from './servicio-bitacora.js';
 import * as servicioTaller from './servicio-taller.js';
+import * as servicioGarantia from './servicio-garantia.js';
 
 const identificador = (peticion: Request): string => validar(esquemaIdentificador, peticion.params['id']);
 
@@ -94,6 +96,15 @@ export async function registrarBitacora(peticion: Request, respuesta: Response):
 
 export async function datosDeTaller(peticion: Request, respuesta: Response): Promise<void> {
   responderDatos(respuesta, await servicioTaller.obtener(actorDe(peticion), identificador(peticion)));
+}
+
+export async function garantia(peticion: Request, respuesta: Response): Promise<void> {
+  responderDatos(respuesta, await servicioGarantia.obtener(actorDe(peticion), identificador(peticion)));
+}
+
+export async function reclasificarGarantia(peticion: Request, respuesta: Response): Promise<void> {
+  const datos = validar(esquemaReclasificarGarantia, peticion.body);
+  responderDatos(respuesta, await servicioGarantia.reclasificar(actorDe(peticion), identificador(peticion), datos));
 }
 
 export async function registrarDiagnostico(peticion: Request, respuesta: Response): Promise<void> {

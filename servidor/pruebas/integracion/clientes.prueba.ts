@@ -310,7 +310,7 @@ describe('desactivar y reactivar', () => {
     expect(todos.body.data.map((c: { id: string }) => c.id)).toContain(idCliente);
 
     const orden = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(cabecera)
-      .send({ idCliente, idArticulo, modalidad: 'taller', fallaReportada: 'No enciende desde ayer por la tarde' });
+      .send({ idCliente, idArticulo, modalidad: 'taller', tipoGarantiaElegida: 'proveedor', fallaReportada: 'No enciende desde ayer por la tarde' });
     expect(orden.status).toBe(400);
     expect(orden.body.error.message).toMatch(/desactivado/);
 
@@ -333,7 +333,7 @@ describe('desactivar y reactivar', () => {
     expect(respuesta.body.data.activo).toBe(true);
 
     await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(cabecera)
-      .send({ idCliente, idArticulo, modalidad: 'taller', fallaReportada: 'No enciende desde ayer por la tarde' })
+      .send({ idCliente, idArticulo, modalidad: 'taller', tipoGarantiaElegida: 'proveedor', fallaReportada: 'No enciende desde ayer por la tarde' })
       .expect(201);
   });
 

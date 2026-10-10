@@ -4,7 +4,6 @@ import { z } from 'zod';
 export const esquemaEvaluar = z.object({
   idArticulo: z.string().uuid('El articulo indicado no es valido.'),
   idClienteSolicitante: z.string().uuid('El cliente indicado no es valido.').optional(),
-  fallaReal: z.string().trim().min(3, 'Describa la falla real.').max(500).optional(),
 });
 
 export const esquemaNuevaVersionRegla = z.object({
