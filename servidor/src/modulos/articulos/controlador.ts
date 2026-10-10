@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { responderDatos, responderListado } from '../../comun/respuesta.js';
 import { leerParametrosPagina } from '../../comun/paginacion.js';
 import { actorDe } from '../../comun/autenticacion.js';
-import { esquemaIdentificador, validar } from '../seguridad/esquemas.js';
+import { esquemaIdentificador, esquemaMotivo, validar } from '../seguridad/esquemas.js';
 import {
   esquemaActualizarArticulo, esquemaCambiarDatosSensibles, esquemaCrearArticulo,
   esquemaRegistrarCobertura, esquemaTransferir,
@@ -61,4 +61,10 @@ export async function transferir(peticion: Request, respuesta: Response): Promis
 export async function registrarCobertura(peticion: Request, respuesta: Response): Promise<void> {
   const datos = validar(esquemaRegistrarCobertura, peticion.body);
   responderDatos(respuesta, await servicio.registrarCobertura(actorDe(peticion), identificador(peticion), datos), 201);
+}
+
+export async function desactivarCobertura(peticion: Request, respuesta: Response): Promise<void> {
+  const { motivo } = validar(esquemaMotivo, peticion.body);
+  const idCobertura = validar(esquemaIdentificador, peticion.params['idCobertura']);
+  responderDatos(respuesta, await servicio.desactivarCobertura(actorDe(peticion), identificador(peticion), idCobertura, motivo));
 }

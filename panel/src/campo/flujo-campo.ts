@@ -87,6 +87,8 @@ export function porQueNoSePuedeMover(estado: EstadoOrden): string | null {
       return 'Esta cotizada. La autorizacion del cliente se gestiona desde el panel.';
     case ESTADO_ORDEN.ESPERANDO_AUTORIZACION:
       return 'Esperando que el cliente autorice la cotizacion.';
+    case ESTADO_ORDEN.AUTORIZADA:
+      return 'Autorizada. La jefatura decide el siguiente paso; si le toca a usted, aparecera en su jornada.';
     case ESTADO_ORDEN.ESPERANDO_REPUESTO:
       return 'Esperando el repuesto. Bodega la libera cuando entra.';
     case ESTADO_ORDEN.FINALIZADA:

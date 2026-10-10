@@ -10,7 +10,7 @@ import type {
   EventoDeHistorial,
   FichaOrden, Paginacion, PeticionAsignarTecnico, PeticionCrearOrden, ResumenOrden,
 } from '@servitotal/compartido';
-import { ACCION_BITACORA, ESTADO_ORDEN, MODALIDAD_SERVICIO } from '@servitotal/compartido';
+import { ACCION_BITACORA, ESTADO_ORDEN, MODALIDAD_SERVICIO, TIPO_GARANTIA, type TipoGarantia } from '@servitotal/compartido';
 import { auditar } from '../../comun/auditoria.js';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import type { Ejecutor } from '../../comun/transacciones.js';
@@ -18,12 +18,13 @@ import { enTransaccion } from '../../comun/transacciones.js';
 import type { ParametrosPagina } from '../../comun/paginacion.js';
 import { construirPaginacion } from '../../comun/paginacion.js';
 import { ErrorConflicto, ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
-import { definicionDe, destinosPosibles } from '../../dominio/ordenes/indice.js';
+import { TECNICO_ASIGNADO, definicionDe, destinosPosibles } from '../../dominio/ordenes/indice.js';
 import { horasParaVencer, sumarHorasLaborables, type CalendarioLaboral } from '../../dominio/plazos/indice.js';
 import * as servicioAgenda from '../agenda/servicio.js';
 import * as servicioGarantias from '../garantias/servicio.js';
 import * as repositorio from './repositorio.js';
 import * as repositorioHistorial from './repositorio-historial.js';
+import { evaluarAcciones } from './servicio-transiciones.js';
 import { alcanceDe, conCerco, exigirCerco } from './alcance.js';
 import { aEvento, aNota, aResumenOrden, type FilaOrden } from './dto.js';
 
@@ -115,10 +116,11 @@ export async function obtenerFicha(actor: Actor, idOrden: string): Promise<Ficha
    */
   exigirCerco(await alcanceDe(actor), fila);
 
-  const [eventos, notas, calendario] = await Promise.all([
+  const [eventos, notas, calendario, acciones] = await Promise.all([
     repositorio.listarEventos(idOrden),
     repositorio.listarNotas(idOrden),
     servicioAgenda.obtenerCalendarioLaboral(actor.idCentro),
+    evaluarAcciones(actor, idOrden),
   ]);
 
   return {
@@ -138,6 +140,40 @@ export async function obtenerFicha(actor: Actor, idOrden: string): Promise<Ficha
     eventos: eventos.map(aEvento),
     notas: notas.map(aNota),
     destinosPosibles: destinosPosibles(fila.estado),
+    acciones,
+  };
+}
+
+/**
+ * Aplica la modalidad que eligio quien registra la orden.
+ *
+ * Particular se puede elegir siempre (por ejemplo, un golpe que ninguna
+ * garantia cubre). Una garantia solo si esta vigente por fecha Y aplica a
+ * quien pide el servicio: no se registra como cubierta una garantia
+ * vencida o ajena.
+ */
+function conModalidadElegida(
+  evaluacion: Awaited<ReturnType<typeof servicioGarantias.evaluar>>,
+  elegida: 'proveedor' | 'adicional' | 'particular' | undefined,
+): { tipo: TipoGarantia; idReglaCobertura: string; motivo: string } {
+  if (elegida === undefined) return evaluacion;
+  if (elegida === TIPO_GARANTIA.PARTICULAR) {
+    return { ...evaluacion, tipo: TIPO_GARANTIA.PARTICULAR, motivo: 'Servicio particular elegido al registrar la orden.' };
+  }
+  const estado = evaluacion.garantias?.[elegida];
+  if (estado === undefined || !estado.aplicable) {
+    const nombre = elegida === TIPO_GARANTIA.PROVEEDOR ? 'del proveedor' : 'adicional';
+    throw new ErrorDominio(
+      'GARANTIA_NO_APLICABLE',
+      `No se puede atender con la garantia ${nombre}: ${estado?.motivo ?? 'no esta registrada.'} `
+        + 'Elija otra modalidad o, si el cliente presenta un documento, registrelo en la ficha del articulo.',
+    );
+  }
+  return {
+    ...evaluacion,
+    tipo: elegida,
+    motivo: `Garantia ${elegida === TIPO_GARANTIA.PROVEEDOR ? 'del proveedor' : 'adicional'} elegida al registrar; `
+      + `vigente hasta ${estado.venceEl ?? '—'}.`,
   };
 }
 
@@ -194,9 +230,10 @@ export async function crear(actor: Actor, peticion: PeticionCrearOrden): Promise
 
     // La cobertura la decide el motor de garantias, con quien pide el
     // servicio: si el articulo esta a nombre de otro, no hay garantia.
-    const cobertura = await servicioGarantias.evaluar(
+    const evaluacion = await servicioGarantias.evaluar(
       peticion.idArticulo, peticion.idCliente, undefined, cliente,
     );
+    const cobertura = conModalidadElegida(evaluacion, peticion.tipoGarantiaElegida);
 
     /*
      * DE QUE TIENDA SALE LA ORDEN.
@@ -257,7 +294,10 @@ export async function crear(actor: Actor, peticion: PeticionCrearOrden): Promise
       estadoAnterior: null,
       estadoNuevo: ESTADO_ORDEN.REGISTRADA,
       idResponsable: actor.id,
-      observacion: `Orden registrada. Cobertura: ${cobertura.tipo}. ${cobertura.motivo}`,
+      observacion: `Orden registrada. Cobertura: ${cobertura.tipo}. ${cobertura.motivo}`
+        + (peticion.tipoGarantiaElegida === undefined || peticion.tipoGarantiaElegida === evaluacion.tipo
+          ? ''
+          : ` (Elegida por quien registro; la evaluacion indicaba ${evaluacion.tipo}.)`),
     });
 
     return creada.id;
@@ -302,7 +342,10 @@ export async function asignarTecnico(
       );
     }
 
-    await repositorio.asignarTecnico(cliente, idOrden, peticion.idTecnico, actor.id);
+    await repositorio.asignarTecnico(
+      cliente, idOrden, peticion.idTecnico, actor.id,
+      definicionDe(contexto.estado).responsable === TECNICO_ASIGNADO,
+    );
     await auditar(cliente, [{
       tabla: 'orden_servicio',
       idRegistro: idOrden,

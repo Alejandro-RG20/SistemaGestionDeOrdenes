@@ -66,6 +66,7 @@ export function momentosExigiblesEn(estado: string): readonly MomentoEvidencia[]
     case 'en_diagnostico':
     case 'cotizada':
     case 'esperando_autorizacion':
+    case 'autorizada':
     case 'esperando_repuesto':
       return hasta(
         MOMENTO_EVIDENCIA.RECEPCION, MOMENTO_EVIDENCIA.VALIDACION_GARANTIA,

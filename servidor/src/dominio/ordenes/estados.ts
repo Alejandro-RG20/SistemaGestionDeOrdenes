@@ -1,5 +1,5 @@
 /**
- * Patron Estado: los 13 estados de la orden, cada uno con su responsable,
+ * Patron Estado: los 14 estados de la orden, cada uno con su responsable,
  * su momento de evidencia y las transiciones que admite.
  *
  * ESTE ES EL UNICO LUGAR donde se declara que transiciones existen. Si una
@@ -15,8 +15,10 @@ import {
 } from '@servitotal/compartido';
 import type { Requisito } from './requisitos.js';
 import {
-  autorizadaSiLaPagaElCliente, cotizacionFueAceptada, esOrdenDeRuta, evidenciaObligatoriaCompleta,
-  laPagaElCliente, repuestosConciliados, repuestosLiberados, sinSolicitudesAbiertas,
+  cotizacionAceptadaSiCorresponde, cubiertaPorGarantia, esOrdenDeRuta,
+  esVisitaParticularConPagoPrevio, evidenciaObligatoriaCompleta,
+  laPagaElCliente, pagoDeVisitaConfirmado, repuestosConciliados, repuestosLiberados,
+  sinDiagnosticoTodavia, sinSolicitudesAbiertas,
   tieneActaDeEntrega, tieneCotizacionRegistrada, tieneDiagnosticoRegistrado,
   tieneMotivoEscrito, tieneTecnicoAsignado, tieneVisitaProgramada,
 } from './requisitos.js';
@@ -59,6 +61,9 @@ const DEFINICIONES: readonly DefinicionEstado[] = [
     responsable: CODIGO_ROL.AGENTE_TELEFONIA,
     transiciones: [
       { hacia: ESTADO_ORDEN.ASIGNADA, requisitos: [tieneTecnicoAsignado, evidenciaObligatoriaCompleta] },
+      // Visita particular a domicilio: el cliente paga la visita antes de
+      // que se despache (migracion 0024).
+      { hacia: ESTADO_ORDEN.ESPERANDO_AUTORIZACION, requisitos: [esVisitaParticularConPagoPrevio] },
       ANULAR,
     ],
   },
@@ -73,6 +78,7 @@ const DEFINICIONES: readonly DefinicionEstado[] = [
         requisitos: [esOrdenDeRuta, tieneTecnicoAsignado, tieneVisitaProgramada, evidenciaObligatoriaCompleta],
       },
       { hacia: ESTADO_ORDEN.EN_COLA_TALLER, requisitos: [evidenciaObligatoriaCompleta] },
+      { hacia: ESTADO_ORDEN.ESPERANDO_AUTORIZACION, requisitos: [esVisitaParticularConPagoPrevio] },
       ANULAR,
     ],
   },
@@ -108,13 +114,15 @@ const DEFINICIONES: readonly DefinicionEstado[] = [
         hacia: ESTADO_ORDEN.COTIZADA,
         requisitos: [tieneDiagnosticoRegistrado, evidenciaObligatoriaCompleta],
       },
+      // Directo a repuesto o reparacion solo si la cubre una garantia. Una
+      // reparacion particular se cotiza y se autoriza (migracion 0024).
       {
         hacia: ESTADO_ORDEN.ESPERANDO_REPUESTO,
-        requisitos: [tieneDiagnosticoRegistrado, evidenciaObligatoriaCompleta, autorizadaSiLaPagaElCliente],
+        requisitos: [tieneDiagnosticoRegistrado, evidenciaObligatoriaCompleta, cubiertaPorGarantia],
       },
       {
         hacia: ESTADO_ORDEN.EN_REPARACION,
-        requisitos: [tieneDiagnosticoRegistrado, evidenciaObligatoriaCompleta, autorizadaSiLaPagaElCliente],
+        requisitos: [tieneDiagnosticoRegistrado, evidenciaObligatoriaCompleta, cubiertaPorGarantia],
       },
       CERRAR_SIN_REPARAR,
       ANULAR,
@@ -130,10 +138,10 @@ const DEFINICIONES: readonly DefinicionEstado[] = [
         hacia: ESTADO_ORDEN.ESPERANDO_AUTORIZACION,
         requisitos: [tieneCotizacionRegistrada, laPagaElCliente],
       },
-      // Si la cubre la garantia, no hay nada que autorizar; si es
-      // particular, el cliente tiene que haberla aceptado.
-      { hacia: ESTADO_ORDEN.EN_REPARACION, requisitos: [tieneCotizacionRegistrada, autorizadaSiLaPagaElCliente] },
-      { hacia: ESTADO_ORDEN.ESPERANDO_REPUESTO, requisitos: [tieneCotizacionRegistrada, autorizadaSiLaPagaElCliente] },
+      // Si la cubre la garantia, no hay nada que autorizar. Si es
+      // particular, pasa por esperando autorizacion y autorizada.
+      { hacia: ESTADO_ORDEN.EN_REPARACION, requisitos: [tieneCotizacionRegistrada, cubiertaPorGarantia] },
+      { hacia: ESTADO_ORDEN.ESPERANDO_REPUESTO, requisitos: [tieneCotizacionRegistrada, cubiertaPorGarantia] },
       CERRAR_SIN_REPARAR,
       ANULAR,
     ],
@@ -144,8 +152,33 @@ const DEFINICIONES: readonly DefinicionEstado[] = [
     momentoEvidencia: null,
     responsable: CODIGO_ROL.AGENTE_TELEFONIA,
     transiciones: [
-      { hacia: ESTADO_ORDEN.EN_REPARACION, requisitos: [cotizacionFueAceptada] },
-      { hacia: ESTADO_ORDEN.ESPERANDO_REPUESTO, requisitos: [cotizacionFueAceptada] },
+      // La autorizacion comercial es un acto explicito de quien tiene
+      // `taller.cotizacion.autorizar` (maquina-estados.ts). Un comentario
+      // de bitacora nunca mueve la orden por si solo.
+      {
+        hacia: ESTADO_ORDEN.AUTORIZADA,
+        requisitos: [cotizacionAceptadaSiCorresponde, pagoDeVisitaConfirmado],
+      },
+      CERRAR_SIN_REPARAR,
+      ANULAR,
+    ],
+  },
+  {
+    /*
+     * AUTORIZADA (migracion 0024). La autorizacion esta confirmada; nada
+     * mas. De aqui sigue a la etapa que corresponda segun el caso:
+     *   - visita particular aun sin diagnostico -> asignada (despacho);
+     *   - reparacion autorizada -> en reparacion o esperando repuesto.
+     * Ninguna de esas transiciones ocurre sola.
+     */
+    estado: ESTADO_ORDEN.AUTORIZADA,
+    esFinal: false,
+    momentoEvidencia: null,
+    responsable: TECNICO_ASIGNADO,
+    transiciones: [
+      { hacia: ESTADO_ORDEN.ASIGNADA, requisitos: [sinDiagnosticoTodavia, tieneTecnicoAsignado] },
+      { hacia: ESTADO_ORDEN.EN_REPARACION, requisitos: [tieneDiagnosticoRegistrado] },
+      { hacia: ESTADO_ORDEN.ESPERANDO_REPUESTO, requisitos: [tieneDiagnosticoRegistrado] },
       CERRAR_SIN_REPARAR,
       ANULAR,
     ],

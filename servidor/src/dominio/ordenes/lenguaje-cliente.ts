@@ -33,6 +33,7 @@ const ETAPA_DE_ESTADO: Readonly<Record<EstadoOrden, string>> = {
   [ESTADO_ORDEN.EN_DIAGNOSTICO]: 'revision',
   [ESTADO_ORDEN.COTIZADA]: 'espera',
   [ESTADO_ORDEN.ESPERANDO_AUTORIZACION]: 'espera',
+  [ESTADO_ORDEN.AUTORIZADA]: 'espera',
   [ESTADO_ORDEN.ESPERANDO_REPUESTO]: 'espera',
   [ESTADO_ORDEN.EN_REPARACION]: 'reparacion',
   [ESTADO_ORDEN.FINALIZADA]: 'listo',
@@ -90,6 +91,11 @@ export function situacionDe(estado: EstadoOrden): { situacion: string; explicaci
         situacion: 'Esperamos su respuesta',
         explicacion: 'Necesitamos que nos autorice la reparacion para continuar. ' +
           'Si ya respondio, disculpe la demora en actualizarlo.',
+      };
+    case ESTADO_ORDEN.AUTORIZADA:
+      return {
+        situacion: 'Autorizado',
+        explicacion: 'Recibimos su autorizacion. Le avisaremos cuando avancemos con el siguiente paso.',
       };
     case ESTADO_ORDEN.ESPERANDO_REPUESTO:
       return {

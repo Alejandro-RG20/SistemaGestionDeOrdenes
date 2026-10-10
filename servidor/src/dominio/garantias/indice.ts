@@ -5,3 +5,4 @@ export * from './especificaciones-cobertura.js';
 export * from './estrategias-cobertura.js';
 export * from './motor-garantias.js';
 export * from './reclasificacion.js';
+export * from './resumen-garantias.js';

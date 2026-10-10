@@ -71,6 +71,21 @@ export interface FichaOrden extends ResumenOrden {
   readonly notas: readonly NotaDeCorreccion[];
   /** Estados a los que se puede mover desde el actual. */
   readonly destinosPosibles: readonly EstadoOrden[];
+  /**
+   * Los mismos destinos, evaluados para quien consulta: si puede darlos
+   * ahora y, si no, por que. Es la misma evaluacion que hace el servidor al
+   * mover la orden.
+   */
+  readonly acciones: readonly AccionDeEstado[];
+}
+
+export interface AccionDeEstado {
+  readonly hacia: EstadoOrden;
+  readonly permitida: boolean;
+  /** Por que no se puede, en palabras del taller. Null si se puede. */
+  readonly motivo: string | null;
+  /** Al pulsarla hay que escribir un motivo (anular). */
+  readonly pideMotivo: boolean;
 }
 
 export interface PeticionCrearOrden {
@@ -94,6 +109,13 @@ export interface PeticionCrearOrden {
    * sucursal y tiene que decir de cual habla (§8 del pliego).
    */
   readonly idTienda?: string | null;
+  /**
+   * Con que se atendera, elegido por quien registra tras ver el estado de
+   * las garantias: garantia del proveedor, garantia adicional o servicio
+   * particular. El servidor rechaza una garantia que no esta vigente o no
+   * aplica. Si se omite (la cola del movil), decide el motor de garantias.
+   */
+  readonly tipoGarantiaElegida?: 'proveedor' | 'adicional' | 'particular';
 }
 
 export interface PeticionAsignarTecnico {
@@ -144,6 +166,8 @@ export const TIPO_EVENTO_HISTORIAL = {
   VALIDACION: 'validacion',
   ENTREGA: 'entrega',
   CORRECCION: 'correccion',
+  /** Comentario de un usuario en la bitacora de la orden. */
+  BITACORA: 'bitacora',
 } as const;
 export type TipoEventoHistorial = (typeof TIPO_EVENTO_HISTORIAL)[keyof typeof TIPO_EVENTO_HISTORIAL];
 
@@ -155,4 +179,90 @@ export interface EventoDeHistorial {
   readonly detalle: string | null;
   readonly responsable: string | null;
   readonly registradoSinConexion: boolean;
+}
+
+/**
+ * Bitacora de la orden: comentarios generales. Los dos tipos de pago solo
+ * sirven de constancia para autorizar una visita particular con pago
+ * previo; ninguno cambia el estado de la orden.
+ */
+export const TIPO_ENTRADA_BITACORA = {
+  COMENTARIO: 'comentario',
+  PAGO_REGISTRADO: 'pago_registrado',
+  PAGO_CONFIRMADO: 'pago_confirmado',
+  CORRECCION: 'correccion',
+} as const;
+export type TipoEntradaBitacora = (typeof TIPO_ENTRADA_BITACORA)[keyof typeof TIPO_ENTRADA_BITACORA];
+
+export interface PeticionRegistrarBitacora {
+  readonly texto: string;
+  /** Por omision, comentario. */
+  readonly tipo?: TipoEntradaBitacora;
+  /** Solo para `correccion`: la entrada que se corrige. */
+  readonly idEntradaCorregida?: string;
+}
+
+export interface EntradaBitacora {
+  readonly id: string;
+  readonly idOrden: string;
+  readonly tipo: TipoEntradaBitacora;
+  readonly texto: string;
+  /** Fecha y hora del servidor. */
+  readonly momento: string;
+  readonly idAutor: string;
+  readonly autor: string;
+  readonly idEntradaCorregida: string | null;
+}
+
+// ── diagnostico y cotizacion ──────────────────────────────────────────
+
+export interface DiagnosticoDeOrden {
+  readonly id: string;
+  readonly fallaReal: string;
+  readonly componente: string | null;
+  readonly momento: string;
+  readonly tecnico: string;
+}
+
+export interface CotizacionDeOrden {
+  readonly id: string;
+  readonly manoObra: number;
+  readonly totalRepuestos: number;
+  readonly cargoVisita: number;
+  readonly total: number;
+  /** null mientras el cliente no decide. */
+  readonly aceptada: boolean | null;
+  readonly formaAceptacion: string | null;
+  readonly momentoAceptacion: string | null;
+  readonly creadoEn: string;
+  readonly registradoPor: string | null;
+}
+
+export interface DatosDeTaller {
+  /** Quien paga hoy la reparacion (puede haber cambiado tras el diagnostico). */
+  readonly tipoGarantia: string;
+  readonly diagnosticos: readonly DiagnosticoDeOrden[];
+  readonly cotizaciones: readonly CotizacionDeOrden[];
+}
+
+export interface PeticionRegistrarDiagnostico {
+  readonly fallaReal: string;
+  readonly componente?: string | null;
+  /**
+   * Golpe, mal uso u otra exclusion que el tecnico constata. Si se indica y
+   * la orden estaba cubierta, la reparacion pasa a cargo del cliente.
+   */
+  readonly exclusion?: string | null;
+}
+
+export interface PeticionRegistrarCotizacion {
+  readonly manoObra: number;
+  readonly totalRepuestos: number;
+  readonly cargoVisita?: number;
+}
+
+export interface PeticionDecisionCotizacion {
+  readonly aceptada: boolean;
+  readonly forma: 'firma_presencial' | 'llamada' | 'mensaje' | 'correo';
+  readonly observacion?: string | null;
 }

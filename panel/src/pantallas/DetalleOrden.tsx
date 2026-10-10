@@ -14,7 +14,7 @@
  * bitacora y treinta evidencias no puede hacer esperar a quien solo queria
  * ver en que estado esta.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ESTADO_ORDEN,
@@ -30,6 +30,8 @@ import {
 import { ErrorDeApi } from '../api/cliente.js';
 import { tienePermiso } from '../sesion/navegacion.js';
 import { EvidenciasDeOrden } from './EvidenciasDeOrden.js';
+import { ModalBitacora, avisoDeEntrada } from './BitacoraDeOrden.js';
+import { TallerDeOrden } from './TallerDeOrden.js';
 import { RepuestosDeOrden } from './RepuestosDeOrden.js';
 
 const PESTANAS = ['Resumen', 'Repuestos', 'Evidencia', 'Visitas', 'Historial'] as const;
@@ -38,6 +40,7 @@ const TITULO_TIPO: Record<string, string> = {
   estado: 'Estado', asignacion: 'Asignacion', cambio: 'Cambio', diagnostico: 'Diagnostico',
   evidencia: 'Evidencia', solicitud: 'Repuesto', movimiento: 'Inventario', visita: 'Visita',
   autorizacion: 'Cliente', validacion: 'Revision', entrega: 'Entrega', correccion: 'Correccion',
+  bitacora: 'BITÁCORA',
 };
 type Pestana = (typeof PESTANAS)[number];
 
@@ -66,6 +69,18 @@ export function DetalleOrden(): JSX.Element {
   const [idTecnicoNuevo, setIdTecnicoNuevo] = useState('');
   const [motivoAsignacion, setMotivoAsignacion] = useState('');
   const [errorAsignacion, setErrorAsignacion] = useState<string | null>(null);
+  const [avisoAsignacion, setAvisoAsignacion] = useState<string | null>(null);
+  const [escribiendo, setEscribiendo] = useState(false);
+  const [avisoBitacora, setAvisoBitacora] = useState<string | null>(null);
+
+  /*
+   * El selector muestra el tecnico GUARDADO. Antes, despues de asignar se
+   * dejaba en «Elija…» y la opcion del tecnico asignado aparecia
+   * deshabilitada: la pantalla no decia a quien tenia la orden. Se vuelve
+   * a sincronizar cada vez que llega la ficha del servidor.
+   */
+  const idTecnicoGuardado = ficha.datos?.idTecnico ?? null;
+  useEffect(() => { setIdTecnicoNuevo(idTecnicoGuardado ?? ''); }, [idTecnicoGuardado]);
 
   const visitas = useRecurso<readonly ResumenVisita[]>(
     () => (pestana === 'Visitas'
@@ -79,27 +94,39 @@ export function DetalleOrden(): JSX.Element {
   if (ficha.datos === null) return <Fallo error={null} alReintentar={ficha.recargar} />;
 
   const orden = ficha.datos;
+  // Escriben en la bitacora quienes operan ordenes (misma lista que el servidor).
+  const puedeEscribirBitacora = [
+    'ordenes.crear', 'ordenes.asignar', 'ordenes.cerrar', 'ordenes.entregar', 'taller.diagnostico.registrar',
+    'campo.evidencia.cargar', 'inventario.solicitud.gestionar', 'taller.validacion.registrar',
+  ].some((permiso) => tienePermiso(usuario, permiso));
   const plazo = plazoEnPalabras(orden.horasParaVencer, orden.vencida);
 
   async function asignar(): Promise<void> {
     setErrorAsignacion(null);
+    setAvisoAsignacion(null);
     if (idTecnicoNuevo === '') { setErrorAsignacion('Elija el tecnico.'); return; }
-    if (orden.idTecnico !== null && motivoAsignacion.trim() === '') {
+    if (idTecnicoNuevo === orden.idTecnico) { setErrorAsignacion('Ese tecnico ya es el asignado.'); return; }
+    const reasignando = orden.idTecnico !== null;
+    if (reasignando && motivoAsignacion.trim() === '') {
       setErrorAsignacion('Para reasignar escriba el motivo: queda en el historial de la orden.');
       return;
     }
+    const nombreNuevo = (catalogos.datos?.tecnicos ?? []).find((t) => t.id === idTecnicoNuevo)?.nombre ?? 'el tecnico elegido';
+    if (reasignando && !window.confirm(`¿Reasignar la orden de ${orden.tecnico ?? 'su tecnico'} a ${nombreNuevo}?`)) return;
     setMoviendo(true);
     try {
-      await api.pedir(`/ordenes/${orden.id}/tecnico`, {
+      // La respuesta es la orden tal como quedo guardada: de ahi sale lo que se muestra.
+      const guardada = await api.pedir<{ tecnico: string | null }>(`/ordenes/${orden.id}/tecnico`, {
         metodo: 'PUT',
         cuerpo: {
           idTecnico: idTecnicoNuevo,
           ...(motivoAsignacion.trim() === '' ? {} : { motivo: motivoAsignacion.trim() }),
         },
       });
-      setIdTecnicoNuevo('');
       setMotivoAsignacion('');
+      setAvisoAsignacion(`Asignacion guardada: ${guardada.tecnico ?? nombreNuevo}. El estado no cambia hasta que se mueva la orden.`);
       ficha.recargar();
+      historial.recargar();
     } catch (fallo) {
       setErrorAsignacion(fallo instanceof ErrorDeApi ? fallo.message : 'No se pudo asignar el tecnico.');
     } finally {
@@ -111,6 +138,11 @@ export function DetalleOrden(): JSX.Element {
     // Anular y cerrar sin reparar no tienen vuelta atras: se confirman.
     if ((hacia === ESTADO_ORDEN.ANULADA || hacia === ESTADO_ORDEN.CERRADA_SIN_REPARAR)
       && !window.confirm(`La orden pasara a «${hacia.replace(/_/g, ' ')}» y no se podra reabrir. Continuar?`)) {
+      return;
+    }
+    if (hacia === ESTADO_ORDEN.AUTORIZADA
+      && !window.confirm('Autorizar la orden deja constancia, a su nombre, de que la autorizacion comercial esta '
+        + 'confirmada. No inicia la visita ni la reparacion. ¿Continuar?')) {
       return;
     }
     setMoviendo(true);
@@ -126,6 +158,7 @@ export function DetalleOrden(): JSX.Element {
       });
       setMotivo('');
       ficha.recargar();
+      historial.recargar();
     } catch (fallo) {
       // El servidor explica por qué no se puede; se muestra tal cual.
       setError(fallo instanceof ErrorDeApi ? fallo.message : 'No se pudo mover la orden.');
@@ -208,12 +241,18 @@ export function DetalleOrden(): JSX.Element {
               <div className="g g3">
                 <div>
                   <label htmlFor="tecnico-nuevo">Tecnico</label>
-                  <select id="tecnico-nuevo" value={idTecnicoNuevo} onChange={(e) => setIdTecnicoNuevo(e.target.value)}>
-                    <option value="">Elija…</option>
+                  <select id="tecnico-nuevo" value={idTecnicoNuevo} onChange={(e) => { setIdTecnicoNuevo(e.target.value); setAvisoAsignacion(null); }}>
+                    {orden.idTecnico === null ? <option value="">Elija…</option> : null}
+                    {/* El asignado aparece aunque ya no este activo: es la asignacion real. */}
+                    {orden.idTecnico !== null
+                      && !(catalogos.datos?.tecnicos ?? []).some((t) => t.id === orden.idTecnico) ? (
+                        <option value={orden.idTecnico}>{orden.tecnico ?? 'tecnico asignado'} · (inactivo)</option>
+                      ) : null}
                     {(catalogos.datos?.tecnicos ?? []).map((tecnico) => (
-                      <option key={tecnico.id} value={tecnico.id} disabled={tecnico.id === orden.idTecnico}>
+                      <option key={tecnico.id} value={tecnico.id}>
                         {tecnico.nombre} · {tecnico.tipo} · {tecnico.cargaActual} abiertas
                         {tecnico.disponible ? '' : ' · no disponible'}
+                        {tecnico.id === orden.idTecnico ? ' · ASIGNADO' : ''}
                       </option>
                     ))}
                   </select>
@@ -226,14 +265,21 @@ export function DetalleOrden(): JSX.Element {
                     onChange={(e) => setMotivoAsignacion(e.target.value)} />
                 </div>
                 <div style={{ alignSelf: 'end' }}>
-                  <button type="button" className="btn pri" disabled={moviendo} onClick={() => { void asignar(); }}>
+                  <button
+                    type="button" className="btn pri"
+                    disabled={moviendo || idTecnicoNuevo === '' || idTecnicoNuevo === orden.idTecnico}
+                    onClick={() => { void asignar(); }}
+                  >
                     {orden.idTecnico === null ? 'Asignar' : 'Reasignar'}
                   </button>
                 </div>
               </div>
+              {avisoAsignacion === null ? null : <Aviso tono="ok">{avisoAsignacion}</Aviso>}
               {errorAsignacion === null ? null : <Aviso tono="warn">{errorAsignacion}</Aviso>}
             </Tarjeta>
           ) : null}
+
+          <TallerDeOrden orden={orden} alCambiar={() => { ficha.recargar(); historial.recargar(); }} />
 
           <Tarjeta titulo="Mover la orden">
             {orden.destinosPosibles.length === 0 ? (
@@ -250,19 +296,44 @@ export function DetalleOrden(): JSX.Element {
                   onChange={(evento) => setMotivo(evento.target.value)}
                   placeholder="Por que se mueve la orden"
                 />
+                {/*
+                  Las acciones vienen evaluadas por el servidor para ESTE
+                  usuario y ESTA orden: las mismas reglas que aplicara al
+                  pulsar. Las que no puede dar se explican, no se esconden.
+                */}
                 <div className="tools">
-                  {orden.destinosPosibles.map((destino) => (
+                  {orden.acciones.filter((accion) => accion.permitida).map((accion) => (
                     <button
-                      key={destino}
+                      key={accion.hacia}
                       type="button"
-                      className={destino === ESTADO_ORDEN.ANULADA ? 'btn peligro' : 'btn pri'}
-                      disabled={moviendo}
-                      onClick={() => void mover(destino)}
+                      className={accion.hacia === ESTADO_ORDEN.ANULADA ? 'btn peligro'
+                        : accion.hacia === ESTADO_ORDEN.AUTORIZADA ? 'btn teal' : 'btn pri'}
+                      disabled={moviendo || (accion.pideMotivo && motivo.trim().length < 10)}
+                      title={accion.pideMotivo ? 'Escriba el motivo (al menos 10 caracteres)' : undefined}
+                      onClick={() => void mover(accion.hacia)}
                     >
-                      {destino.replace(/_/g, ' ')}
+                      {accion.hacia === ESTADO_ORDEN.AUTORIZADA ? 'Autorizar orden' : accion.hacia.replace(/_/g, ' ')}
                     </button>
                   ))}
+                  {orden.acciones.every((accion) => !accion.permitida) ? (
+                    <span className="tenue" style={{ fontSize: 12.5 }}>Ahora mismo usted no puede mover esta orden.</span>
+                  ) : null}
                 </div>
+                {orden.acciones.some((accion) => !accion.permitida) ? (
+                  <details style={{ marginTop: 8 }}>
+                    <summary className="tenue" style={{ cursor: 'pointer', fontSize: 12.5 }}>
+                      Pasos que no estan disponibles y por que
+                    </summary>
+                    <ul style={{ fontSize: 12.5, margin: '6px 0 0 18px', padding: 0 }}>
+                      {orden.acciones.filter((accion) => !accion.permitida).map((accion) => (
+                        <li key={accion.hacia}>
+                          <b>{accion.hacia === ESTADO_ORDEN.AUTORIZADA ? 'Autorizar orden' : accion.hacia.replace(/_/g, ' ')}:</b>{' '}
+                          {accion.motivo}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
               </>
             )}
             {error === null ? null : <Aviso>{error}</Aviso>}
@@ -315,7 +386,26 @@ export function DetalleOrden(): JSX.Element {
       ) : null}
 
       {pestana === 'Historial' ? (
-        <Tarjeta titulo="Historial completo de la orden" extra="no se edita ni se borra">
+        <Tarjeta
+          titulo="Historial completo de la orden"
+          extra={puedeEscribirBitacora ? (
+            <button type="button" className="btn chico" onClick={() => { setAvisoBitacora(null); setEscribiendo(true); }}>
+              Registrar bitacora
+            </button>
+          ) : 'no se edita ni se borra'}
+        >
+          {avisoBitacora === null ? null : <Aviso tono="ok">{avisoBitacora}</Aviso>}
+          {escribiendo ? (
+            <ModalBitacora
+              orden={orden}
+              alCerrar={() => setEscribiendo(false)}
+              alGuardar={(entrada) => {
+                setEscribiendo(false);
+                setAvisoBitacora(avisoDeEntrada(entrada));
+                historial.recargar();
+              }}
+            />
+          ) : null}
           {historial.cargando ? <Cargando que="el historial" /> : null}
           {historial.error !== null ? <Fallo error={historial.error} alReintentar={historial.recargar} /> : null}
           {historial.datos !== null && !historial.cargando && historial.datos.length === 0
@@ -330,7 +420,7 @@ export function DetalleOrden(): JSX.Element {
                   <tr key={`${evento.tipo}-${evento.id}`}>
                     <td className="tenue" style={{ whiteSpace: 'nowrap' }}>{fechaHora(evento.momento)}</td>
                     <td className="tipo">{TITULO_TIPO[evento.tipo] ?? evento.tipo}</td>
-                    <td>
+                    <td style={evento.tipo === 'bitacora' ? { whiteSpace: 'pre-wrap' } : undefined}>
                       {evento.titulo}
                       {evento.registradoSinConexion ? (
                         <span className="tag t-a" style={{ marginLeft: 6 }}>sin conexion</span>

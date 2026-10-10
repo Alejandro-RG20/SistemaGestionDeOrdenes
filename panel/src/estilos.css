@@ -227,3 +227,11 @@ table.d td a:hover { text-decoration: underline; }
 .estado-exito { color: var(--teal); border-color: var(--teal); background: #F4F9F8; }
 .historial td { vertical-align: top; }
 .historial .tipo { font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase; }
+/* Ventana modal sencilla (bitacora de la orden). */
+.velo{position:fixed;inset:0;background:rgba(20,32,43,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+.modal{background:#fff;border-radius:4px;max-width:560px;width:100%;padding:18px 20px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.modal h3{margin:0 0 10px;font-size:15px}
+.modal textarea{width:100%;min-height:110px}
+/* Opciones de radio o casilla: texto normal, control de su tamano. */
+label.opcion{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:normal;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--ink);margin:4px 0}
+label.opcion input{width:auto;margin:0}

@@ -23,6 +23,10 @@ export function rutasDeArticulos(): Router {
   router.put('/articulos/:id/datos-sensibles', datosSensibles, asincrono(controlador.cambiarDatosSensibles));
   router.post('/articulos/:id/transferir', datosSensibles, asincrono(controlador.transferir));
   router.post('/articulos/:id/coberturas', datosSensibles, asincrono(controlador.registrarCobertura));
+  // Corregir una garantia mal registrada: se desactiva con motivo y se
+  // registra la correcta. Nada se edita ni se borra.
+  router.post('/articulos/:id/coberturas/:idCobertura/desactivar', datosSensibles,
+    asincrono(controlador.desactivarCobertura));
 
   return router;
 }

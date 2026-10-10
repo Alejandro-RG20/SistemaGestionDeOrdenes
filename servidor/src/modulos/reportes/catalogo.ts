@@ -385,6 +385,7 @@ export const REPORTES: readonly Reporte[] = [
                            WHERE s.id_orden = o.id AND s.estado NOT IN ('recibida', 'anulada')
                         ), 'sin solicitud registrada')
                         WHEN o.estado = 'esperando_autorizacion' THEN 'Espera la autorizacion del cliente'
+                        WHEN o.estado = 'autorizada' THEN 'Autorizada; falta despachar el siguiente paso'
                         WHEN o.estado = 'finalizada' THEN 'Reparada; falta validar o entregar'
                         WHEN o.estado IN ('registrada', 'asignada', 'en_cola_taller') THEN 'No ha empezado el diagnostico'
                         ELSE 'En trabajo tecnico'

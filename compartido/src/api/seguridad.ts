@@ -127,3 +127,76 @@ export interface ResumenAsientoBitacora {
   readonly nombreUsuario: string;
   readonly momento: string;
 }
+
+// ── tecnicos ───────────────────────────────────────────────────────────
+//
+// Un tecnico es el perfil laboral de una cuenta de usuario: la tabla
+// `tecnico` apunta a `usuario` (uno a uno). El estado laboral del tecnico
+// (activo, disponible) y el de su cuenta (activa, bloqueada) son cosas
+// distintas y se gestionan por separado.
+
+export type TipoTecnico = 'ruta' | 'planta';
+
+export interface ResumenTecnico {
+  readonly id: string;
+  readonly idUsuario: string;
+  readonly nombreUsuario: string;
+  readonly nombres: string;
+  readonly correo: string | null;
+  readonly tipo: TipoTecnico;
+  /** Linea de articulos que atiende (categoria: refrigeracion, lavado...). */
+  readonly especialidad: string;
+  /** Recibe asignaciones nuevas. */
+  readonly disponible: boolean;
+  /** Estado laboral. */
+  readonly activo: boolean;
+  /** Estado de la cuenta de usuario. */
+  readonly cuentaActiva: boolean;
+  readonly cuentaBloqueada: boolean;
+  readonly ordenesAbiertas: number;
+}
+
+export interface OrdenDelTecnico {
+  readonly id: string;
+  readonly codigo: string;
+  readonly estado: string;
+}
+
+export interface FichaTecnico extends ResumenTecnico {
+  readonly ordenes: readonly OrdenDelTecnico[];
+  readonly visitasProgramadas: number;
+  /** Unidades en su bodega personal (vehiculo o banco de taller). */
+  readonly unidadesEnBodega: number;
+  readonly bodega: string | null;
+}
+
+export interface PeticionCrearTecnico {
+  readonly tipo: TipoTecnico;
+  readonly especialidad: string;
+  readonly disponible?: boolean;
+  /** Cuenta existente con rol tecnico_ruta o tecnico_planta, sin ficha de tecnico. */
+  readonly idUsuario?: string;
+  /** O una cuenta nueva, que se crea con el rol que corresponde al tipo. */
+  readonly cuentaNueva?: {
+    readonly nombreUsuario: string;
+    readonly nombres: string;
+    readonly contrasena: string;
+    readonly correo?: string | null;
+  };
+}
+
+export interface PeticionActualizarTecnico {
+  readonly especialidad?: string;
+  readonly disponible?: boolean;
+  readonly tipo?: TipoTecnico;
+  readonly nombres?: string;
+  readonly correo?: string | null;
+  /** Obligatorio si cambia el tipo: cambia tambien el rol de la cuenta. */
+  readonly motivo?: string;
+}
+
+export interface PeticionDesactivarTecnico {
+  readonly motivo: string;
+  /** Si tiene ordenes abiertas, se le reasignan a este tecnico. */
+  readonly idTecnicoReemplazo?: string;
+}

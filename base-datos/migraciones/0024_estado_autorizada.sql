@@ -1,0 +1,34 @@
+-- =====================================================================
+-- 0024 · Estado «autorizada»
+-- =====================================================================
+--
+-- Unico cambio estructural de esta etapa, autorizado expresamente: un
+-- valor nuevo en el enumerado estado_orden, inmediatamente despues de
+-- 'esperando_autorizacion'.
+--
+--   esperando_autorizacion  falta la autorizacion comercial.
+--   autorizada              un usuario autorizado la confirmo; la orden
+--                           puede seguir a la etapa que le corresponda.
+--
+-- `autorizada` no significa que la visita empezo, que el repuesto llego ni
+-- que la reparacion termino. Las transiciones viven en el codigo
+-- (servidor/src/dominio/ordenes/estados.ts), no en la base.
+--
+-- COMPATIBILIDAD
+--
+-- ADD VALUE no reescribe ninguna fila ni toca los valores existentes:
+-- las ordenes, eventos y reglas de plazo siguen igual. Ninguna orden pasa
+-- a «autorizada» por esta migracion.
+--
+-- No se agrega regla de plazo para el estado nuevo: las reglas de plazo
+-- son parametros de negocio que carga la siembra, y no hay un plazo
+-- definido. Sin regla, una orden en «autorizada» no tiene plazo vencible
+-- hasta que la siguiente transicion le asigne uno. Ver
+-- documentos/AUDITORIA_Y_CORRECCIONES.md.
+--
+-- REVERSION
+--
+-- PostgreSQL no permite quitar un valor de un enumerado. La reversion
+-- manual esta descrita en base-datos/reversiones/0024_revertir.sql.
+
+ALTER TYPE estado_orden ADD VALUE IF NOT EXISTS 'autorizada' AFTER 'esperando_autorizacion';

@@ -14,6 +14,9 @@ export const ROL_RESPONSABLE: Readonly<Record<EstadoOrden, string | null>> = {
   [ESTADO_ORDEN.EN_DIAGNOSTICO]: null, // el tecnico asignado
   [ESTADO_ORDEN.COTIZADA]: null, // el tecnico asignado
   [ESTADO_ORDEN.ESPERANDO_AUTORIZACION]: CODIGO_ROL.AGENTE_TELEFONIA,
+  // Estado nuevo (migracion 0024): la siembra no genera ordenes en el, asi
+  // que esta clave no se consulta nunca. Solo completa el tipo.
+  [ESTADO_ORDEN.AUTORIZADA]: null,
   [ESTADO_ORDEN.ESPERANDO_REPUESTO]: CODIGO_ROL.BODEGUERO,
   [ESTADO_ORDEN.EN_REPARACION]: null, // el tecnico asignado
   [ESTADO_ORDEN.FINALIZADA]: CODIGO_ROL.AGENTE_TELEFONIA,

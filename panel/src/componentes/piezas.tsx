@@ -23,6 +23,7 @@ function tonoDeEstado(estado: EstadoOrden): string {
     case ESTADO_ORDEN.COTIZADA:
       return 't-a';
     case ESTADO_ORDEN.FINALIZADA:
+    case ESTADO_ORDEN.AUTORIZADA:
       return 't-t';
     case ESTADO_ORDEN.ENTREGADA:
     case ESTADO_ORDEN.CERRADA_SIN_REPARAR:

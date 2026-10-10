@@ -12,6 +12,12 @@ export const ESTADO_ORDEN = {
   EN_DIAGNOSTICO: 'en_diagnostico',
   COTIZADA: 'cotizada',
   ESPERANDO_AUTORIZACION: 'esperando_autorizacion',
+  /**
+   * La autorizacion comercial ya la confirmo un usuario autorizado. No
+   * significa que la visita empezo, que el repuesto llego ni que la
+   * reparacion termino: solo que la orden puede seguir (migracion 0024).
+   */
+  AUTORIZADA: 'autorizada',
   ESPERANDO_REPUESTO: 'esperando_repuesto',
   EN_REPARACION: 'en_reparacion',
   FINALIZADA: 'finalizada',

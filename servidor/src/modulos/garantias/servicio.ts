@@ -14,7 +14,7 @@ import { construirPaginacion } from '../../comun/paginacion.js';
 import { ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import { auditar } from '../../comun/auditoria.js';
 import {
-  elegirReglaAplicable, evaluarCobertura, reevaluarTrasDiagnostico,
+  elegirReglaAplicable, evaluarCobertura, reevaluarTrasDiagnostico, resumirGarantias,
   type ContextoCobertura, type ResultadoCobertura,
 } from '../../dominio/garantias/indice.js';
 import * as repositorio from './repositorio.js';
@@ -95,7 +95,7 @@ export async function evaluar(
   const resultado = fallaReal === undefined
     ? inicial
     : reevaluarTrasDiagnostico(contexto, inicial.tipo);
-  return aEvaluacion(resultado);
+  return { ...aEvaluacion(resultado), garantias: resumirGarantias(contexto) };
 }
 
 /**

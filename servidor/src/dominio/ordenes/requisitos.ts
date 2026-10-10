@@ -138,3 +138,70 @@ export const tieneActaDeEntrega = requisito(
   () => 'La entrega se registra desde «Entregar el articulo», con el nombre de quien retira. '
     + 'Ahi se comprueba que la revision y la autorizacion esten completas.',
 );
+
+/**
+ * Una orden cubierta por garantia sigue sin pasar por autorizacion. Una
+ * particular, desde la migracion 0024, pasa SIEMPRE por «esperando
+ * autorizacion» y «autorizada»: el atajo de cotizada a reparacion queda
+ * solo para lo que no paga el cliente.
+ */
+export const cubiertaPorGarantia = requisito(
+  'la reparacion esta cubierta por una garantia',
+  (contexto) => contexto.orden.tipoGarantia !== TIPO_GARANTIA.PARTICULAR,
+  () => 'Esta reparacion la paga el cliente: pasela a «esperando autorizacion» y, cuando el '
+    + 'cliente acepte la cotizacion, autorice la orden.',
+);
+
+/**
+ * La orden es una visita particular a domicilio con cargo de visita y aun
+ * no se diagnostico: el cliente paga la visita antes de que se despache.
+ */
+export const requierePagoDeVisita = (contexto: ContextoTransicion): boolean =>
+  contexto.orden.modalidad === MODALIDAD_SERVICIO.RUTA
+  && contexto.orden.tipoGarantia === TIPO_GARANTIA.PARTICULAR
+  && contexto.orden.cargoVisita > 0
+  && !contexto.tieneDiagnostico;
+
+export const esVisitaParticularConPagoPrevio = requisito(
+  'es una visita particular a domicilio con cargo de visita, antes del diagnostico',
+  requierePagoDeVisita,
+  () => 'Solo una visita particular a domicilio con cargo de visita espera autorizacion antes de '
+    + 'despacharse. Las demas ordenes llegan a «esperando autorizacion» desde la cotizacion.',
+);
+
+/**
+ * Autorizar despues de cotizar exige que el cliente haya aceptado la
+ * cotizacion. Si ya hay diagnostico de una reparacion particular, tiene que
+ * haber cotizacion aceptada; sin diagnostico (visita previa) no aplica.
+ */
+export const cotizacionAceptadaSiCorresponde = requisito(
+  'si hay cotizacion o diagnostico, el cliente acepto la cotizacion',
+  (contexto) => (!contexto.tieneCotizacion && !contexto.tieneDiagnostico) || contexto.cotizacionAceptada,
+  (contexto) => (contexto.tieneCotizacion
+    ? 'El cliente todavia no acepta la cotizacion. Registre su decision antes de autorizar.'
+    : 'La orden ya tiene diagnostico pero no tiene cotizacion. Registre la cotizacion y la '
+      + 'aceptacion del cliente antes de autorizar.'),
+);
+
+/**
+ * Para la visita particular con pago previo: alguien registro el pago en
+ * la bitacora y OTRA persona autorizada lo confirmo despues. Se lee de
+ * entradas de bitacora marcadas como tales al escribirlas; un comentario
+ * comun que diga «pago» no cuenta.
+ */
+export const pagoDeVisitaConfirmado = requisito(
+  'el pago de la visita fue registrado y confirmado por otra persona',
+  (contexto) => !requierePagoDeVisita(contexto) || contexto.pagoVisita.confirmadoPorOtraPersona,
+  (contexto) => (contexto.pagoVisita.registrado
+    ? 'El pago de la visita esta registrado pero falta que otra persona autorizada lo confirme '
+      + 'en la bitacora («Confirmo el pago»).'
+    : 'Esta visita particular exige pago previo. Registre el pago en la bitacora y pida a otra '
+      + 'persona autorizada que lo confirme.'),
+);
+
+/** Volver a despachar una orden autorizada antes del diagnostico. */
+export const sinDiagnosticoTodavia = requisito(
+  'la orden todavia no tiene diagnostico',
+  (contexto) => !contexto.tieneDiagnostico,
+  () => 'La orden ya tiene diagnostico: continua hacia la reparacion o el repuesto, no a una nueva asignacion.',
+);

@@ -6,17 +6,18 @@
  * aqui ninguna regla sobre que transicion vale.
  */
 import type {
-  EstadoOrden, PeticionNotaCorreccion, PeticionTransicion, ResultadoTransicion,
+  AccionDeEstado, EstadoOrden, PeticionNotaCorreccion, PeticionTransicion, ResultadoTransicion,
 } from '@servitotal/compartido';
-import { ESTADO_ORDEN, MODALIDAD_SERVICIO } from '@servitotal/compartido';
+import { CODIGO_ROL, ESTADO_ORDEN, MODALIDAD_SERVICIO } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import type { Ejecutor } from '../../comun/transacciones.js';
-import { enTransaccion } from '../../comun/transacciones.js';
+import { ejecutorPorDefecto, enTransaccion } from '../../comun/transacciones.js';
 import { ErrorDominio, ErrorNoEncontrado } from '../../comun/errores.js';
 import {
   TECNICO_ASIGNADO, definicionDe, evaluarTransicion, momentoEvidenciaDe,
   type ContextoTransicion,
 } from '../../dominio/ordenes/indice.js';
+import { requierePagoDeVisita } from '../../dominio/ordenes/requisitos.js';
 import { horasParaVencer, sumarHorasLaborables } from '../../dominio/plazos/indice.js';
 import * as servicioAgenda from '../agenda/servicio.js';
 import * as repositorio from './repositorio.js';
@@ -51,6 +52,110 @@ async function responsableDelNuevoEstado(
   return definicion.responsable === actor.rol ? actor.id : null;
 }
 
+/**
+ * El contexto que la maquina de estados necesita. Lo usan mover la orden y
+ * evaluar que acciones se le ofrecen al usuario: la misma pregunta, las
+ * mismas respuestas, para que el panel nunca ofrezca un boton que el
+ * servidor va a rechazar ni esconda uno que aceptaria.
+ */
+async function armarContexto(
+  actor: Actor, fila: repositorio.FilaContextoTransicion, hacia: EstadoOrden,
+  motivo: string | null, ejecutor: Ejecutor,
+): Promise<ContextoTransicion> {
+  const momento = momentoEvidenciaDe(fila.estado);
+  // En secuencia: comparten el cliente de la transaccion.
+  const faltantes = momento === null
+    ? []
+    : await repositorio.evidenciasFaltantes(fila.id, momento, ejecutor);
+  const tecnicoDelActor = await repositorio.buscarTecnicoDeUsuario(actor.id, ejecutor);
+
+  return {
+    hacia,
+    orden: {
+      id: fila.id,
+      numero: fila.numero,
+      estado: fila.estado,
+      modalidad: fila.modalidad as ContextoTransicion['orden']['modalidad'],
+      tipoGarantia: fila.tipo_garantia as ContextoTransicion['orden']['tipoGarantia'],
+      idTecnico: fila.id_tecnico,
+      idResponsableActual: fila.id_responsable_actual,
+      cargoVisita: Number(fila.cargo_visita ?? 0),
+    },
+    actor: {
+      id: actor.id,
+      rol: actor.rol,
+      idTecnico: tecnicoDelActor?.id ?? null,
+      puedeAnular: actor.permisos.includes('ordenes.anular'),
+      puedeCerrar: actor.permisos.includes('ordenes.cerrar'),
+      puedeEntregar: actor.permisos.includes('ordenes.entregar'),
+      puedeAsignar: actor.permisos.includes('ordenes.asignar'),
+      puedeAutorizar: actor.permisos.includes('taller.cotizacion.autorizar'),
+      esAdministrador: actor.rol === CODIGO_ROL.ADMINISTRADOR,
+    },
+    evidenciasFaltantes: faltantes,
+    tieneVisitaVigente: fila.tiene_visita,
+    tieneDiagnostico: fila.tiene_diagnostico,
+    tieneCotizacion: fila.tiene_cotizacion,
+    cotizacionAceptada: fila.cotizacion_aceptada,
+    solicitudesSinLiberar: fila.solicitudes_sin_liberar,
+    solicitudesAbiertas: fila.solicitudes_abiertas,
+    piezasSinConciliar: fila.piezas_sin_conciliar,
+    tieneEntrega: fila.tiene_entrega,
+    pagoVisita: {
+      registrado: fila.pago_registrado,
+      confirmadoPorOtraPersona: fila.pago_confirmado_por_otra,
+    },
+    motivo,
+  };
+}
+
+/**
+ * Con que se autorizo: queda en el evento, junto a quien lo hizo (la
+ * sesion) y cuando (el servidor).
+ */
+function baseDeLaAutorizacion(contexto: ContextoTransicion): string {
+  if (contexto.cotizacionAceptada) return 'Autorizacion comercial: el cliente acepto la cotizacion.';
+  if (requierePagoDeVisita(contexto)) {
+    return 'Autorizacion comercial: pago de la visita registrado y confirmado por otra persona en la bitacora.';
+  }
+  return 'Autorizacion comercial: el caso no exige cotizacion aceptada ni pago previo.';
+}
+
+/** Destinos que exigen motivo escrito: se ofrecen y el motivo se pide al pulsar. */
+const DESTINOS_CON_MOTIVO: readonly EstadoOrden[] = [ESTADO_ORDEN.ANULADA];
+
+/**
+ * Las acciones de estado que ESTE usuario puede dar sobre ESTA orden, ya
+ * evaluadas por la maquina de estados con los datos reales. Las que no
+ * puede llevan el motivo, para que el panel lo explique en vez de esconder
+ * el boton sin decir por que.
+ */
+export async function evaluarAcciones(
+  actor: Actor, idOrden: string, ejecutor?: Ejecutor,
+): Promise<readonly AccionDeEstado[]> {
+  const fila = await repositorio.buscarContextoTransicion(idOrden, ejecutor, false);
+  if (fila === null) return [];
+  const definicion = definicionDe(fila.estado);
+  const acciones: AccionDeEstado[] = [];
+  for (const transicion of definicion.transiciones) {
+    const pideMotivo = DESTINOS_CON_MOTIVO.includes(transicion.hacia);
+    const contexto = await armarContexto(
+      actor, fila, transicion.hacia,
+      // Para evaluar se supone el motivo escrito: se pedira al pulsar.
+      pideMotivo ? 'motivo que se pedira al confirmar' : null,
+      ejecutor ?? ejecutorPorDefecto(),
+    );
+    const veredicto = evaluarTransicion(contexto);
+    acciones.push({
+      hacia: transicion.hacia,
+      permitida: veredicto.permitida,
+      motivo: veredicto.permitida ? null : veredicto.motivo ?? null,
+      pideMotivo,
+    });
+  }
+  return acciones;
+}
+
 export async function mover(
   actor: Actor, idOrden: string, peticion: PeticionTransicion,
 ): Promise<ResultadoTransicion> {
@@ -62,43 +167,7 @@ export async function mover(
     // dice si la ORDEN es suya. Son dos preguntas y hay que hacer las dos.
     exigirCerco(await alcanceDe(actor, cliente), fila);
 
-    const momento = momentoEvidenciaDe(fila.estado);
-    // En secuencia: comparten el cliente de la transaccion.
-    const faltantes = momento === null
-      ? []
-      : await repositorio.evidenciasFaltantes(idOrden, momento, cliente);
-    const tecnicoDelActor = await repositorio.buscarTecnicoDeUsuario(actor.id, cliente);
-
-    const contexto: ContextoTransicion = {
-      hacia: peticion.hacia,
-      orden: {
-        id: fila.id,
-        numero: fila.numero,
-        estado: fila.estado,
-        modalidad: fila.modalidad as ContextoTransicion['orden']['modalidad'],
-        tipoGarantia: fila.tipo_garantia as ContextoTransicion['orden']['tipoGarantia'],
-        idTecnico: fila.id_tecnico,
-        idResponsableActual: fila.id_responsable_actual,
-      },
-      actor: {
-        id: actor.id,
-        rol: actor.rol,
-        idTecnico: tecnicoDelActor?.id ?? null,
-        puedeAnular: actor.permisos.includes('ordenes.anular'),
-        puedeCerrar: actor.permisos.includes('ordenes.cerrar'),
-        puedeEntregar: actor.permisos.includes('ordenes.entregar'),
-      },
-      evidenciasFaltantes: faltantes,
-      tieneVisitaVigente: fila.tiene_visita,
-      tieneDiagnostico: fila.tiene_diagnostico,
-      tieneCotizacion: fila.tiene_cotizacion,
-      cotizacionAceptada: fila.cotizacion_aceptada,
-      solicitudesSinLiberar: fila.solicitudes_sin_liberar,
-      solicitudesAbiertas: fila.solicitudes_abiertas,
-      piezasSinConciliar: fila.piezas_sin_conciliar,
-      tieneEntrega: fila.tiene_entrega,
-      motivo: peticion.motivo ?? null,
-    };
+    const contexto = await armarContexto(actor, fila, peticion.hacia, peticion.motivo ?? null, cliente);
 
     const veredicto = evaluarTransicion(contexto);
     if (!veredicto.permitida) {
@@ -147,7 +216,9 @@ export async function mover(
       idResponsable: actor.id,
       observacion: convierteATaller
         ? `Conversion de ruta a taller: el articulo se traslada al centro. ${peticion.observacion ?? ''}`.trim()
-        : peticion.observacion ?? peticion.motivo ?? null,
+        : peticion.hacia === ESTADO_ORDEN.AUTORIZADA
+          ? `${baseDeLaAutorizacion(contexto)} ${peticion.observacion ?? ''}`.trim()
+          : peticion.observacion ?? peticion.motivo ?? null,
     });
 
     return { estadoAnterior: fila.estado, estadoNuevo: peticion.hacia };

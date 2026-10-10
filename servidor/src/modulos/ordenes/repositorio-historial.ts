@@ -46,6 +46,18 @@ export async function deOrden(
          FROM evento_orden e LEFT JOIN usuario u ON u.id = e.id_responsable
         WHERE e.id_orden = $1
 
+       UNION ALL -- Comentarios de la bitacora de la orden
+       SELECT b.id::text, b.momento, 'bitacora',
+              b.valor_nuevo,
+              CASE b.campo
+                WHEN 'bitacora.pago_registrado' THEN 'Registro de pago'
+                WHEN 'bitacora.pago_confirmado' THEN 'Confirmacion de pago'
+                WHEN 'bitacora.correccion' THEN 'Corrige una entrada anterior'
+              END,
+              u.nombres, false
+         FROM bitacora b JOIN usuario u ON u.id = b.id_usuario
+        WHERE b.tabla = 'orden_servicio' AND b.id_registro = $1 AND b.campo LIKE 'bitacora%'
+
        UNION ALL -- Asignaciones y otros cambios de la orden (bitacora)
        SELECT b.id::text, b.momento,
               CASE WHEN b.campo = 'tecnico' THEN 'asignacion' ELSE 'cambio' END,
@@ -59,6 +71,7 @@ export async function deOrden(
               b.motivo, u.nombres, false
          FROM bitacora b JOIN usuario u ON u.id = b.id_usuario
         WHERE b.tabla = 'orden_servicio' AND b.id_registro = $1
+          AND (b.campo IS NULL OR b.campo NOT LIKE 'bitacora%')
 
        UNION ALL -- Diagnosticos
        SELECT d.id::text, d.momento_dispositivo, 'diagnostico',

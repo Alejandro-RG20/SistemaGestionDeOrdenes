@@ -58,10 +58,27 @@ export const tieneFechaDeCompra: EspecificacionCobertura = especificacion(
  * dato no hay como sostener el reclamo ante el fabricante.
  */
 export const dentroDelPlazoDeFabrica: EspecificacionCobertura = especificacion(
-  'la fecha de compra esta dentro de los meses de cobertura de la regla',
-  (contexto) => contexto.articulo.fechaCompra !== null
-    && mesesTranscurridos(contexto.articulo.fechaCompra, contexto.momento) < contexto.regla.mesesCobertura,
+  'la garantia del fabricante esta vigente (fecha registrada en el articulo o meses de la regla)',
+  (contexto) => {
+    // Si un usuario autorizado registro en la ficha del articulo la
+    // garantia del proveedor con sus fechas, manda esa: es el dato del
+    // documento. Si no hay ninguna registrada, se calcula como siempre,
+    // con la fecha de compra y los meses de la regla vigente.
+    const registradas = garantiasDeProveedorRegistradas(contexto);
+    if (registradas.length > 0) {
+      return registradas.some((poliza) =>
+        poliza.vigenteDesde.getTime() <= contexto.momento.getTime()
+        && poliza.vigenteHasta.getTime() >= contexto.momento.getTime());
+    }
+    return contexto.articulo.fechaCompra !== null
+      && mesesTranscurridos(contexto.articulo.fechaCompra, contexto.momento) < contexto.regla.mesesCobertura;
+  },
 );
+
+/** Garantias de proveedor activas registradas a mano en la ficha del articulo. */
+export function garantiasDeProveedorRegistradas(contexto: ContextoCobertura) {
+  return contexto.polizas.filter((poliza) => poliza.activa && poliza.tipo === TIPO_GARANTIA.PROVEEDOR);
+}
 
 /**
  * La falla real del diagnostico esta excluida por la regla.

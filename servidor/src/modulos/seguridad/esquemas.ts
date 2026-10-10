@@ -67,6 +67,42 @@ export const esquemaVincularDispositivo = z.object({
   modelo: z.string().trim().max(120).nullish(),
 });
 
+const tipoTecnico = z.enum(['ruta', 'planta'], { errorMap: () => ({ message: 'El tipo debe ser ruta o planta.' }) });
+const especialidad = z.string().trim().min(2, 'Indique la especialidad.').max(60);
+
+export const esquemaCrearTecnico = z.object({
+  tipo: tipoTecnico,
+  especialidad,
+  disponible: z.boolean().optional(),
+  idUsuario: z.string().uuid('La cuenta indicada no es valida.').optional(),
+  cuentaNueva: z.object({
+    nombreUsuario,
+    nombres: z.string().trim().min(3, 'Escriba el nombre completo de la persona.').max(120),
+    contrasena,
+    correo: z.string().trim().email('El correo no tiene un formato valido.').max(150).nullish(),
+  }).optional(),
+}).refine(
+  (valor) => (valor.idUsuario === undefined) !== (valor.cuentaNueva === undefined),
+  { message: 'Elija una cuenta existente o los datos de una cuenta nueva (una de las dos).', path: ['idUsuario'] },
+);
+
+export const esquemaActualizarTecnico = z.object({
+  especialidad: especialidad.optional(),
+  disponible: z.boolean().optional(),
+  tipo: tipoTecnico.optional(),
+  nombres: z.string().trim().min(3).max(120).optional(),
+  correo: z.string().trim().email('El correo no tiene un formato valido.').max(150).nullish(),
+  motivo: z.string().trim().max(500).optional(),
+}).refine(
+  (valor) => Object.entries(valor).some(([clave, campo]) => clave !== 'motivo' && campo !== undefined),
+  { message: 'No se indico ningun cambio.' },
+);
+
+export const esquemaDesactivarTecnico = z.object({
+  motivo,
+  idTecnicoReemplazo: z.string().uuid('El tecnico de reemplazo no es valido.').optional(),
+});
+
 export const esquemaIdentificador = z.string().uuid('El identificador indicado no es valido.');
 
 /**

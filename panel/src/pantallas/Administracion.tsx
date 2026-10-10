@@ -19,13 +19,15 @@ import { Cargando, Fallo, Vacio } from '../componentes/piezas.js';
 import { ErrorDeApi, type PaginaDeDatos } from '../api/cliente.js';
 import { tienePermiso } from '../sesion/navegacion.js';
 import { GestionDeUsuarios, RolesYPermisos } from './AdministracionUsuarios.js';
+import { GestionDeTecnicos } from './AdministracionTecnicos.js';
 
-type Pestana = 'usuarios' | 'roles' | 'dispositivos';
+type Pestana = 'usuarios' | 'tecnicos' | 'roles' | 'dispositivos';
 
 export function Administracion(): JSX.Element {
   const { usuario } = useSesion();
   const pestanas: { clave: Pestana; nombre: string; permiso: string }[] = [
     { clave: 'usuarios', nombre: 'Usuarios', permiso: 'seguridad.usuario.gestionar' },
+    { clave: 'tecnicos', nombre: 'Tecnicos', permiso: 'seguridad.usuario.gestionar' },
     { clave: 'roles', nombre: 'Roles y permisos', permiso: 'seguridad.rol.gestionar' },
     { clave: 'dispositivos', nombre: 'Dispositivos de campo', permiso: 'seguridad.dispositivo.vincular' },
   ];
@@ -48,6 +50,7 @@ export function Administracion(): JSX.Element {
         ))}
       </div>
       {activa === 'usuarios' ? <GestionDeUsuarios /> : null}
+      {activa === 'tecnicos' ? <GestionDeTecnicos /> : null}
       {activa === 'roles' ? <RolesYPermisos /> : null}
       {activa === 'dispositivos' ? <Dispositivos /> : null}
     </>

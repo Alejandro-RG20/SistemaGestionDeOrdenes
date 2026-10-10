@@ -11,8 +11,10 @@
  * Por eso aqui se muestran de solo lectura y el cambio va por una puerta
  * aparte, que el servidor cierra con permiso de jefatura.
  */
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import type { FichaArticulo } from '@servitotal/compartido';
+import type { EvaluacionCobertura, FichaArticulo } from '@servitotal/compartido';
+import { ErrorDeApi } from '../api/cliente.js';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
 import { tienePermiso } from '../sesion/navegacion.js';
@@ -28,6 +30,37 @@ export function Articulo(): JSX.Element {
   const { datos, cargando, error, recargar } = useRecurso<FichaArticulo>(
     () => api.pedir<FichaArticulo>(`/articulos/${id}`), [id],
   );
+  // Estado de las garantias, calculado por el mismo motor que decide al
+  // abrir una orden. Si el perfil no puede evaluar coberturas, no se pide.
+  const puedeEvaluar = tienePermiso(usuario, 'garantias.evaluar');
+  const [version, setVersion] = useState(0);
+  const evaluacion = useRecurso<EvaluacionCobertura | null>(
+    () => (puedeEvaluar
+      ? api.pedir<EvaluacionCobertura>('/coberturas/evaluar', { metodo: 'POST', cuerpo: { idArticulo: id } }).catch(() => null)
+      : Promise.resolve(null)),
+    [id, puedeEvaluar, version],
+  );
+  const [formulario, setFormulario] = useState<'compra' | 'garantia' | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [falla, setFalla] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [compra, setCompra] = useState({ fechaCompra: '', motivo: '' });
+  const [garantia, setGarantia] = useState({ tipo: 'proveedor', vigenteDesde: '', vigenteHasta: '', documentoRespaldo: '' });
+
+  async function enviar(ruta: string, metodo: 'POST' | 'PUT', cuerpo: unknown, mensaje: string): Promise<void> {
+    setGuardando(true); setFalla(null); setAviso(null);
+    try {
+      await api.pedir(ruta, { metodo, cuerpo });
+      setAviso(mensaje);
+      setFormulario(null);
+      recargar();
+      setVersion((v) => v + 1);
+    } catch (problema) {
+      setFalla(problema instanceof ErrorDeApi ? problema.message : 'No se pudo guardar.');
+    } finally {
+      setGuardando(false);
+    }
+  }
 
   if (cargando) return <Cargando que="el articulo" />;
   if (error !== null) return <Fallo error={error} alReintentar={recargar} />;
@@ -77,14 +110,32 @@ export function Articulo(): JSX.Element {
         </Aviso>
 
         {puedeCorregir ? (
-          <div className="tools">
-            <button type="button" className="btn amber" disabled>
-              Corregir con motivo
-            </button>
-            <span style={{ fontSize: 11.5, color: 'var(--soft)', alignSelf: 'center' }}>
-              La correccion se registra desde la pantalla de administracion.
-            </span>
-          </div>
+          <>
+            <div className="tools">
+              <button type="button" className="btn amber" onClick={() => { setFormulario('compra'); setCompra({ fechaCompra: articulo.fechaCompra ?? '', motivo: '' }); }}>
+                Corregir fecha de compra con motivo
+              </button>
+            </div>
+            {formulario === 'compra' ? (
+              <div className="g g3" style={{ marginTop: 8 }}>
+                <div><label>Fecha de compra</label><input type="date" value={compra.fechaCompra} onChange={(e) => setCompra({ ...compra, fechaCompra: e.target.value })} /></div>
+                <div><label>Motivo * (minimo 10)</label><input value={compra.motivo} onChange={(e) => setCompra({ ...compra, motivo: e.target.value })} /></div>
+                <div className="tools" style={{ alignSelf: 'end' }}>
+                  <button
+                    type="button" className="btn pri" disabled={guardando || compra.motivo.trim().length < 10}
+                    onClick={() => {
+                      void enviar(`/articulos/${articulo.id}/datos-sensibles`, 'PUT', {
+                        fechaCompra: compra.fechaCompra === '' ? null : compra.fechaCompra, motivo: compra.motivo.trim(),
+                      }, 'Fecha de compra corregida. Las ordenes abiertas del articulo se reevaluaron; las cerradas no cambian.');
+                    }}
+                  >
+                    Guardar
+                  </button>
+                  <button type="button" className="btn" onClick={() => setFormulario(null)}>Cancelar</button>
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : (
           <p style={{ fontSize: 11.5, color: 'var(--soft)', margin: '10px 0 0' }}>
             Su perfil no puede corregir estos campos. Solicitelo a la jefatura.
@@ -92,13 +143,38 @@ export function Articulo(): JSX.Element {
         )}
       </Tarjeta>
 
+      {aviso === null ? null : <Aviso tono="ok">{aviso}</Aviso>}
+      {falla === null ? null : <Aviso tono="warn">{falla}</Aviso>}
+
+      {evaluacion.datos?.garantias === undefined || evaluacion.datos === null ? null : (
+        <Tarjeta titulo="Garantias del articulo hoy" extra="vigencia por fecha; la cobertura de una reparacion la decide el diagnostico">
+          <table className="d">
+            <thead><tr><th>Garantia</th><th>Vigencia</th><th>Vence</th><th>Aplica al titular</th></tr></thead>
+            <tbody>
+              {(['proveedor', 'adicional'] as const).map((clave) => {
+                const estado = evaluacion.datos!.garantias![clave];
+                return (
+                  <tr key={clave}>
+                    <td>{clave === 'proveedor' ? 'Del proveedor' : 'Adicional'}</td>
+                    <td>{estado.vigencia === 'no_registrada' ? 'no registrada' : estado.vigencia}
+                      {estado.origen === 'regla' ? <small className="tenue"> (calculada por la regla de cobertura)</small> : null}</td>
+                    <td>{estado.venceEl ?? '—'}</td>
+                    <td>{estado.aplicable ? 'si' : <span className="tenue">no · {estado.motivo}</span>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Tarjeta>
+      )}
+
       <Tarjeta titulo="Coberturas">
         {articulo.coberturas.length === 0 ? (
           <Vacio>Este articulo no tiene coberturas registradas.</Vacio>
         ) : (
           <table className="d">
             <thead>
-              <tr><th>Tipo</th><th>Vigencia</th><th>Documento</th><th>Estado</th></tr>
+              <tr><th>Tipo</th><th>Vigencia</th><th>Documento</th><th>Estado</th>{puedeCorregir ? <th></th> : null}</tr>
             </thead>
             <tbody>
               {articulo.coberturas.map((cobertura) => (
@@ -113,13 +189,68 @@ export function Articulo(): JSX.Element {
                       ? <span className="tag t-t">Vigente</span>
                       : <span className="tag t-g">No vigente</span>}
                   </td>
+                  {puedeCorregir ? (
+                    <td>
+                      {cobertura.activa ? (
+                        <button
+                          type="button" className="btn chico" disabled={guardando}
+                          onClick={() => {
+                            const motivo = window.prompt('Motivo para desactivar esta cobertura (minimo 10 caracteres). Queda en la bitacora; despues registre la correcta.');
+                            if (motivo === null) return;
+                            if (motivo.trim().length < 10) { setFalla('El motivo debe tener al menos 10 caracteres.'); return; }
+                            void enviar(`/articulos/${articulo.id}/coberturas/${cobertura.id}/desactivar`, 'POST',
+                              { motivo: motivo.trim() }, 'Cobertura desactivada. Registre la correcta si corresponde.');
+                          }}
+                        >
+                          Corregir
+                        </button>
+                      ) : null}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
           </table>
         )}
+        {puedeCorregir ? (
+          <div className="tools" style={{ marginTop: 10 }}>
+            <button type="button" className="btn" onClick={() => setFormulario(formulario === 'garantia' ? null : 'garantia')}>
+              Registrar fechas de garantia
+            </button>
+          </div>
+        ) : null}
+        {formulario === 'garantia' ? (
+          <div className="g g4" style={{ marginTop: 8 }}>
+            <div>
+              <label>Garantia</label>
+              <select value={garantia.tipo} onChange={(e) => setGarantia({ ...garantia, tipo: e.target.value })}>
+                <option value="proveedor">Del proveedor</option>
+                <option value="adicional">Adicional (opcional)</option>
+              </select>
+            </div>
+            <div><label>Desde *</label><input type="date" value={garantia.vigenteDesde} onChange={(e) => setGarantia({ ...garantia, vigenteDesde: e.target.value })} /></div>
+            <div><label>Vence *</label><input type="date" value={garantia.vigenteHasta} onChange={(e) => setGarantia({ ...garantia, vigenteHasta: e.target.value })} /></div>
+            <div><label>Documento de respaldo</label><input value={garantia.documentoRespaldo} onChange={(e) => setGarantia({ ...garantia, documentoRespaldo: e.target.value })} placeholder="Factura, poliza…" /></div>
+            <div className="tools">
+              <button
+                type="button" className="btn pri"
+                disabled={guardando || garantia.vigenteDesde === '' || garantia.vigenteHasta === '' || garantia.vigenteHasta <= garantia.vigenteDesde}
+                onClick={() => {
+                  void enviar(`/articulos/${articulo.id}/coberturas`, 'POST', {
+                    tipo: garantia.tipo, vigenteDesde: garantia.vigenteDesde, vigenteHasta: garantia.vigenteHasta,
+                    documentoRespaldo: garantia.documentoRespaldo.trim() === '' ? null : garantia.documentoRespaldo.trim(),
+                  }, 'Garantia registrada. Las ordenes cerradas conservan la cobertura con la que se atendieron.');
+                }}
+              >
+                Guardar garantia
+              </button>
+              <button type="button" className="btn" onClick={() => setFormulario(null)}>Cancelar</button>
+            </div>
+          </div>
+        ) : null}
         <p style={{ fontSize: 11.5, color: 'var(--soft)', margin: '10px 0 0' }}>
-          La garantia de proveedor acompana al <b>articulo</b>; la poliza extendida acompana al{' '}
+          Si se registra la garantia del proveedor con sus fechas, esas fechas mandan sobre el calculo por meses de la
+          regla de cobertura. La garantia de proveedor acompana al <b>articulo</b>; la poliza extendida acompana al{' '}
           <b>contratante</b> (RN-28). Ninguna de las dos se traslada si el articulo se revende.
         </p>
       </Tarjeta>

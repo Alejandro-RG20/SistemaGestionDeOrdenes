@@ -1,5 +1,7 @@
 /** Acceso a datos de ordenes. Uso interno del modulo. */
-import type { EstadoOrden } from '@servitotal/compartido';
+import type {
+  CotizacionDeOrden, DiagnosticoDeOrden, EntradaBitacora, EstadoOrden,
+} from '@servitotal/compartido';
 import type { Ejecutor } from '../../comun/transacciones.js';
 import { ejecutorPorDefecto } from '../../comun/transacciones.js';
 import type { FilaEvento, FilaNota, FilaOrden, FilaOrdenCompleta } from './dto.js';
@@ -191,11 +193,19 @@ export interface FilaContextoTransicion {
   readonly solicitudes_abiertas: number;
   readonly piezas_sin_conciliar: number;
   readonly tiene_entrega: boolean;
+  readonly cargo_visita: number;
+  readonly pago_registrado: boolean;
+  readonly pago_confirmado_por_otra: boolean;
 }
 
-/** Todo lo que la maquina de estados necesita, en un solo viaje. */
+/**
+ * Todo lo que la maquina de estados necesita, en un solo viaje.
+ *
+ * `bloquear` toma la fila con FOR UPDATE para mover la orden. Para solo
+ * evaluar que acciones se ofrecen (la ficha), se lee sin bloquear.
+ */
 export async function buscarContextoTransicion(
-  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(), bloquear = true,
 ): Promise<FilaContextoTransicion | null> {
   const { rows } = await ejecutor.query<FilaContextoTransicion>(
     `SELECT o.id, o.codigo, o.numero, o.estado, o.modalidad::text AS modalidad,
@@ -225,9 +235,21 @@ export async function buscarContextoTransicion(
                  FROM movimiento_repuesto m
                 WHERE m.id_orden = o.id
                 GROUP BY m.id_repuesto) p)::int AS piezas_sin_conciliar,
-            EXISTS (SELECT 1 FROM entrega en WHERE en.id_orden = o.id) AS tiene_entrega
+            EXISTS (SELECT 1 FROM entrega en WHERE en.id_orden = o.id) AS tiene_entrega,
+            o.cargo_visita::float AS cargo_visita,
+            -- Pago de la visita: entradas de bitacora MARCADAS como pago al
+            -- escribirlas (ver servicio-bitacora.ts), no comentarios sueltos.
+            EXISTS (SELECT 1 FROM bitacora r
+                     WHERE r.tabla = 'orden_servicio' AND r.id_registro = o.id
+                       AND r.campo = 'bitacora.pago_registrado') AS pago_registrado,
+            EXISTS (SELECT 1 FROM bitacora r JOIN bitacora c
+                         ON c.tabla = 'orden_servicio' AND c.id_registro = r.id_registro
+                        AND c.campo = 'bitacora.pago_confirmado'
+                        AND c.id_usuario <> r.id_usuario AND c.momento >= r.momento
+                     WHERE r.tabla = 'orden_servicio' AND r.id_registro = o.id
+                       AND r.campo = 'bitacora.pago_registrado') AS pago_confirmado_por_otra
        FROM orden_servicio o WHERE o.id = $1
-       FOR UPDATE OF o`,
+       ${bloquear ? 'FOR UPDATE OF o' : ''}`,
     [idOrden],
   );
   return rows[0] ?? null;
@@ -381,11 +403,18 @@ export async function tecnicoActivo(
 
 export async function asignarTecnico(
   ejecutor: Ejecutor, idOrden: string, idTecnico: string, modificadoPor: string,
+  responsableEsElTecnico = false,
 ): Promise<void> {
+  // Si el estado actual lo atiende el tecnico asignado, el responsable de
+  // turno pasa a ser el nuevo tecnico. Antes quedaba el anterior, y el
+  // tecnico al que se le quito la orden la seguia pudiendo mover.
   await ejecutor.query(
-    `UPDATE orden_servicio SET id_tecnico = $2, modificado_en = now(), modificado_por = $3
+    `UPDATE orden_servicio
+        SET id_tecnico = $2, modificado_en = now(), modificado_por = $3,
+            id_responsable_actual = CASE WHEN $4::boolean
+              THEN (SELECT id_usuario FROM tecnico WHERE id = $2) ELSE id_responsable_actual END
       WHERE id = $1`,
-    [idOrden, idTecnico, modificadoPor],
+    [idOrden, idTecnico, modificadoPor, responsableEsElTecnico],
   );
 }
 
@@ -589,5 +618,184 @@ export async function anotarAvisosEnBitacora(
        FROM unnest($1::uuid[], $2::text[], $3::text[]) AS a(id_orden, estado, observacion)`,
     [avisos.map((a) => a.idOrden), avisos.map((a) => a.estado),
       avisos.map((a) => a.observacion), idResponsable],
+  );
+}
+
+// ── bitacora de la orden (asientos de la tabla bitacora) ─────────────────
+
+interface FilaEntradaBitacora {
+  readonly id: string; readonly id_registro: string; readonly campo: string;
+  readonly valor_nuevo: string; readonly valor_anterior: string | null;
+  readonly momento: Date; readonly id_usuario: string; readonly autor: string;
+}
+
+const TIPO_DE_CAMPO: Readonly<Record<string, EntradaBitacora['tipo']>> = {
+  bitacora: 'comentario',
+  'bitacora.pago_registrado': 'pago_registrado',
+  'bitacora.pago_confirmado': 'pago_confirmado',
+  'bitacora.correccion': 'correccion',
+};
+
+export async function insertarEntradaBitacora(
+  ejecutor: Ejecutor,
+  datos: { idOrden: string; campo: string; texto: string; referencia: string | null; idUsuario: string },
+): Promise<string> {
+  // El momento lo pone la base (DEFAULT now()); el autor, la sesion.
+  const { rows } = await ejecutor.query<{ id: string }>(
+    `INSERT INTO bitacora (tabla, id_registro, accion, campo, valor_anterior, valor_nuevo, id_usuario)
+     VALUES ('orden_servicio', $1, 'crear', $2, $3, $4, $5) RETURNING id`,
+    [datos.idOrden, datos.campo, datos.referencia, datos.texto, datos.idUsuario],
+  );
+  return rows[0]!.id;
+}
+
+export async function buscarEntradaBitacora(ejecutor: Ejecutor, id: string): Promise<EntradaBitacora | null> {
+  const { rows } = await ejecutor.query<FilaEntradaBitacora>(
+    `SELECT b.id, b.id_registro, b.campo, b.valor_nuevo, b.valor_anterior, b.momento, b.id_usuario,
+            u.nombres AS autor
+       FROM bitacora b JOIN usuario u ON u.id = b.id_usuario
+      WHERE b.id = $1 AND b.tabla = 'orden_servicio' AND b.campo LIKE 'bitacora%'`,
+    [id],
+  );
+  const fila = rows[0];
+  if (fila === undefined) return null;
+  return {
+    id: fila.id,
+    idOrden: fila.id_registro,
+    tipo: TIPO_DE_CAMPO[fila.campo] ?? 'comentario',
+    texto: fila.valor_nuevo,
+    momento: fila.momento.toISOString(),
+    idAutor: fila.id_usuario,
+    autor: fila.autor.trim(),
+    idEntradaCorregida: fila.campo === 'bitacora.correccion' ? fila.valor_anterior : null,
+  };
+}
+
+/** Id de una entrada de bitacora de ESTA orden, o null. */
+export async function entradaDeBitacora(
+  ejecutor: Ejecutor, idOrden: string, idEntrada: string,
+): Promise<string | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(idEntrada)) return null;
+  const { rows } = await ejecutor.query<{ id: string }>(
+    `SELECT id FROM bitacora
+      WHERE id = $1 AND tabla = 'orden_servicio' AND id_registro = $2 AND campo LIKE 'bitacora%'`,
+    [idEntrada, idOrden],
+  );
+  return rows[0]?.id ?? null;
+}
+
+export async function autoresDePagoRegistrado(ejecutor: Ejecutor, idOrden: string): Promise<string[]> {
+  const { rows } = await ejecutor.query<{ id_usuario: string }>(
+    `SELECT id_usuario FROM bitacora
+      WHERE tabla = 'orden_servicio' AND id_registro = $1 AND campo = 'bitacora.pago_registrado'`,
+    [idOrden],
+  );
+  return rows.map((fila) => fila.id_usuario);
+}
+
+// ── diagnostico y cotizacion desde el panel ─────────────────────────────
+
+export interface FilaDatosDeTaller {
+  readonly id: string; readonly estado: EstadoOrden; readonly tipo_garantia: string;
+  readonly id_articulo: string; readonly id_cliente: string;
+  readonly id_tecnico: string | null; readonly id_tienda: string | null; readonly creado_por: string | null;
+  readonly tiene_diagnostico: boolean;
+}
+
+export async function datosDeTaller(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<FilaDatosDeTaller | null> {
+  const { rows } = await ejecutor.query<FilaDatosDeTaller>(
+    `SELECT o.id, o.estado, o.tipo_garantia::text AS tipo_garantia, o.id_articulo, o.id_cliente,
+            o.id_tecnico, o.id_tienda, o.creado_por,
+            EXISTS (SELECT 1 FROM diagnostico d WHERE d.id_orden = o.id) AS tiene_diagnostico
+       FROM orden_servicio o WHERE o.id = $1`,
+    [idOrden],
+  );
+  return rows[0] ?? null;
+}
+
+export async function insertarDiagnosticoDelPanel(
+  ejecutor: Ejecutor,
+  datos: { idOrden: string; idTecnico: string; fallaReal: string; componente: string | null },
+): Promise<string> {
+  // Registrado en linea: momento del servidor y sin_conexion = false.
+  const { rows } = await ejecutor.query<{ id: string }>(
+    `INSERT INTO diagnostico (id_orden, id_tecnico, falla_real, componente, momento_dispositivo, registrado_sin_conexion)
+     VALUES ($1, $2, $3, $4, now(), false) RETURNING id`,
+    [datos.idOrden, datos.idTecnico, datos.fallaReal, datos.componente],
+  );
+  return rows[0]!.id;
+}
+
+export async function diagnosticosDeOrden(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<DiagnosticoDeOrden[]> {
+  const { rows } = await ejecutor.query<{
+    id: string; falla_real: string; componente: string | null; momento: Date; tecnico: string;
+  }>(
+    `SELECT d.id, d.falla_real, d.componente, d.momento_dispositivo AS momento, u.nombres AS tecnico
+       FROM diagnostico d JOIN tecnico t ON t.id = d.id_tecnico JOIN usuario u ON u.id = t.id_usuario
+      WHERE d.id_orden = $1 ORDER BY d.momento_dispositivo`,
+    [idOrden],
+  );
+  return rows.map((f) => ({
+    id: f.id, fallaReal: f.falla_real, componente: f.componente,
+    momento: f.momento.toISOString(), tecnico: f.tecnico.trim(),
+  }));
+}
+
+export async function cotizacionesDeOrden(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<CotizacionDeOrden[]> {
+  const { rows } = await ejecutor.query<{
+    id: string; mano_obra: string; total_repuestos: string; cargo_visita: string; total: string;
+    aceptada: boolean | null; forma_aceptacion: string | null; momento_aceptacion: Date | null;
+    creado_en: Date; registrado_por: string | null;
+  }>(
+    `SELECT c.id, c.mano_obra, c.total_repuestos, c.cargo_visita, c.total, c.aceptada,
+            c.forma_aceptacion::text AS forma_aceptacion, c.momento_aceptacion, c.creado_en,
+            u.nombres AS registrado_por
+       FROM cotizacion c LEFT JOIN usuario u ON u.id = c.registrado_por
+      WHERE c.id_orden = $1 ORDER BY c.creado_en`,
+    [idOrden],
+  );
+  return rows.map((f) => ({
+    id: f.id, manoObra: Number(f.mano_obra), totalRepuestos: Number(f.total_repuestos),
+    cargoVisita: Number(f.cargo_visita), total: Number(f.total), aceptada: f.aceptada,
+    formaAceptacion: f.forma_aceptacion, momentoAceptacion: f.momento_aceptacion?.toISOString() ?? null,
+    creadoEn: f.creado_en.toISOString(), registradoPor: f.registrado_por?.trim() ?? null,
+  }));
+}
+
+export async function cotizacionSinDecision(ejecutor: Ejecutor, idOrden: string): Promise<string | null> {
+  const { rows } = await ejecutor.query<{ id: string }>(
+    `SELECT id FROM cotizacion WHERE id_orden = $1 AND aceptada IS NULL
+      ORDER BY creado_en DESC LIMIT 1 FOR UPDATE`,
+    [idOrden],
+  );
+  return rows[0]?.id ?? null;
+}
+
+export async function insertarCotizacion(
+  ejecutor: Ejecutor,
+  datos: { idOrden: string; manoObra: number; totalRepuestos: number; cargoVisita: number; total: number; registradoPor: string },
+): Promise<string> {
+  const { rows } = await ejecutor.query<{ id: string }>(
+    `INSERT INTO cotizacion (id_orden, mano_obra, total_repuestos, cargo_visita, total, registrado_por)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [datos.idOrden, datos.manoObra, datos.totalRepuestos, datos.cargoVisita, datos.total, datos.registradoPor],
+  );
+  return rows[0]!.id;
+}
+
+export async function anotarDecisionDeCotizacion(
+  ejecutor: Ejecutor, datos: { idCotizacion: string; aceptada: boolean; forma: string },
+): Promise<void> {
+  await ejecutor.query(
+    `UPDATE cotizacion
+        SET aceptada = $2, forma_aceptacion = $3::forma_aceptacion, momento_aceptacion = now()
+      WHERE id = $1 AND aceptada IS NULL`,
+    [datos.idCotizacion, datos.aceptada, datos.forma],
   );
 }

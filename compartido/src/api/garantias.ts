@@ -40,6 +40,27 @@ export interface EvaluacionCobertura {
   readonly motivo: string;
   readonly detieneLaOrden: boolean;
   readonly desglose: readonly CondicionEvaluada[];
+  /**
+   * Estado de cada garantia del articulo: vigencia por fecha y si aplica a
+   * quien pide el servicio. Que una este vigente no significa que cubra la
+   * reparacion: eso lo decide el diagnostico.
+   */
+  readonly garantias?: ResumenGarantiasArticulo;
+}
+
+export type VigenciaGarantia = 'vigente' | 'vencida' | 'no_registrada';
+
+export interface EstadoGarantiaArticulo {
+  readonly vigencia: VigenciaGarantia;
+  readonly venceEl: string | null;
+  readonly origen: 'registrada' | 'regla' | null;
+  readonly aplicable: boolean;
+  readonly motivo: string | null;
+}
+
+export interface ResumenGarantiasArticulo {
+  readonly proveedor: EstadoGarantiaArticulo;
+  readonly adicional: EstadoGarantiaArticulo;
 }
 
 export interface PeticionEvaluarCobertura {

@@ -211,3 +211,19 @@ export async function verificarReferencias(
   );
   return rows[0]!;
 }
+
+/** La cobertura activa de ESTE articulo, bloqueada para desactivarla. */
+export async function coberturaActivaDe(
+  ejecutor: Ejecutor, idArticulo: string, idCobertura: string,
+): Promise<{ id: string; tipo: string; vigente_desde: Date; vigente_hasta: Date } | null> {
+  const { rows } = await ejecutor.query<{ id: string; tipo: string; vigente_desde: Date; vigente_hasta: Date }>(
+    `SELECT id, tipo::text AS tipo, vigente_desde, vigente_hasta FROM cobertura
+      WHERE id = $1 AND id_articulo = $2 AND activa FOR UPDATE`,
+    [idCobertura, idArticulo],
+  );
+  return rows[0] ?? null;
+}
+
+export async function desactivarCobertura(ejecutor: Ejecutor, idCobertura: string): Promise<void> {
+  await ejecutor.query('UPDATE cobertura SET activa = false WHERE id = $1', [idCobertura]);
+}

@@ -51,6 +51,11 @@ export function NuevaOrden(): JSX.Element {
 
   // ── paso 3: cobertura (la calcula el servidor) ──
   const [cobertura, setCobertura] = useState<EvaluacionCobertura | null>(null);
+  /*
+   * Con que se atendera: se pregunta antes de crear la orden, despues de
+   * ver el estado de cada garantia. Vacio = todavia no se eligio.
+   */
+  const [modalidadGarantia, setModalidadGarantia] = useState<'' | 'proveedor' | 'adicional' | 'particular'>('');
   const [evaluando, setEvaluando] = useState(false);
 
   // ── paso 4: falla y asignacion ──
@@ -142,6 +147,7 @@ export function NuevaOrden(): JSX.Element {
     setEvaluando(true);
     setError(null);
     try {
+      setModalidadGarantia('');
       setCobertura(await api.pedir<EvaluacionCobertura>('/coberturas/evaluar', {
         metodo: 'POST',
         cuerpo: { idArticulo: id, idClienteSolicitante: cliente.id },
@@ -195,6 +201,7 @@ export function NuevaOrden(): JSX.Element {
           idCliente: cliente.id,
           idArticulo,
           modalidad,
+          tipoGarantiaElegida: modalidadGarantia,
           fallaReportada: fallaReportada.trim(),
           ...(telefonoContacto.trim() === '' ? {} : { telefonoContacto: telefonoContacto.trim() }),
           ...(modalidad === MODALIDAD_SERVICIO.RUTA
@@ -221,7 +228,9 @@ export function NuevaOrden(): JSX.Element {
     [catalogos.datos, idZona],
   );
 
-  const listo = cliente !== null && idArticulo !== '' && fallaReportada.trim().length >= 10;
+  const listo = cliente !== null && idArticulo !== '' && fallaReportada.trim().length >= 10
+    && modalidadGarantia !== '';
+  const articuloElegido = (articulos.datos?.datos ?? []).find((articulo) => articulo.id === idArticulo) ?? null;
 
   return (
     <>
@@ -483,6 +492,62 @@ export function NuevaOrden(): JSX.Element {
                 orden se detiene y pasa a particular (RN-04, RN-05). Este veredicto lo emite el
                 mismo motor que reevalua la cobertura tras el diagnostico.
               </p>
+
+              {articuloElegido === null ? null : (
+                <p style={{ fontSize: 12.5, margin: '10px 0 0' }}>
+                  <b>Articulo:</b> {articuloElegido.marca} {articuloElegido.modelo ?? ''} · serie{' '}
+                  {articuloElegido.numeroSerie ?? 'no registrada'} · compra {articuloElegido.fechaCompra ?? 'sin fecha'}
+                </p>
+              )}
+
+              {cobertura.garantias === undefined ? null : (
+                <>
+                  <table className="d" style={{ marginTop: 8 }}>
+                    <thead><tr><th>Garantia</th><th>Vigencia</th><th>Vence</th><th>¿Se puede usar?</th></tr></thead>
+                    <tbody>
+                      {(['proveedor', 'adicional'] as const).map((clave) => {
+                        const estado = cobertura.garantias![clave];
+                        return (
+                          <tr key={clave}>
+                            <td>{clave === 'proveedor' ? 'Del proveedor' : 'Adicional'}</td>
+                            <td>
+                              <span className={estado.vigencia === 'vigente' ? 'tag t-t' : estado.vigencia === 'vencida' ? 'tag t-r' : 'tag t-g'}>
+                                {estado.vigencia === 'no_registrada' ? 'no registrada' : estado.vigencia}
+                              </span>
+                              {estado.origen === 'regla' ? <small className="tenue"> (calculada por la regla)</small> : null}
+                            </td>
+                            <td>{estado.venceEl ?? '—'}</td>
+                            <td>{estado.aplicable ? 'si' : <span className="tenue">no · {estado.motivo}</span>}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  <fieldset style={{ border: '1px solid var(--line)', marginTop: 10, padding: '8px 12px' }}>
+                    <legend style={{ fontSize: 12.5, fontWeight: 600 }}>¿Con que modalidad se atendera? *</legend>
+                    {([
+                      { valor: 'proveedor', nombre: 'Garantia del proveedor', posible: cobertura.garantias.proveedor.aplicable },
+                      { valor: 'adicional', nombre: 'Garantia adicional', posible: cobertura.garantias.adicional.aplicable },
+                      { valor: 'particular', nombre: 'Servicio particular (lo paga el cliente)', posible: true },
+                    ] as const).map((opcion) => (
+                      <label key={opcion.valor} className="opcion" style={{ opacity: opcion.posible ? 1 : 0.5 }}>
+                        <input
+                          type="radio" name="modalidad-garantia" value={opcion.valor}
+                          disabled={!opcion.posible}
+                          checked={modalidadGarantia === opcion.valor}
+                          onChange={() => setModalidadGarantia(opcion.valor)}
+                        />{' '}
+                        {opcion.nombre}{opcion.posible ? '' : ' — no disponible'}
+                      </label>
+                    ))}
+                    <small className="tenue">
+                      Una garantia vigente no garantiza que la reparacion quede cubierta: golpes, mal uso y fallas
+                      excluidas se determinan en el diagnostico. Si el daño ya es evidente, elija servicio particular.
+                    </small>
+                  </fieldset>
+                </>
+              )}
             </>
           )}
         </Tarjeta>

@@ -5,10 +5,13 @@ import { leerParametrosPagina } from '../../comun/paginacion.js';
 import { actorDe } from '../../comun/autenticacion.js';
 import { esquemaIdentificador, validar } from '../seguridad/esquemas.js';
 import {
-  esquemaAsignarTecnico, esquemaCrearOrden, esquemaNotaCorreccion, esquemaTransicion,
+  esquemaAsignarTecnico, esquemaCrearOrden, esquemaNotaCorreccion, esquemaTransicion, esquemaRegistrarBitacora,
+  esquemaDecisionCotizacion, esquemaRegistrarCotizacion, esquemaRegistrarDiagnostico,
 } from './esquemas.js';
 import * as servicio from './servicio.js';
 import * as transiciones from './servicio-transiciones.js';
+import * as servicioBitacora from './servicio-bitacora.js';
+import * as servicioTaller from './servicio-taller.js';
 
 const identificador = (peticion: Request): string => validar(esquemaIdentificador, peticion.params['id']);
 
@@ -82,4 +85,28 @@ export async function agregarNota(peticion: Request, respuesta: Response): Promi
   const datos = validar(esquemaNotaCorreccion, peticion.body);
   await transiciones.agregarNotaCorreccion(actorDe(peticion), identificador(peticion), datos);
   responderSinContenido(respuesta);
+}
+
+export async function registrarBitacora(peticion: Request, respuesta: Response): Promise<void> {
+  const datos = validar(esquemaRegistrarBitacora, peticion.body);
+  responderDatos(respuesta, await servicioBitacora.registrar(actorDe(peticion), identificador(peticion), datos), 201);
+}
+
+export async function datosDeTaller(peticion: Request, respuesta: Response): Promise<void> {
+  responderDatos(respuesta, await servicioTaller.obtener(actorDe(peticion), identificador(peticion)));
+}
+
+export async function registrarDiagnostico(peticion: Request, respuesta: Response): Promise<void> {
+  const datos = validar(esquemaRegistrarDiagnostico, peticion.body);
+  responderDatos(respuesta, await servicioTaller.registrarDiagnostico(actorDe(peticion), identificador(peticion), datos), 201);
+}
+
+export async function registrarCotizacion(peticion: Request, respuesta: Response): Promise<void> {
+  const datos = validar(esquemaRegistrarCotizacion, peticion.body);
+  responderDatos(respuesta, await servicioTaller.registrarCotizacion(actorDe(peticion), identificador(peticion), datos), 201);
+}
+
+export async function registrarDecision(peticion: Request, respuesta: Response): Promise<void> {
+  const datos = validar(esquemaDecisionCotizacion, peticion.body);
+  responderDatos(respuesta, await servicioTaller.registrarDecision(actorDe(peticion), identificador(peticion), datos));
 }

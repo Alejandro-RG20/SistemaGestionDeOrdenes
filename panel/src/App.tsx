@@ -34,6 +34,7 @@ import { Coberturas } from './pantallas/Coberturas.js';
 import { Excepciones } from './pantallas/Excepciones.js';
 import { Indicadores } from './pantallas/Indicadores.js';
 import { Administracion } from './pantallas/Administracion.js';
+import { GestionDeTecnicos } from './pantallas/AdministracionTecnicos.js';
 import { ConsultaPublica } from './pantallas/ConsultaPublica.js';
 import { RevisarOrden, Validaciones } from './pantallas/Validaciones.js';
 import { Compras, DetalleCompra, NuevaCompra, Proveedores } from './pantallas/Compras.js';
@@ -224,6 +225,9 @@ function Privado(): JSX.Element {
       } />
       <Route path="/indicadores" element={
         <Pantalla codigo="W-11" miga="Indicadores"><Indicadores /></Pantalla>
+      } />
+      <Route path="/tecnicos" element={
+        <Pantalla codigo="W-16" miga="Tecnicos"><><h2 className="scr">Tecnicos</h2><GestionDeTecnicos /></></Pantalla>
       } />
       <Route path="/administracion" element={
         <Pantalla codigo="W-16" miga="Administracion"><Administracion /></Pantalla>

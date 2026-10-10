@@ -36,8 +36,36 @@ const PERMITIDA: VeredictoTransicion = { permitida: true };
  * trasera: es que la jefatura pueda destrabar una orden cuando quien la
  * tenia no esta.
  */
+/**
+ * Pasos de despacho: los que decide quien asigna tecnicos. Antes «asignada»
+ * solo la movia el rol jefe_tecnicos, y el gestor de tecnicos —que es
+ * quien asigna— se encontraba con «esta orden la tiene jefe_tecnicos» al
+ * querer mandarla a ruta. Los requisitos (tecnico, visita, evidencia) se
+ * siguen exigiendo igual.
+ */
+const PASOS_DE_DESPACHO: ReadonlyArray<readonly [EstadoOrden, EstadoOrden]> = [
+  [ESTADO_ORDEN.REGISTRADA, ESTADO_ORDEN.ASIGNADA],
+  [ESTADO_ORDEN.ASIGNADA, ESTADO_ORDEN.EN_RUTA],
+  [ESTADO_ORDEN.ASIGNADA, ESTADO_ORDEN.EN_COLA_TALLER],
+  [ESTADO_ORDEN.EN_COLA_TALLER, ESTADO_ORDEN.EN_DIAGNOSTICO],
+  [ESTADO_ORDEN.AUTORIZADA, ESTADO_ORDEN.ASIGNADA],
+];
+
+function esPasoDeDespacho(desde: EstadoOrden, hacia: EstadoOrden): boolean {
+  return PASOS_DE_DESPACHO.some(([origen, destino]) => origen === desde && destino === hacia);
+}
+
 function actorPuedeMover(contexto: ContextoTransicion, definicion: DefinicionEstado): boolean {
   const { actor, orden } = contexto;
+
+  // El administrador del sistema pasa la regla del responsable de turno.
+  // Los requisitos —evidencia, diagnostico, autorizacion, repuestos— se le
+  // exigen igual que a cualquiera: esto no es un atajo del flujo.
+  if (actor.esAdministrador) return true;
+
+  // Autorizar es un acto de quien registra la decision comercial, y SOLO
+  // de el: ni el responsable del estado sin ese permiso puede hacerlo.
+  if (contexto.hacia === ESTADO_ORDEN.AUTORIZADA) return actor.puedeAutorizar;
 
   if (contexto.hacia === ESTADO_ORDEN.ANULADA && actor.puedeAnular) return true;
   if (contexto.hacia === ESTADO_ORDEN.CERRADA_SIN_REPARAR && actor.puedeCerrar) return true;
@@ -45,6 +73,7 @@ function actorPuedeMover(contexto: ContextoTransicion, definicion: DefinicionEst
   // entrega registrada, que antes comprueba revision y autorizacion.
   if (contexto.hacia === ESTADO_ORDEN.ENTREGADA && actor.puedeEntregar) return true;
   if (orden.idResponsableActual !== null && orden.idResponsableActual === actor.id) return true;
+  if (actor.puedeAsignar && esPasoDeDespacho(orden.estado, contexto.hacia)) return true;
 
   if (definicion.responsable === TECNICO_ASIGNADO) {
     return orden.idTecnico !== null && orden.idTecnico === actor.idTecnico;
@@ -52,12 +81,26 @@ function actorPuedeMover(contexto: ContextoTransicion, definicion: DefinicionEst
   return definicion.responsable !== null && definicion.responsable === actor.rol;
 }
 
-function explicarResponsable(definicion: DefinicionEstado): string {
+const NOMBRE_RESPONSABLE: Readonly<Record<string, string>> = {
+  agente_telefonia: 'el agente telefonico',
+  jefe_tecnicos: 'la jefatura de tecnicos',
+  bodeguero: 'bodega',
+  jefe_atencion_cliente: 'la jefatura de atencion al cliente',
+};
+
+function explicarResponsable(definicion: DefinicionEstado, hacia: EstadoOrden): string {
+  if (hacia === ESTADO_ORDEN.AUTORIZADA) {
+    return 'Autorizar la orden corresponde a quien registra la decision comercial del cliente '
+      + '(permiso «Registrar la aceptacion del cliente»).';
+  }
   if (definicion.responsable === TECNICO_ASIGNADO) {
     return 'Esta orden la tiene el tecnico asignado; solo el puede moverla desde este estado.';
   }
-  return `Esta orden la tiene ${definicion.responsable ?? 'nadie'}; ` +
-    'solo esa persona puede moverla desde este estado.';
+  const quien = definicion.responsable === null
+    ? 'nadie'
+    : NOMBRE_RESPONSABLE[definicion.responsable] ?? definicion.responsable.replace(/_/g, ' ');
+  return `En este estado la orden la mueve ${quien} (o quien la tenga a su cargo). `
+    + 'Su perfil no puede dar este paso.';
 }
 
 export function evaluarTransicion(contexto: ContextoTransicion): VeredictoTransicion {
@@ -87,7 +130,7 @@ export function evaluarTransicion(contexto: ContextoTransicion): VeredictoTransi
     return {
       permitida: false,
       codigo: CODIGO_TRANSICION.NO_ES_RESPONSABLE,
-      motivo: explicarResponsable(definicion),
+      motivo: explicarResponsable(definicion, contexto.hacia),
     };
   }
 

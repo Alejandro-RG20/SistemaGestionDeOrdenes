@@ -265,3 +265,30 @@ function asientosDeCambio(
       campo, valorAnterior: anterior, valorNuevo: nuevo ?? null, motivo, idUsuario,
     }));
 }
+
+/**
+ * Corregir una garantia registrada con fechas equivocadas: se desactiva,
+ * con motivo en la bitacora, y se registra la correcta. La fila no se
+ * borra ni se edita, y las ordenes ya cerradas conservan la cobertura con
+ * la que se atendieron. Las abiertas se reevaluan, como al registrar una.
+ */
+export async function desactivarCobertura(
+  actor: Actor, idArticulo: string, idCobertura: string, motivo: string,
+): Promise<FichaArticulo> {
+  await enTransaccion(async (cliente) => {
+    await exigirArticulo(idArticulo, cliente);
+    const cobertura = await repositorio.coberturaActivaDe(cliente, idArticulo, idCobertura);
+    if (cobertura === null) {
+      throw new ErrorNoEncontrado('Esa cobertura no existe en este articulo o ya estaba desactivada.');
+    }
+    await repositorio.desactivarCobertura(cliente, idCobertura);
+    await auditar(cliente, [{
+      tabla: 'cobertura', idRegistro: idCobertura, accion: ACCION_BITACORA.DESACTIVAR,
+      campo: 'activa', valorAnterior: `${cobertura.tipo} ${cobertura.vigente_desde.toISOString().slice(0, 10)}`
+        + ` a ${cobertura.vigente_hasta.toISOString().slice(0, 10)}`,
+      valorNuevo: 'desactivada', motivo, idUsuario: actor.id,
+    }]);
+    await reevaluarOrdenesAbiertas(cliente, actor, idArticulo, `Se desactivo una cobertura del articulo: ${motivo}`);
+  });
+  return obtenerFicha(idArticulo);
+}

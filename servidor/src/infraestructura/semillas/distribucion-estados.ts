@@ -22,6 +22,10 @@ export const REPARTO_ESTADOS: Readonly<Record<EstadoOrden, number>> = {
   [ESTADO_ORDEN.EN_DIAGNOSTICO]: 180,
   [ESTADO_ORDEN.COTIZADA]: 105,
   [ESTADO_ORDEN.ESPERANDO_AUTORIZACION]: 135,
+  // Estado nuevo (migracion 0024). Cero: la siembra no genera ordenes
+  // autorizadas, asi que lo que inserta no cambia. Esta clave existe solo
+  // para que el tipo Record<EstadoOrden, ...> siga completo.
+  [ESTADO_ORDEN.AUTORIZADA]: 0,
   [ESTADO_ORDEN.ESPERANDO_REPUESTO]: 270,
   [ESTADO_ORDEN.EN_REPARACION]: 105,
   [ESTADO_ORDEN.FINALIZADA]: 45,

@@ -5,10 +5,20 @@ import {
   CANTIDAD_ORDENES, REPARTO_ESTADOS, construirCadena, construirObjetivos,
 } from '../../src/infraestructura/semillas/distribucion-estados.js';
 
+/**
+ * Estados que la siembra genera. «autorizada» (migracion 0024) esta en el
+ * reparto con cero ordenes: la siembra no cambio y no genera ninguna, asi
+ * que tampoco se le piden cadenas que terminen en ella.
+ */
+const SEMBRADOS: readonly EstadoOrden[] = ESTADOS_ORDEN.filter((estado) => REPARTO_ESTADOS[estado] > 0);
+
 describe('reparto de estados', () => {
-  it('cubre los 13 estados del esquema, sin sobrar ni faltar ninguno', () => {
+  it('cubre los 14 estados del esquema, sin sobrar ni faltar ninguno', () => {
     expect(Object.keys(REPARTO_ESTADOS).sort()).toEqual([...ESTADOS_ORDEN].sort());
-    expect(ESTADOS_ORDEN).toHaveLength(13);
+    expect(ESTADOS_ORDEN).toHaveLength(14);
+    // Los 13 de siempre llevan ordenes; el nuevo, ninguna.
+    expect(SEMBRADOS).toHaveLength(13);
+    expect(REPARTO_ESTADOS[ESTADO_ORDEN.AUTORIZADA]).toBe(0);
   });
 
   it('suma exactamente las 30 000 ordenes pedidas', () => {
@@ -28,14 +38,14 @@ describe('reparto de estados', () => {
 describe('cadena de estados', () => {
   const azar = new Aleatorio(42);
   const cadenas = Array.from({ length: 4_000 }, () =>
-    construirCadena(azar, azar.elegir(ESTADOS_ORDEN)));
+    construirCadena(azar, azar.elegir(SEMBRADOS)));
 
   it('siempre empieza en registrada', () => {
     for (const cadena of cadenas) expect(cadena.estados[0]).toBe(ESTADO_ORDEN.REGISTRADA);
   });
 
   it('termina en el estado objetivo pedido', () => {
-    for (const estado of ESTADOS_ORDEN) {
+    for (const estado of SEMBRADOS) {
       const cadena = construirCadena(new Aleatorio(estado.length * 13), estado);
       expect(cadena.estados.at(-1)).toBe(estado);
     }

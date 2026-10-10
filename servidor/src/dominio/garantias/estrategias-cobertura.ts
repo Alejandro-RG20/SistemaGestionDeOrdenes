@@ -15,7 +15,7 @@ import { siempre, y, type Especificacion } from './especificacion.js';
 import type { ContextoCobertura } from './contexto-cobertura.js';
 import {
   cumpleLaExigenciaDeTienda, dentroDelPlazoDeFabrica, esElCompradorRegistrado,
-  tienePolizaExtendidaVigente,
+  garantiasDeProveedorRegistradas, tienePolizaExtendidaVigente,
 } from './especificaciones-cobertura.js';
 
 export interface EstrategiaCobertura {
@@ -70,6 +70,11 @@ function explicarPorQueParticular(contexto: ContextoCobertura): string {
   }
   if (!cumpleLaExigenciaDeTienda.seCumple(contexto)) {
     return 'El articulo no se compro en una tienda del grupo.';
+  }
+  const registrada = garantiasDeProveedorRegistradas(contexto)
+    .sort((una, otra) => otra.vigenteHasta.getTime() - una.vigenteHasta.getTime())[0];
+  if (registrada !== undefined) {
+    return `La garantia del proveedor registrada en el articulo vencio el ${registrada.vigenteHasta.toISOString().slice(0, 10)}.`;
   }
   return `Pasaron mas de ${contexto.regla.mesesCobertura} meses desde la compra: la garantia ` +
     'del fabricante ya vencio.';

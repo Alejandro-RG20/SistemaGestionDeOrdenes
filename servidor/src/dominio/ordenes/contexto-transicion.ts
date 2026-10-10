@@ -12,6 +12,8 @@ export interface DatosOrdenParaTransicion {
   readonly tipoGarantia: TipoGarantia;
   readonly idTecnico: string | null;
   readonly idResponsableActual: string | null;
+  /** Cargo por visita congelado al crearla (0 en taller). */
+  readonly cargoVisita: number;
 }
 
 export interface ActorTransicion {
@@ -28,6 +30,16 @@ export interface ActorTransicion {
    * ese permiso: ninguna orden podia entregarse por el acta.
    */
   readonly puedeEntregar: boolean;
+  /**
+   * Despacha ordenes (`ordenes.asignar`): quien asigna el tecnico puede
+   * mover los pasos de despacho —registrada → asignada → en ruta / cola de
+   * taller → diagnostico— aunque el estado lo atienda otro rol.
+   */
+  readonly puedeAsignar: boolean;
+  /** Registra la decision comercial (`taller.cotizacion.autorizar`). */
+  readonly puedeAutorizar: boolean;
+  /** Rol administrador: pasa la regla del responsable, nunca los requisitos. */
+  readonly esAdministrador: boolean;
 }
 
 export interface EvidenciaFaltante {
@@ -56,6 +68,12 @@ export interface ContextoTransicion {
   readonly piezasSinConciliar: number;
   /** Si ya se registro el acta de entrega. */
   readonly tieneEntrega: boolean;
+  /** Pago de la visita en la bitacora (entradas marcadas como pago). */
+  readonly pagoVisita: {
+    readonly registrado: boolean;
+    /** Lo confirmo alguien distinto de quien lo registro, despues del registro. */
+    readonly confirmadoPorOtraPersona: boolean;
+  };
   /** Motivo escrito, obligatorio para anular. */
   readonly motivo: string | null;
 }

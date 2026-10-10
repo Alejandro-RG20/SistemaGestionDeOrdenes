@@ -30,7 +30,7 @@ describe('ejecutor de migraciones', () => {
     expect(resultado.omitidas).toHaveLength(0);
   });
 
-  it('deja el esquema del pliego completo, con sus 13 estados', async () => {
+  it('deja el esquema del pliego completo, con sus 14 estados', async () => {
     const { rows: tablas } = await obtenerPiscina().query<{ total: string }>(
       `SELECT count(*)::text AS total FROM information_schema.tables
         WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
@@ -51,9 +51,11 @@ describe('ejecutor de migraciones', () => {
          JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'estado_orden'
        ORDER BY e.enumsortorder`,
     );
+    // Los 13 del pliego, en su orden, mas 'autorizada' (migracion 0024)
+    // justo despues de 'esperando_autorizacion'. Ninguna tabla nueva.
     expect(estados.map((fila) => fila.etiqueta)).toEqual([
       'registrada', 'asignada', 'en_ruta', 'en_cola_taller', 'en_diagnostico', 'cotizada',
-      'esperando_autorizacion', 'esperando_repuesto', 'en_reparacion', 'finalizada',
+      'esperando_autorizacion', 'autorizada', 'esperando_repuesto', 'en_reparacion', 'finalizada',
       'entregada', 'cerrada_sin_reparar', 'anulada',
     ]);
   });

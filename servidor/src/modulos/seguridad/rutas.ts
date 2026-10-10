@@ -6,11 +6,12 @@
  * venga del panel o de curl.
  */
 import { Router, type RequestHandler } from 'express';
-import { exigirPermiso, asincrono } from '../../comun/autorizacion.js';
+import { exigirAlgunPermiso, exigirPermiso, asincrono } from '../../comun/autorizacion.js';
 import * as autenticacion from './controlador-autenticacion.js';
 import * as usuarios from './controlador-usuario.js';
 import * as roles from './controlador-rol.js';
 import * as dispositivos from './controlador-dispositivo.js';
+import * as tecnicos from './controlador-tecnico.js';
 
 /**
  * Rutas publicas: iniciar sesion y refrescarla. Son las unicas dos del
@@ -40,6 +41,16 @@ export function rutasPrivadasDeSeguridad(): Router {
   // Nada se elimina: se desactiva, con motivo escrito.
   router.post('/usuarios/:id/desactivar', gestionarUsuarios, asincrono(usuarios.desactivar));
   router.post('/usuarios/:id/activar', gestionarUsuarios, asincrono(usuarios.activar));
+
+  // Tecnicos: los consulta tambien quien despacha ordenes; los administra
+  // quien gestiona al personal.
+  const verTecnicos: RequestHandler = exigirAlgunPermiso('seguridad.usuario.gestionar', 'ordenes.asignar');
+  router.get('/tecnicos', verTecnicos, asincrono(tecnicos.listar));
+  router.get('/tecnicos/:id', verTecnicos, asincrono(tecnicos.obtener));
+  router.post('/tecnicos', gestionarUsuarios, asincrono(tecnicos.crear));
+  router.patch('/tecnicos/:id', gestionarUsuarios, asincrono(tecnicos.actualizar));
+  router.post('/tecnicos/:id/desactivar', gestionarUsuarios, asincrono(tecnicos.desactivar));
+  router.post('/tecnicos/:id/activar', gestionarUsuarios, asincrono(tecnicos.activar));
 
   const gestionarRoles: RequestHandler = exigirPermiso('seguridad.rol.gestionar');
   router.get('/roles', gestionarRoles, asincrono(roles.listarRoles));

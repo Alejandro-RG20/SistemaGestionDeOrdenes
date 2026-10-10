@@ -561,7 +561,7 @@ function EditorDePermisos(
             // Conceder lo que uno no tiene es escalar; el servidor lo rechaza.
             const bloqueado = soloLectura || (!soyAdministrador && !tiene && !propios.has(permiso.codigo));
             return (
-              <label key={permiso.codigo} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontWeight: 400 }}>
+              <label key={permiso.codigo} className="opcion">
                 <input
                   type="checkbox" checked={tiene} disabled={bloqueado}
                   onChange={() => {
