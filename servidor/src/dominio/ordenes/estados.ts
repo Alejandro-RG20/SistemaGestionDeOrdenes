@@ -62,8 +62,9 @@ const DEFINICIONES: readonly DefinicionEstado[] = [
     transiciones: [
       { hacia: ESTADO_ORDEN.ASIGNADA, requisitos: [tieneTecnicoAsignado, evidenciaObligatoriaCompleta] },
       // Visita particular a domicilio: el cliente paga la visita antes de
-      // que se despache (migracion 0024).
-      { hacia: ESTADO_ORDEN.ESPERANDO_AUTORIZACION, requisitos: [esVisitaParticularConPagoPrevio] },
+      // que se despache (migracion 0024). Tambien aqui se autoriza sobre
+      // una cotizacion registrada: la de la visita.
+      { hacia: ESTADO_ORDEN.ESPERANDO_AUTORIZACION, requisitos: [esVisitaParticularConPagoPrevio, tieneCotizacionRegistrada] },
       ANULAR,
     ],
   },
@@ -78,7 +79,7 @@ const DEFINICIONES: readonly DefinicionEstado[] = [
         requisitos: [esOrdenDeRuta, tieneTecnicoAsignado, tieneVisitaProgramada, evidenciaObligatoriaCompleta],
       },
       { hacia: ESTADO_ORDEN.EN_COLA_TALLER, requisitos: [evidenciaObligatoriaCompleta] },
-      { hacia: ESTADO_ORDEN.ESPERANDO_AUTORIZACION, requisitos: [esVisitaParticularConPagoPrevio] },
+      { hacia: ESTADO_ORDEN.ESPERANDO_AUTORIZACION, requisitos: [esVisitaParticularConPagoPrevio, tieneCotizacionRegistrada] },
       ANULAR,
     ],
   },

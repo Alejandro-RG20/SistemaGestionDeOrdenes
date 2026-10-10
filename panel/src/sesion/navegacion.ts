@@ -76,7 +76,6 @@ export const SECCIONES: readonly SeccionDelPanel[] = [
     permisos: ['ordenes.asignar', 'ordenes.cerrar', 'reportes.consultar'],
     grupo: 'control',
   },
-  { ruta: '/coberturas', etiqueta: 'Reglas de garantia', permisos: ['garantias.evaluar'], grupo: 'control' },
   { ruta: '/excepciones', etiqueta: 'Excepciones', permisos: ['campo.excepcion.resolver'], grupo: 'control' },
   { ruta: '/tiendas', etiqueta: 'Tiendas', permisos: ['tiendas.gestionar'], grupo: 'control' },
   // Quien despacha ordenes consulta a los tecnicos; quien gestiona al

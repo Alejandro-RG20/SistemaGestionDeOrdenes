@@ -436,12 +436,17 @@ describe('autorizacion comercial', () => {
     } as const;
     const autorizador = { rol: CODIGO_ROL.JEFE_ATENCION_CLIENTE, puedeAutorizar: true } as const;
 
-    it('va a esperando autorizacion antes de despacharse; una de garantia no', () => {
-      expect(evaluarTransicion(contexto(ESTADO_ORDEN.REGISTRADA, ESTADO_ORDEN.ESPERANDO_AUTORIZACION, {
+    it('va a esperando autorizacion antes de despacharse, con la cotizacion de la visita; una de garantia no', () => {
+      const sinCotizacion = evaluarTransicion(contexto(ESTADO_ORDEN.REGISTRADA, ESTADO_ORDEN.ESPERANDO_AUTORIZACION, {
         ...visita, actor: { esAdministrador: true },
+      }));
+      expect(sinCotizacion.permitida).toBe(false);
+      expect(sinCotizacion.motivo).toMatch(/cotizacion valida/);
+      expect(evaluarTransicion(contexto(ESTADO_ORDEN.REGISTRADA, ESTADO_ORDEN.ESPERANDO_AUTORIZACION, {
+        ...visita, tieneCotizacion: true, actor: { esAdministrador: true },
       })).permitida).toBe(true);
       const garantia = evaluarTransicion(contexto(ESTADO_ORDEN.REGISTRADA, ESTADO_ORDEN.ESPERANDO_AUTORIZACION, {
-        ...visita, orden: { ...visita.orden, tipoGarantia: TIPO_GARANTIA.PROVEEDOR }, actor: { esAdministrador: true },
+        ...visita, tieneCotizacion: true, orden: { ...visita.orden, tipoGarantia: TIPO_GARANTIA.PROVEEDOR }, actor: { esAdministrador: true },
       }));
       expect(garantia.permitida).toBe(false);
     });

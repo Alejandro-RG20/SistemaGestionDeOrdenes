@@ -2,6 +2,7 @@
 import type {
   EstadoOrden, ModalidadServicio, TipoGarantia,
 } from '../dominio/orden.js';
+import type { AjusteConcepto, DetalleCotizacion, ResponsablePago } from '../dominio/cotizacion.js';
 
 export interface ResumenOrden {
   readonly id: string;
@@ -235,8 +236,12 @@ export interface DiagnosticoDeOrden {
   readonly tecnico: string;
 }
 
+/** Estado de una cotizacion. Solo la ultima puede estar pendiente. */
+export type EstadoCotizacion = 'pendiente' | 'aceptada' | 'rechazada' | 'reemplazada' | 'no_requiere';
+
 export interface CotizacionDeOrden {
   readonly id: string;
+  /** Importes finales guardados (despues de descuentos y exoneraciones). */
   readonly manoObra: number;
   readonly totalRepuestos: number;
   readonly cargoVisita: number;
@@ -245,15 +250,61 @@ export interface CotizacionDeOrden {
   readonly aceptada: boolean | null;
   readonly formaAceptacion: string | null;
   readonly momentoAceptacion: string | null;
+  /** Lo que se anoto con la decision del cliente (canal y observaciones). */
+  readonly observacionDecision: string | null;
   readonly creadoEn: string;
   readonly registradoPor: string | null;
+  readonly estado: EstadoCotizacion;
+  /**
+   * Conceptos, repuestos con su precio, ajustes y responsable de pago, tal
+   * como se cotizaron. null en cotizaciones anteriores a este detalle.
+   */
+  readonly detalle: DetalleCotizacion | null;
+  /** Por que se registro esta version (cambio o ajuste). */
+  readonly motivo: string | null;
+}
+
+/** Repuesto pedido para la orden, con su estado y el precio de HOY en inventario. */
+export interface RepuestoDeLaOrden {
+  readonly idRepuesto: string;
+  readonly codigo: string;
+  readonly descripcion: string;
+  /** Cantidad vigente pedida (sin rechazadas ni anuladas). */
+  readonly cantidad: number;
+  /** Cantidad en cada estado de la solicitud. */
+  readonly porEstado: Readonly<Record<string, number>>;
+  /** Cantidad instalada (consumos registrados para la orden). */
+  readonly utilizada: number;
+  /** Precio actual del inventario; null si no tiene precio registrado. */
+  readonly precioInventario: number | null;
+}
+
+export interface AntecedenteDeOrden {
+  readonly idOrden: string;
+  readonly codigo: string;
+  readonly tipoGarantia: TipoGarantia;
+  readonly diagnosticos: readonly DiagnosticoDeOrden[];
 }
 
 export interface DatosDeTaller {
-  /** Quien paga hoy la reparacion (puede haber cambiado tras el diagnostico). */
+  /** Quien paga hoy la reparacion. */
   readonly tipoGarantia: string;
+  readonly responsablePago: ResponsablePago;
+  readonly modalidad: string;
+  /** Cargo de visita congelado al crear la orden (0 en taller). */
+  readonly cargoVisita: number;
   readonly diagnosticos: readonly DiagnosticoDeOrden[];
+  readonly repuestos: readonly RepuestoDeLaOrden[];
   readonly cotizaciones: readonly CotizacionDeOrden[];
+  /** Orden de garantia de la que viene esta (si es la continuacion particular). */
+  readonly antecedentes: AntecedenteDeOrden | null;
+  /** Lo que el usuario puede hacer ahora, decidido por el servidor. */
+  readonly puede: {
+    readonly diagnosticar: boolean;
+    readonly cotizar: boolean;
+    readonly ajustar: boolean;
+    readonly decidir: boolean;
+  };
 }
 
 export interface PeticionRegistrarDiagnostico {
@@ -271,8 +322,23 @@ export interface PeticionRegistrarDiagnostico {
 
 export interface PeticionRegistrarCotizacion {
   readonly manoObra: number;
-  readonly totalRepuestos: number;
+  /**
+   * Cargo de visita. Si se omite, el congelado en la orden. Cambiarlo es un
+   * ajuste: exige permiso y motivo.
+   */
   readonly cargoVisita?: number;
+  /** @deprecated Los repuestos salen del inventario; este valor se ignora. */
+  readonly totalRepuestos?: number;
+  /** Descuentos y exoneraciones. Solo en ordenes particulares y con permiso. */
+  readonly ajustes?: {
+    readonly manoObra?: AjusteConcepto;
+    readonly visita?: AjusteConcepto;
+    readonly repuestos?: AjusteConcepto;
+  };
+  /** Precio cotizado distinto del inventario (o para un repuesto sin precio), con motivo. */
+  readonly preciosRepuestos?: readonly { readonly idRepuesto: string; readonly precioUnitario: number }[];
+  /** Obligatorio si hay ajustes, precios cambiados o si reemplaza una cotizacion anterior. */
+  readonly motivo?: string | null;
 }
 
 export interface PeticionDecisionCotizacion {

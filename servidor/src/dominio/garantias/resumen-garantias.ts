@@ -22,7 +22,7 @@ import {
   garantiasDeProveedorRegistradas, tienePolizaExtendidaVigente,
 } from './especificaciones-cobertura.js';
 
-export type VigenciaGarantia = 'vigente' | 'vencida' | 'no_registrada';
+export type VigenciaGarantia = 'vigente' | 'vencida' | 'por_iniciar' | 'no_registrada';
 
 export interface EstadoDeGarantia {
   readonly vigencia: VigenciaGarantia;
@@ -48,7 +48,30 @@ export interface ResumenGarantias {
 const fecha = (valor: Date): string => valor.toISOString().slice(0, 10);
 
 function vigenciaEntre(desde: Date, hasta: Date, momento: Date): VigenciaGarantia {
-  return cubreElDia(desde, hasta, momento) ? 'vigente' : 'vencida';
+  if (cubreElDia(desde, hasta, momento)) return 'vigente';
+  // Una poliza que empieza despues (la adicional suele arrancar cuando
+  // termina la del proveedor) no esta vencida: todavia no empieza.
+  return fecha(momento) < fecha(desde) ? 'por_iniciar' : 'vencida';
+}
+
+/**
+ * Entre varias registradas: la que cubre el dia; si ninguna, la proxima a
+ * empezar; si tampoco, la que vencio mas tarde.
+ */
+function elegirRegistrada<T extends { vigenteDesde: Date; vigenteHasta: Date }>(
+  registradas: readonly T[], momento: Date,
+): { elegida: T; vigencia: VigenciaGarantia } {
+  const vigente = registradas.find((p) => vigenciaEntre(p.vigenteDesde, p.vigenteHasta, momento) === 'vigente');
+  if (vigente !== undefined) return { elegida: vigente, vigencia: 'vigente' };
+  const proxima = [...registradas]
+    .filter((p) => vigenciaEntre(p.vigenteDesde, p.vigenteHasta, momento) === 'por_iniciar')
+    .sort((una, otra) => una.vigenteDesde.getTime() - otra.vigenteDesde.getTime())[0];
+  if (proxima !== undefined) return { elegida: proxima, vigencia: 'por_iniciar' };
+  return { elegida: registradas[0]!, vigencia: 'vencida' };
+}
+
+function motivoSinVigencia(vigencia: VigenciaGarantia, desde: string | null, venceEl: string | null): string {
+  return vigencia === 'por_iniciar' ? `Todavia no esta vigente: cubre desde el ${desde ?? ''}.` : `Vencio el ${venceEl ?? ''}.`;
 }
 
 export function resumirGarantias(contexto: ContextoCobertura): ResumenGarantias {
@@ -59,10 +82,9 @@ export function resumirGarantias(contexto: ContextoCobertura): ResumenGarantias 
     .sort((una, otra) => otra.vigenteHasta.getTime() - una.vigenteHasta.getTime());
   let proveedorBase: Pick<EstadoDeGarantia, 'vigencia' | 'venceEl' | 'origen' | 'desde' | 'meses'>;
   if (registradas.length > 0) {
-    const vigente = registradas.find((p) => vigenciaEntre(p.vigenteDesde, p.vigenteHasta, contexto.momento) === 'vigente');
-    const elegida = vigente ?? registradas[0]!;
+    const { elegida, vigencia } = elegirRegistrada(registradas, contexto.momento);
     proveedorBase = {
-      vigencia: vigente === undefined ? 'vencida' : 'vigente',
+      vigencia,
       desde: fecha(elegida.vigenteDesde),
       meses: mesesDeLaVigencia(fecha(elegida.vigenteDesde), fecha(elegida.vigenteHasta)),
       venceEl: fecha(elegida.vigenteHasta),
@@ -95,7 +117,7 @@ export function resumirGarantias(contexto: ContextoCobertura): ResumenGarantias 
         ? (contexto.articulo.fechaCompra === null
           ? 'No hay fecha de compra ni garantia de proveedor registrada.'
           : 'No hay garantia de proveedor registrada ni duracion de referencia para esta marca y categoria.')
-      : proveedorBase.vigencia === 'vencida' ? `Vencio el ${proveedorBase.venceEl ?? ''}.`
+      : proveedorBase.vigencia !== 'vigente' ? motivoSinVigencia(proveedorBase.vigencia, proveedorBase.desde, proveedorBase.venceEl)
       : !comprador ? 'El articulo esta a nombre de otra persona; la garantia no se traslada.'
       : 'La regla exige que se haya comprado en una tienda del grupo.',
   };
@@ -112,17 +134,16 @@ export function resumirGarantias(contexto: ContextoCobertura): ResumenGarantias 
       motivo: 'El articulo no tiene garantia adicional registrada.',
     };
   } else {
-    const vigente = polizas.find((p) => vigenciaEntre(p.vigenteDesde, p.vigenteHasta, contexto.momento) === 'vigente');
-    const elegida = vigente ?? polizas[0]!;
+    const { elegida, vigencia } = elegirRegistrada(polizas, contexto.momento);
     adicional = {
-      vigencia: vigente === undefined ? 'vencida' : 'vigente',
+      vigencia,
       desde: fecha(elegida.vigenteDesde),
       meses: mesesDeLaVigencia(fecha(elegida.vigenteDesde), fecha(elegida.vigenteHasta)),
       venceEl: fecha(elegida.vigenteHasta),
       origen: 'registrada',
       aplicable: adicionalAplica,
       motivo: adicionalAplica ? null
-        : vigente === undefined ? `Vencio el ${fecha(elegida.vigenteHasta)}.`
+        : vigencia !== 'vigente' ? motivoSinVigencia(vigencia, fecha(elegida.vigenteDesde), fecha(elegida.vigenteHasta))
         : 'La poliza esta a nombre de otra persona.',
     };
   }

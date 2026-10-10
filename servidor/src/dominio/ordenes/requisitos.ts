@@ -40,10 +40,16 @@ export const tieneDiagnosticoRegistrado = requisito(
   () => 'Falta registrar el diagnostico con la falla real encontrada.',
 );
 
+/**
+ * Hay una cotizacion VALIDA y vigente: la ultima registrada, no rechazada y
+ * posterior al ultimo diagnostico. Una cotizacion rechazada, o hecha antes
+ * de diagnosticar (la de la visita), no sirve para seguir.
+ */
 export const tieneCotizacionRegistrada = requisito(
-  'la orden tiene cotizacion',
+  'la orden tiene una cotizacion valida y vigente',
   (contexto) => contexto.tieneCotizacion,
-  () => 'Falta elaborar la cotizacion.',
+  () => 'Falta una cotizacion valida y vigente: registrela (o registre una nueva version si el cliente '
+    + 'rechazo la anterior o si se diagnostico despues de cotizar).',
 );
 
 export const cotizacionFueAceptada = requisito(

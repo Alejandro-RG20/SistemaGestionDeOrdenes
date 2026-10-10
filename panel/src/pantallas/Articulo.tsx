@@ -163,7 +163,7 @@ export function Articulo(): JSX.Element {
                     <td>{estado.desde ?? '—'} <small className="tenue">{clave === 'proveedor' ? 'compra' : 'contratacion'}</small></td>
                     <td>{estado.meses ?? '—'}</td>
                     <td>{estado.venceEl ?? '—'}</td>
-                    <td>{estado.vigencia === 'no_registrada' ? 'no registrada' : estado.vigencia}
+                    <td>{estado.vigencia.replace(/_/g, ' ')}
                       {estado.origen === 'regla' ? <small className="tenue"> (duracion de referencia)</small> : null}</td>
                     <td>{estado.aplicable ? 'si' : <span className="tenue">no · {estado.motivo}</span>}</td>
                   </tr>

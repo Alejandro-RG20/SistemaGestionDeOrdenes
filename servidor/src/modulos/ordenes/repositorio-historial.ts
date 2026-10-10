@@ -65,6 +65,11 @@ export async function deOrden(
                      THEN 'Tecnico asignado: ' || coalesce(b.valor_nuevo, '')
                    WHEN b.campo = 'tecnico'
                      THEN 'Reasignada: ' || b.valor_anterior || ' → ' || coalesce(b.valor_nuevo, '')
+                   WHEN b.campo = 'exclusion_garantia'
+                     THEN 'Exclusion de garantia confirmada: ' || replace(coalesce(b.valor_anterior, ''), '_', ' ')
+                          || ' no aplica'
+                   WHEN b.campo = 'orden_origen' THEN 'Orden de origen (garantia no aplicable)'
+                   WHEN b.campo = 'orden_continuacion' THEN 'Continua en una orden particular'
                    WHEN b.campo = 'tipo_garantia' AND b.valor_anterior IS NULL
                      THEN 'Garantia elegida: ' || replace(coalesce(b.valor_nuevo, ''), '_', ' ')
                    WHEN b.campo = 'tipo_garantia'

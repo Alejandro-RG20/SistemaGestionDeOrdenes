@@ -9,7 +9,10 @@
  * la clasificacion anterior, la nueva, quien, cuando y por que.
  */
 import { useState } from 'react';
-import type { FichaOrden, GarantiaDeOrden as DatosGarantia, OrigenDecisionGarantia } from '@servitotal/compartido';
+import { Link, useNavigate } from 'react-router-dom';
+import type {
+  FichaOrden, GarantiaDeOrden as DatosGarantia, OrigenDecisionGarantia, ResultadoExclusion,
+} from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
 import { Aviso, Cargando, Fallo, Garantia, Tarjeta, fechaHora } from '../componentes/piezas.js';
@@ -31,6 +34,9 @@ const OPCIONES = [
 
 export function GarantiaDeOrden({ orden, alCambiar }: { orden: FichaOrden; alCambiar: () => void }): JSX.Element {
   const { api } = useSesion();
+  const navegar = useNavigate();
+  const [excluyendo, setExcluyendo] = useState(false);
+  const [exclusion, setExclusion] = useState({ motivo: '', crear: true });
   const datos = useRecurso<DatosGarantia>(
     () => api.pedir<DatosGarantia>(`/ordenes/${orden.id}/garantia`), [orden.id, orden.tipoGarantia, orden.estado],
   );
@@ -45,6 +51,28 @@ export function GarantiaDeOrden({ orden, alCambiar }: { orden: FichaOrden; alCam
   if (datos.error !== null || datos.datos === null) return <Fallo error={datos.error} alReintentar={datos.recargar} />;
   const garantia = datos.datos;
   const vigente = garantia.vigente;
+
+  async function confirmarExclusion(): Promise<void> {
+    if (!window.confirm('La orden se cerrara sin reparar y conservara su garantia, diagnostico, evidencias e historial. ¿Confirmar que la garantia no aplica?')) return;
+    setGuardando(true); setError(null); setAviso(null);
+    try {
+      const resultado = await api.pedir<ResultadoExclusion>(`/ordenes/${orden.id}/exclusion`, {
+        metodo: 'POST', cuerpo: { motivo: exclusion.motivo.trim(), crearOrdenParticular: exclusion.crear },
+      });
+      setExcluyendo(false);
+      alCambiar();
+      datos.recargar();
+      if (resultado.idOrdenNueva !== null) {
+        navegar(`/ordenes/${resultado.idOrdenNueva}`);
+      } else {
+        setAviso('Exclusion confirmada: la orden se cerro sin reparar.');
+      }
+    } catch (fallo) {
+      setError(fallo instanceof ErrorDeApi ? fallo.message : 'No se pudo confirmar la exclusion.');
+    } finally {
+      setGuardando(false);
+    }
+  }
 
   async function reclasificar(): Promise<void> {
     setGuardando(true); setError(null); setAviso(null);
@@ -98,7 +126,45 @@ export function GarantiaDeOrden({ orden, alCambiar }: { orden: FichaOrden; alCam
         </table>
       )}
 
+      {garantia.relacionadas.map((r) => (
+        <Aviso key={r.id} tono="info">
+          {r.relacion === 'origen' ? 'Continua la orden ' : 'Continua en la orden particular '}
+          <Link to={`/ordenes/${r.id}`}>{r.codigo}</Link> ({r.estado.replace(/_/g, ' ')}).
+          {r.motivo === null ? null : <span className="tenue"> {r.motivo}</span>}
+        </Aviso>
+      ))}
+      {garantia.exclusion === null ? null : (
+        <Aviso tono="warn">
+          <b>Garantia no aplicable</b> · {fechaHora(garantia.exclusion.momento)} · {garantia.exclusion.responsable ?? '—'}:{' '}
+          {garantia.exclusion.motivo}
+        </Aviso>
+      )}
+
       {aviso === null ? null : <Aviso tono="ok">{aviso}</Aviso>}
+
+      {!garantia.puedeConfirmarExclusion ? null : excluyendo ? (
+        <div style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+          <label>Por que no aplica la garantia * <small className="tenue">(minimo 10 caracteres; queda en la bitacora)</small></label>
+          <input value={exclusion.motivo} onChange={(e) => setExclusion({ ...exclusion, motivo: e.target.value })}
+            placeholder="Golpe en la carcasa constatado en el diagnostico…" />
+          <label className="opcion">
+            <input type="checkbox" checked={exclusion.crear} onChange={(e) => setExclusion({ ...exclusion, crear: e.target.checked })} />{' '}
+            Abrir una orden particular nueva para el mismo cliente y articulo (con su propia cotizacion)
+          </label>
+          {error === null ? null : <Aviso tono="warn">{error}</Aviso>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button type="button" className="btn peligro" disabled={guardando || exclusion.motivo.trim().length < 10}
+              onClick={() => { void confirmarExclusion(); }}>
+              Confirmar exclusion y cerrar la orden
+            </button>
+            <button type="button" className="btn" onClick={() => setExcluyendo(false)}>Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="btn peligro" style={{ marginTop: 10, marginRight: 8 }} onClick={() => setExcluyendo(true)}>
+          La garantia no aplica…
+        </button>
+      )}
 
       {!garantia.puedeReclasificar ? null : abierto ? (
         <div style={{ marginTop: 10 }}>
@@ -107,7 +173,12 @@ export function GarantiaDeOrden({ orden, alCambiar }: { orden: FichaOrden; alCam
               <label>Nueva clasificacion *</label>
               <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
                 <option value="">Elija…</option>
-                {OPCIONES.filter((opcion) => opcion.valor !== garantia.tipoActual).map((opcion) => (
+                {OPCIONES.filter((opcion) => opcion.valor !== garantia.tipoActual
+                  // De garantia a particular no se reclasifica: se confirma la exclusion.
+                  && !(opcion.valor === 'particular' && (garantia.tipoActual === 'proveedor' || garantia.tipoActual === 'adicional'))
+                  // Hacia una garantia, solo si aplica (a la fecha de recepcion).
+                  && (opcion.valor === 'particular' || garantia.garantias === null || garantia.garantias[opcion.valor].aplicable))
+                  .map((opcion) => (
                   <option key={opcion.valor} value={opcion.valor}>{opcion.nombre}</option>
                 ))}
               </select>

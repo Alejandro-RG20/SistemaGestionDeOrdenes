@@ -57,8 +57,13 @@ export async function obtener(actor: Actor, idOrden: string): Promise<GarantiaDe
   // El estado del articulo es informativo; si falla (articulo inexistente),
   // la decision se muestra igual.
   const consulta = await servicioGarantias
-    .consultar(orden.id_articulo, orden.id_cliente, undefined, orden.tipo_garantia)
+    .consultar(orden.id_articulo, orden.id_cliente, undefined, orden.tipo_garantia, orden.fecha_recepcion)
     .catch(() => null);
+
+  const relaciones = await repositorio.relacionesDeOrden(idOrden);
+  const exclusion = await repositorio.exclusionDeOrden(idOrden);
+  const abierta = !definicionDe(orden.estado as never).esFinal;
+  const puedeDecidir = actor.permisos.includes('garantias.reclasificar') && abierta;
 
   return {
     tipoActual: orden.tipo_garantia as TipoGarantia,
@@ -66,8 +71,18 @@ export async function obtener(actor: Actor, idOrden: string): Promise<GarantiaDe
     historial,
     advertencias: consulta?.advertencias ?? [],
     garantias: consulta?.garantias ?? null,
-    puedeReclasificar: actor.permisos.includes('garantias.reclasificar')
-      && !definicionDe(orden.estado as never).esFinal,
+    // De garantia a particular no se reclasifica: se confirma la exclusion.
+    puedeReclasificar: puedeDecidir,
+    puedeConfirmarExclusion: puedeDecidir
+      && (orden.tipo_garantia === TIPO_GARANTIA.PROVEEDOR || orden.tipo_garantia === TIPO_GARANTIA.ADICIONAL)
+      && await repositorio.tieneDiagnostico(idOrden),
+    exclusion: exclusion === null ? null : {
+      motivo: exclusion.motivo, momento: exclusion.momento.toISOString(), responsable: exclusion.responsable,
+    },
+    relacionadas: relaciones.map((r) => ({
+      relacion: r.relacion, id: r.id, codigo: r.codigo, estado: r.estado,
+      tipoGarantia: r.tipo_garantia as TipoGarantia, motivo: r.motivo, momento: r.momento.toISOString(),
+    })),
   };
 }
 
@@ -86,15 +101,13 @@ export async function reclasificar(
     });
     if (!veredicto.permitida) throw new ErrorDominio('RECLASIFICACION_NO_PERMITIDA', veredicto.motivo);
 
-    // Las advertencias de la nueva garantia se anotan con el motivo: no
-    // impiden la decision, pero queda dicho con que informacion se tomo.
-    const consulta = await servicioGarantias
-      .consultar(orden.id_articulo, orden.id_cliente, cliente, peticion.tipo)
-      .catch(() => null);
-    const advertencias = servicioGarantias.advertenciasDeLaElegida(consulta?.advertencias ?? []);
-    const motivo = advertencias.length === 0
-      ? peticion.motivo
-      : `${peticion.motivo} (Advertencias al decidir: ${advertencias.join(' ')})`;
+    // Pasar a una garantia exige que aplique, medida a la fecha de
+    // recepcion: la misma regla que al registrar la orden.
+    const consulta = await servicioGarantias.consultar(
+      orden.id_articulo, orden.id_cliente, cliente, peticion.tipo, orden.fecha_recepcion,
+    );
+    servicioGarantias.exigirGarantiaAplicable(consulta, peticion.tipo);
+    const motivo = peticion.motivo;
 
     await repositorio.cambiarTipoGarantia(cliente, idOrden, peticion.tipo, actor.id);
     await auditar(cliente, [{

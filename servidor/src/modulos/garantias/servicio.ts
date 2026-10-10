@@ -16,7 +16,7 @@ import type { Ejecutor } from '../../comun/transacciones.js';
 import { enTransaccion, ejecutorPorDefecto } from '../../comun/transacciones.js';
 import type { ParametrosPagina } from '../../comun/paginacion.js';
 import { construirPaginacion } from '../../comun/paginacion.js';
-import { ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
+import { ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import { auditar } from '../../comun/auditoria.js';
 import {
   advertenciasDeGarantias, advertenciasDeLaElegida, elegirReglaAplicable, resumirGarantias,
@@ -46,6 +46,7 @@ async function armarContexto(
   idArticulo: string,
   idClienteSolicitante: string | undefined,
   ejecutor: Ejecutor,
+  momento: Date,
 ): Promise<ContextoCobertura> {
   // En secuencia: `ejecutor` puede ser un cliente de transaccion, y esos no
   // admiten consultas en paralelo.
@@ -63,14 +64,18 @@ async function armarContexto(
     polizas: filasPoliza.map(aPolizaDelDominio),
     regla: elegirReglaAplicable(reglas, articulo.idMarca, articulo.idCategoria),
     idClienteSolicitante: idClienteSolicitante ?? articulo.idCliente,
-    momento: new Date(),
+    momento,
   };
 }
 
 /**
  * Estado de las garantias del articulo para quien pide el servicio, con
- * advertencias. No escribe nada y no decide: se muestra antes de elegir la
- * garantia de la orden y en la ficha del articulo.
+ * advertencias. No escribe nada.
+ *
+ * `momento` es el dia contra el que se mide la vigencia: hoy al registrar
+ * una orden, y la FECHA DE RECEPCION para una orden ya registrada. Una
+ * garantia vigente cuando se recibio el articulo no se pierde porque el
+ * diagnostico o la reclasificacion ocurran despues de su vencimiento.
  *
  * Con `elegida`, la advertencia que afecta a esa garantia va primero.
  */
@@ -79,14 +84,33 @@ export async function consultar(
   idClienteSolicitante: string | undefined,
   ejecutor: Ejecutor = ejecutorPorDefecto(),
   elegida?: string,
+  momento: Date = new Date(),
 ): Promise<ConsultaGarantias> {
-  const contexto = await armarContexto(idArticulo, idClienteSolicitante, ejecutor);
+  const contexto = await armarContexto(idArticulo, idClienteSolicitante, ejecutor, momento);
   const garantias = resumirGarantias(contexto);
   return {
     garantias,
     advertencias: advertenciasDeGarantias(garantias, elegida),
     idReglaReferencia: contexto.regla?.id ?? null,
   };
+}
+
+/**
+ * Una orden solo se atiende con garantia del proveedor o adicional si esa
+ * garantia esta registrada, vigente y corresponde al articulo y a quien
+ * pide el servicio. Particular se puede elegir siempre. Es la misma regla
+ * que el panel usa para habilitar las opciones.
+ */
+export function exigirGarantiaAplicable(consulta: ConsultaGarantias, tipo: string): void {
+  if (tipo !== 'proveedor' && tipo !== 'adicional') return;
+  const estado = consulta.garantias[tipo];
+  if (estado.aplicable) return;
+  const nombre = tipo === 'proveedor' ? 'del proveedor' : 'adicional';
+  throw new ErrorDominio(
+    'GARANTIA_NO_APLICABLE',
+    `No se puede atender con la garantia ${nombre}: ${estado.motivo ?? 'no aplica.'} `
+      + 'Atienda la orden como servicio particular o registre la garantia en la ficha del articulo.',
+  );
 }
 
 /** RF-86: no se edita una regla; se cierra la vigente y se abre la siguiente. */

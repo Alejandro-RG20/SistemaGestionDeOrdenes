@@ -135,6 +135,17 @@ describe('la garantia no se traslada al revenderse el articulo (advertencia)', (
     expect(resumen.proveedor.aplicable).toBe(true);
   });
 
+  it('una poliza que todavia no empieza no esta vencida: esta por iniciar', () => {
+    const futura: PolizaParaCobertura = {
+      ...polizaVigente(CLIENTE),
+      vigenteDesde: new Date('2027-02-28T00:00:00.000Z'),
+      vigenteHasta: new Date('2029-02-27T00:00:00.000Z'),
+    };
+    const resumen = resumirGarantias(contexto({ polizas: [futura] }));
+    expect(resumen.adicional).toMatchObject({ vigencia: 'por_iniciar', aplicable: false, desde: '2027-02-28' });
+    expect(resumen.adicional.motivo).toMatch(/Todavia no esta vigente: cubre desde el 2027-02-28/);
+  });
+
   it('una poliza vencida o desactivada no aplica', () => {
     const vencida: PolizaParaCobertura = {
       ...polizaVigente(CLIENTE),

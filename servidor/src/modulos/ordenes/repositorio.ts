@@ -1,6 +1,6 @@
 /** Acceso a datos de ordenes. Uso interno del modulo. */
 import type {
-  CotizacionDeOrden, DiagnosticoDeOrden, EntradaBitacora, EstadoOrden,
+  DetalleCotizacion, DiagnosticoDeOrden, EntradaBitacora, EstadoOrden, RepuestoDeLaOrden,
 } from '@servitotal/compartido';
 import type { Ejecutor } from '../../comun/transacciones.js';
 import { ejecutorPorDefecto } from '../../comun/transacciones.js';
@@ -216,8 +216,13 @@ export async function buscarContextoTransicion(
             EXISTS (SELECT 1 FROM visita v WHERE v.id_orden = o.id AND v.vigente
                      AND v.resultado = 'programada') AS tiene_visita,
             EXISTS (SELECT 1 FROM diagnostico d WHERE d.id_orden = o.id) AS tiene_diagnostico,
-            EXISTS (SELECT 1 FROM cotizacion c WHERE c.id_orden = o.id) AS tiene_cotizacion,
-            EXISTS (SELECT 1 FROM cotizacion c WHERE c.id_orden = o.id AND c.aceptada) AS cotizacion_aceptada,
+            -- La cotizacion VIGENTE es la ultima registrada, y solo vale si
+            -- es posterior al ultimo diagnostico (la de la visita no autoriza
+            -- la reparacion) y el cliente no la rechazo. Antes bastaba con
+            -- que ALGUNA cotizacion estuviera aceptada: una version nueva
+            -- sin aceptar heredaba la aceptacion de la anterior.
+            coalesce(uc.vigente AND uc.aceptada IS NOT FALSE, false) AS tiene_cotizacion,
+            coalesce(uc.vigente AND uc.aceptada IS TRUE, false) AS cotizacion_aceptada,
             -- Una solicitud anulada o rechazada ya no se espera: contarla
             -- dejaba la orden detenida para siempre en 'esperando_repuesto'.
             (SELECT count(*) FROM solicitud_repuesto s
@@ -251,7 +256,15 @@ export async function buscarContextoTransicion(
                         AND c.id_usuario <> r.id_usuario AND c.momento >= r.momento
                      WHERE r.tabla = 'orden_servicio' AND r.id_registro = o.id
                        AND r.campo = 'bitacora.pago_registrado') AS pago_confirmado_por_otra
-       FROM orden_servicio o WHERE o.id = $1
+       FROM orden_servicio o
+       LEFT JOIN LATERAL (
+         SELECT c.aceptada,
+                c.creado_en >= coalesce((SELECT max(d.creado_en) FROM diagnostico d WHERE d.id_orden = o.id),
+                                        '-infinity'::timestamptz) AS vigente
+           FROM cotizacion c WHERE c.id_orden = o.id
+          ORDER BY c.creado_en DESC, c.id DESC LIMIT 1
+       ) uc ON true
+      WHERE o.id = $1
        ${bloquear ? 'FOR UPDATE OF o' : ''}`,
     [idOrden],
   );
@@ -562,6 +575,7 @@ export interface FilaGarantiaDeOrden {
   readonly id_articulo: string;
   readonly id_cliente: string;
   readonly levantada_en_campo: boolean;
+  readonly fecha_recepcion: Date;
   readonly creado_en: Date;
   readonly creador: string | null;
 }
@@ -572,7 +586,8 @@ export async function buscarGarantiaDeOrden(
 ): Promise<FilaGarantiaDeOrden | null> {
   const { rows } = await ejecutor.query<FilaGarantiaDeOrden>(
     `SELECT o.id, o.numero, o.estado::text AS estado, o.tipo_garantia::text AS tipo_garantia,
-            o.id_articulo, o.id_cliente, o.levantada_en_campo, o.creado_en, u.nombres AS creador
+            o.id_articulo, o.id_cliente, o.levantada_en_campo, o.fecha_recepcion, o.creado_en,
+            u.nombres AS creador
        FROM orden_servicio o LEFT JOIN usuario u ON u.id = o.creado_por
       WHERE o.id = $1
       ${bloquear ? 'FOR UPDATE OF o' : ''}`,
@@ -738,19 +753,67 @@ export interface FilaDatosDeTaller {
   readonly id_articulo: string; readonly id_cliente: string;
   readonly id_tecnico: string | null; readonly id_tienda: string | null; readonly creado_por: string | null;
   readonly tiene_diagnostico: boolean;
+  readonly modalidad: string;
+  readonly cargo_visita: number;
+  readonly codigo: string;
+  readonly numero: number;
 }
 
 export async function datosDeTaller(
-  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(), bloquear = false,
 ): Promise<FilaDatosDeTaller | null> {
   const { rows } = await ejecutor.query<FilaDatosDeTaller>(
     `SELECT o.id, o.estado, o.tipo_garantia::text AS tipo_garantia, o.id_articulo, o.id_cliente,
-            o.id_tecnico, o.id_tienda, o.creado_por,
+            o.id_tecnico, o.id_tienda, o.creado_por, o.modalidad::text AS modalidad,
+            o.cargo_visita::float AS cargo_visita, o.codigo, o.numero,
             EXISTS (SELECT 1 FROM diagnostico d WHERE d.id_orden = o.id) AS tiene_diagnostico
-       FROM orden_servicio o WHERE o.id = $1`,
+       FROM orden_servicio o WHERE o.id = $1
+       ${bloquear ? 'FOR UPDATE OF o' : ''}`,
     [idOrden],
   );
   return rows[0] ?? null;
+}
+
+/**
+ * Repuestos pedidos para la orden, por repuesto, con la cantidad en cada
+ * estado de la solicitud, lo instalado (consumos) y el precio de HOY en el
+ * inventario. Un precio en cero se trata como "sin precio": no se inventa
+ * un importe.
+ */
+export async function repuestosDeOrden(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<RepuestoDeLaOrden[]> {
+  const { rows } = await ejecutor.query<{
+    id_repuesto: string; codigo: string; descripcion: string; precio: string;
+    cantidad: number; por_estado: Record<string, number> | null; utilizada: number;
+  }>(
+    `WITH pedidos AS (
+       SELECT s.id_repuesto, s.estado::text AS estado, sum(s.cantidad)::int AS cantidad
+         FROM solicitud_repuesto s WHERE s.id_orden = $1
+        GROUP BY s.id_repuesto, s.estado
+     ), usados AS (
+       SELECT m.id_repuesto, sum(m.cantidad)::int AS utilizada
+         FROM movimiento_repuesto m WHERE m.id_orden = $1 AND m.tipo = 'consumo'
+        GROUP BY m.id_repuesto
+     ), ids AS (SELECT id_repuesto FROM pedidos UNION SELECT id_repuesto FROM usados)
+     SELECT r.id AS id_repuesto, r.codigo, r.descripcion, r.precio,
+            coalesce((SELECT sum(p.cantidad) FROM pedidos p
+                       WHERE p.id_repuesto = r.id AND p.estado NOT IN ('rechazada', 'anulada')), 0)::int AS cantidad,
+            (SELECT jsonb_object_agg(p.estado, p.cantidad) FROM pedidos p WHERE p.id_repuesto = r.id) AS por_estado,
+            coalesce((SELECT u.utilizada FROM usados u WHERE u.id_repuesto = r.id), 0)::int AS utilizada
+       FROM ids JOIN repuesto r ON r.id = ids.id_repuesto
+      ORDER BY r.codigo`,
+    [idOrden],
+  );
+  return rows.map((f) => ({
+    idRepuesto: f.id_repuesto,
+    codigo: f.codigo,
+    descripcion: f.descripcion,
+    cantidad: f.cantidad,
+    porEstado: f.por_estado ?? {},
+    utilizada: f.utilizada,
+    precioInventario: Number(f.precio) > 0 ? Number(f.precio) : null,
+  }));
 }
 
 export async function insertarDiagnosticoDelPanel(
@@ -783,36 +846,79 @@ export async function diagnosticosDeOrden(
   }));
 }
 
+export interface FilaCotizacion {
+  readonly id: string;
+  readonly manoObra: number;
+  readonly totalRepuestos: number;
+  readonly cargoVisita: number;
+  readonly total: number;
+  readonly aceptada: boolean | null;
+  readonly formaAceptacion: string | null;
+  readonly momentoAceptacion: string | null;
+  readonly observacionDecision: string | null;
+  readonly creadoEn: string;
+  readonly registradoPor: string | null;
+  readonly detalle: DetalleCotizacion | null;
+  readonly motivo: string | null;
+}
+
+/**
+ * Cotizaciones de la orden, de la mas antigua a la mas reciente. El
+ * detalle (conceptos, repuestos y precios cotizados, ajustes, quien paga)
+ * es la constancia que se escribio en la bitacora inmutable al registrarla.
+ */
 export async function cotizacionesDeOrden(
   idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
-): Promise<CotizacionDeOrden[]> {
+): Promise<FilaCotizacion[]> {
   const { rows } = await ejecutor.query<{
     id: string; mano_obra: string; total_repuestos: string; cargo_visita: string; total: string;
     aceptada: boolean | null; forma_aceptacion: string | null; momento_aceptacion: Date | null;
-    creado_en: Date; registrado_por: string | null;
+    creado_en: Date; registrado_por: string | null; detalle: string | null; motivo: string | null;
+    observacion_decision: string | null;
   }>(
     `SELECT c.id, c.mano_obra, c.total_repuestos, c.cargo_visita, c.total, c.aceptada,
             c.forma_aceptacion::text AS forma_aceptacion, c.momento_aceptacion, c.creado_en,
-            u.nombres AS registrado_por
+            u.nombres AS registrado_por,
+            (SELECT b.valor_nuevo FROM bitacora b WHERE b.tabla = 'cotizacion' AND b.id_registro = c.id
+                AND b.campo = 'detalle' ORDER BY b.momento LIMIT 1) AS detalle,
+            (SELECT b.motivo FROM bitacora b WHERE b.tabla = 'cotizacion' AND b.id_registro = c.id
+                AND b.campo = 'detalle' ORDER BY b.momento LIMIT 1) AS motivo,
+            (SELECT b.motivo FROM bitacora b WHERE b.tabla = 'cotizacion' AND b.id_registro = c.id
+                AND b.campo = 'aceptada' ORDER BY b.momento DESC LIMIT 1) AS observacion_decision
        FROM cotizacion c LEFT JOIN usuario u ON u.id = c.registrado_por
-      WHERE c.id_orden = $1 ORDER BY c.creado_en`,
+      WHERE c.id_orden = $1 ORDER BY c.creado_en, c.id`,
     [idOrden],
   );
   return rows.map((f) => ({
     id: f.id, manoObra: Number(f.mano_obra), totalRepuestos: Number(f.total_repuestos),
     cargoVisita: Number(f.cargo_visita), total: Number(f.total), aceptada: f.aceptada,
     formaAceptacion: f.forma_aceptacion, momentoAceptacion: f.momento_aceptacion?.toISOString() ?? null,
+    observacionDecision: f.observacion_decision,
     creadoEn: f.creado_en.toISOString(), registradoPor: f.registrado_por?.trim() ?? null,
+    detalle: f.detalle === null ? null : JSON.parse(f.detalle) as DetalleCotizacion,
+    motivo: f.motivo,
   }));
 }
 
-export async function cotizacionSinDecision(ejecutor: Ejecutor, idOrden: string): Promise<string | null> {
-  const { rows } = await ejecutor.query<{ id: string }>(
-    `SELECT id FROM cotizacion WHERE id_orden = $1 AND aceptada IS NULL
-      ORDER BY creado_en DESC LIMIT 1 FOR UPDATE`,
+/** La ultima cotizacion de la orden (la vigente), bloqueada para decidir sobre ella. */
+export async function ultimaCotizacion(
+  ejecutor: Ejecutor, idOrden: string,
+): Promise<{ id: string; aceptada: boolean | null; total: number; creado_en: Date } | null> {
+  const { rows } = await ejecutor.query<{ id: string; aceptada: boolean | null; total: string; creado_en: Date }>(
+    `SELECT id, aceptada, total, creado_en FROM cotizacion WHERE id_orden = $1
+      ORDER BY creado_en DESC, id DESC LIMIT 1 FOR UPDATE`,
     [idOrden],
   );
-  return rows[0]?.id ?? null;
+  const fila = rows[0];
+  return fila === undefined ? null : { ...fila, total: Number(fila.total) };
+}
+
+/** Momento del ultimo diagnostico registrado (hora del servidor). */
+export async function ultimoDiagnostico(ejecutor: Ejecutor, idOrden: string): Promise<Date | null> {
+  const { rows } = await ejecutor.query<{ momento: Date | null }>(
+    'SELECT max(creado_en) AS momento FROM diagnostico WHERE id_orden = $1', [idOrden],
+  );
+  return rows[0]?.momento ?? null;
 }
 
 export async function insertarCotizacion(
@@ -836,4 +942,61 @@ export async function anotarDecisionDeCotizacion(
       WHERE id = $1 AND aceptada IS NULL`,
     [datos.idCotizacion, datos.aceptada, datos.forma],
   );
+}
+
+export interface FilaRelacion {
+  readonly relacion: 'origen' | 'continuacion';
+  readonly id: string;
+  readonly codigo: string;
+  readonly estado: string;
+  readonly tipo_garantia: string;
+  readonly motivo: string | null;
+  readonly momento: Date;
+}
+
+/**
+ * Ordenes relacionadas por una exclusion de garantia: la orden de garantia
+ * cerrada (origen) y la orden particular que la continua. El vinculo se
+ * escribio en la bitacora inmutable de ambas al confirmar la exclusion.
+ */
+export async function relacionesDeOrden(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<FilaRelacion[]> {
+  const { rows } = await ejecutor.query<FilaRelacion>(
+    `SELECT CASE b.campo WHEN 'orden_origen' THEN 'origen' ELSE 'continuacion' END AS relacion,
+            o.id, o.codigo, o.estado::text AS estado, o.tipo_garantia::text AS tipo_garantia,
+            b.motivo, b.momento
+       FROM bitacora b JOIN orden_servicio o ON o.id::text = b.valor_nuevo
+      WHERE b.tabla = 'orden_servicio' AND b.id_registro = $1
+        AND b.campo IN ('orden_origen', 'orden_continuacion')
+      ORDER BY b.momento`,
+    [idOrden],
+  );
+  return rows;
+}
+
+/** La exclusion de garantia confirmada sobre la orden, si la hubo. */
+export async function exclusionDeOrden(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<{ motivo: string | null; momento: Date; responsable: string | null } | null> {
+  const { rows } = await ejecutor.query<{ motivo: string | null; momento: Date; responsable: string | null }>(
+    `SELECT b.motivo, b.momento, u.nombres AS responsable
+       FROM bitacora b LEFT JOIN usuario u ON u.id = b.id_usuario
+      WHERE b.tabla = 'orden_servicio' AND b.id_registro = $1 AND b.campo = 'exclusion_garantia'
+      ORDER BY b.momento DESC LIMIT 1`,
+    [idOrden],
+  );
+  return rows[0] ?? null;
+}
+
+export async function fallaReportada(idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto()): Promise<string> {
+  const { rows } = await ejecutor.query<{ falla_reportada: string }>(
+    'SELECT falla_reportada FROM orden_servicio WHERE id = $1', [idOrden],
+  );
+  return rows[0]?.falla_reportada ?? '';
+}
+
+export async function tieneDiagnostico(idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto()): Promise<boolean> {
+  const { rows } = await ejecutor.query('SELECT 1 FROM diagnostico WHERE id_orden = $1 LIMIT 1', [idOrden]);
+  return rows.length > 0;
 }

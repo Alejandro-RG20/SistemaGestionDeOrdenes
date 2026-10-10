@@ -40,7 +40,9 @@ export function rutasDeOrdenes(): Router {
   router.get('/ordenes/:id/taller', consultar, asincrono(controlador.datosDeTaller));
   router.post('/ordenes/:id/diagnostico', exigirPermiso('taller.diagnostico.registrar'),
     asincrono(controlador.registrarDiagnostico));
-  router.post('/ordenes/:id/cotizaciones', exigirPermiso('taller.cotizacion.registrar'),
+  // Cotiza el tecnico; la jefatura tambien, cuando ajusta (descuentos,
+  // exoneraciones, precios): el servicio exige el permiso para cada ajuste.
+  router.post('/ordenes/:id/cotizaciones', exigirAlgunPermiso('taller.cotizacion.registrar', 'garantias.reclasificar'),
     asincrono(controlador.registrarCotizacion));
   router.post('/ordenes/:id/cotizaciones/decision', exigirPermiso('taller.cotizacion.autorizar'),
     asincrono(controlador.registrarDecision));
@@ -50,6 +52,11 @@ export function rutasDeOrdenes(): Router {
   router.get('/ordenes/:id/garantia', consultar, asincrono(controlador.garantia));
   router.post('/ordenes/:id/garantia', exigirPermiso('garantias.reclasificar'),
     asincrono(controlador.reclasificarGarantia));
+  // La garantia no aplica: se cierra la orden y se abre una particular
+  // vinculada. Lo confirma quien decide sobre la garantia; cerrar exige
+  // ademas lo que la maquina de estados pida (ordenes.cerrar).
+  router.post('/ordenes/:id/exclusion', exigirPermiso('garantias.reclasificar'),
+    asincrono(controlador.confirmarExclusion));
 
   router.post('/ordenes/:id/notas', exigirPermiso('ordenes.nota_correccion'), asincrono(controlador.agregarNota));
 

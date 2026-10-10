@@ -58,7 +58,9 @@ export interface ContextoTransicion {
   readonly evidenciasFaltantes: readonly EvidenciaFaltante[];
   readonly tieneVisitaVigente: boolean;
   readonly tieneDiagnostico: boolean;
+  /** La ultima cotizacion existe, no fue rechazada y es posterior al ultimo diagnostico. */
   readonly tieneCotizacion: boolean;
+  /** Esa misma cotizacion (la vigente) fue aceptada por el cliente. */
   readonly cotizacionAceptada: boolean;
   /** Solicitudes de repuesto todavia sin liberar. */
   readonly solicitudesSinLiberar: number;

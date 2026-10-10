@@ -100,10 +100,28 @@ export const esquemaReclasificarGarantia = z.object({
 const monto = (campo: string) => z.number({ invalid_type_error: `${campo} debe ser un numero.` })
   .min(0, `${campo} no puede ser negativo.`).max(10_000_000);
 
+const ajuste = z.discriminatedUnion('tipo', [
+  z.object({ tipo: z.literal('ninguno') }),
+  z.object({ tipo: z.literal('porcentaje'), valor: z.number().gt(0, 'El porcentaje debe ser mayor que 0.').max(100, 'No puede superar el 100 %.') }),
+  z.object({ tipo: z.literal('importe'), valor: z.number().gt(0, 'El descuento debe ser positivo.').max(10_000_000) }),
+  z.object({ tipo: z.literal('exoneracion_total') }),
+]);
+
 export const esquemaRegistrarCotizacion = z.object({
   manoObra: monto('La mano de obra'),
-  totalRepuestos: monto('El total de repuestos'),
   cargoVisita: monto('El cargo por visita').optional(),
+  // Ya no se acepta del usuario: los repuestos salen del inventario.
+  totalRepuestos: z.number().optional(),
+  ajustes: z.object({
+    manoObra: ajuste.optional(),
+    visita: ajuste.optional(),
+    repuestos: ajuste.optional(),
+  }).optional(),
+  preciosRepuestos: z.array(z.object({
+    idRepuesto: z.string().uuid(),
+    precioUnitario: monto('El precio del repuesto'),
+  })).max(100).optional(),
+  motivo: z.string().trim().max(500).nullish(),
 });
 
 export const esquemaDecisionCotizacion = z.object({
@@ -112,4 +130,13 @@ export const esquemaDecisionCotizacion = z.object({
     errorMap: () => ({ message: 'Indique como dio su respuesta el cliente.' }),
   }),
   observacion: z.string().trim().max(500).nullish(),
+});
+
+/** Confirmar que la garantia no aplica: motivo obligatorio. */
+export const esquemaConfirmarExclusion = z.object({
+  motivo: z.string({ required_error: 'Escriba por que no aplica la garantia.' }).trim()
+    .min(10, 'Escriba por que no aplica la garantia: al menos 10 caracteres. Queda en la bitacora.')
+    .max(500),
+  crearOrdenParticular: z.boolean().default(true),
+  modalidad: z.enum(['ruta', 'taller']).optional(),
 });

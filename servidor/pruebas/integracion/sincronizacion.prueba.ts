@@ -75,6 +75,10 @@ async function clienteConArticulo(): Promise<{ idCliente: string; idArticulo: st
   const { rows } = await entorno.piscina.query<{ id_cliente: string; id: string }>(
     `SELECT a.id_cliente, a.id FROM articulo a JOIN cliente c ON c.id = a.id_cliente
       WHERE c.activo AND EXISTS (SELECT 1 FROM cliente_telefono WHERE id_cliente = c.id AND vigente)
+        -- Garantia del proveedor aplicable: tienda del grupo y compra reciente.
+        AND a.activo AND a.fecha_compra > current_date - interval '3 months'
+        AND EXISTS (SELECT 1 FROM tienda_origen t WHERE t.id = a.id_tienda_origen AND t.pertenece_al_grupo)
+        AND NOT EXISTS (SELECT 1 FROM cobertura cb WHERE cb.id_articulo = a.id AND cb.activa AND cb.tipo = 'proveedor')
       LIMIT 1`,
   );
   return { idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id };

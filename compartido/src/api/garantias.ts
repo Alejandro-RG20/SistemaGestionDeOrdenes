@@ -43,7 +43,7 @@ export interface ConsultaGarantias {
   readonly idReglaReferencia: string | null;
 }
 
-export type VigenciaGarantia = 'vigente' | 'vencida' | 'no_registrada';
+export type VigenciaGarantia = 'vigente' | 'vencida' | 'por_iniciar' | 'no_registrada';
 
 export interface EstadoGarantiaArticulo {
   readonly vigencia: VigenciaGarantia;
@@ -107,6 +107,44 @@ export interface GarantiaDeOrden {
   readonly garantias: ResumenGarantiasArticulo | null;
   /** Si quien consulta puede reclasificarla ahora. */
   readonly puedeReclasificar: boolean;
+  /** Si quien consulta puede confirmar ahora que la garantia no aplica. */
+  readonly puedeConfirmarExclusion: boolean;
+  /** Exclusion confirmada sobre esta orden, si la hubo. */
+  readonly exclusion: { readonly motivo: string | null; readonly momento: string; readonly responsable: string | null } | null;
+  /** Orden de origen o continuacion. */
+  readonly relacionadas: readonly OrdenRelacionada[];
+}
+
+/**
+ * Confirmar que la garantia no aplica: la orden se cierra sin reparar y,
+ * si se pide, se abre una orden particular vinculada.
+ */
+export interface PeticionConfirmarExclusion {
+  /** Por que no aplica la garantia. Obligatorio; queda en la bitacora. */
+  readonly motivo: string;
+  /** Abrir la orden particular que continua el servicio (por defecto, si). */
+  readonly crearOrdenParticular?: boolean;
+  /** Modalidad de la orden nueva; por defecto, la de la original. */
+  readonly modalidad?: 'ruta' | 'taller';
+}
+
+export interface ResultadoExclusion {
+  readonly idOrdenCerrada: string;
+  readonly codigoOrdenCerrada: string;
+  readonly idOrdenNueva: string | null;
+  readonly codigoOrdenNueva: string | null;
+}
+
+/** Orden vinculada por una exclusion de garantia. */
+export interface OrdenRelacionada {
+  /** `origen`: la orden de garantia que esta continua. `continuacion`: la particular que continua a esta. */
+  readonly relacion: 'origen' | 'continuacion';
+  readonly id: string;
+  readonly codigo: string;
+  readonly estado: string;
+  readonly tipoGarantia: TipoGarantia;
+  readonly motivo: string | null;
+  readonly momento: string;
 }
 
 export interface PeticionReclasificarGarantia {

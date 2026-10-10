@@ -148,9 +148,9 @@ export async function obtenerFicha(actor: Actor, idOrden: string): Promise<Ficha
 
 /**
  * La garantia de la orden la elige quien la registra: proveedor, adicional
- * o particular. El sistema no la decide ni la sustituye. Si la elegida esta
- * vencida, le faltan datos o esta a nombre de otra persona, la orden se
- * registra igual y la advertencia queda anotada con la decision.
+ * o particular. El sistema no la decide, pero solo admite una garantia que
+ * este registrada, vigente y corresponda al articulo y al solicitante
+ * (servicioGarantias.exigirGarantiaAplicable). Particular, siempre.
  *
  * Solo una orden levantada en campo puede llegar sin eleccion (la cola del
  * movil no la pide): entra "por validar" y la confirma despues quien tiene
@@ -218,7 +218,7 @@ export async function crear(actor: Actor, peticion: PeticionCrearOrden): Promise
   return obtenerFicha(actor, idOrden);
 }
 
-async function crearRegistro(actor: Actor, peticion: PeticionCrearOrden): Promise<string> {
+export async function crearRegistro(actor: Actor, peticion: PeticionCrearOrden): Promise<string> {
   return enTransaccion(async (cliente) => {
     // Reenviar la misma orden desde el movil no la duplica.
     if (peticion.id !== undefined && await repositorio.existeOrden(peticion.id, cliente)) {
@@ -268,6 +268,7 @@ async function crearRegistro(actor: Actor, peticion: PeticionCrearOrden): Promis
     const consulta = await servicioGarantias.consultar(
       peticion.idArticulo, peticion.idCliente, cliente, tipoGarantia,
     );
+    servicioGarantias.exigirGarantiaAplicable(consulta, tipoGarantia);
     const motivoDecision = motivoDeLaDecision(
       tipoGarantia, servicioGarantias.advertenciasDeLaElegida(consulta.advertencias),
     );

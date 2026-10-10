@@ -1,10 +1,11 @@
 /**
- * Decision manual de la garantia, contra la base real.
+ * Eleccion de la garantia, contra la base real (pruebas 1 a 3 del pliego).
  *
- * La garantia de una orden la elige quien la registra. El sistema la anota
- * con fecha y responsable, advierte sin sustituirla y solo la cambia una
- * reclasificacion con permiso y motivo, que conserva la clasificacion
- * anterior, la nueva, quien, cuando y por que.
+ * La garantia de una orden la elige quien la registra, pero solo entre las
+ * que aplican: registrada, vigente y del articulo y el solicitante. La
+ * vigencia de una orden ya registrada se mide a la FECHA DE RECEPCION. Se
+ * anota con fecha y responsable, y solo la cambia una reclasificacion con
+ * permiso y motivo; de garantia a particular no se reclasifica (exclusion).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import peticion from 'supertest';
@@ -41,8 +42,19 @@ async function articulo(filtro = 'true'): Promise<{ idCliente: string; idArticul
   return { idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id };
 }
 
-async function crearOrden(extra: Record<string, unknown>): Promise<string> {
-  const base = await articulo();
+/** Articulo con la garantia del proveedor aplicable: tienda del grupo, compra reciente. */
+const PROVEEDOR_APLICA = `t.pertenece_al_grupo AND a.fecha_compra > current_date - interval '3 months'
+  AND NOT EXISTS (SELECT 1 FROM cobertura cb WHERE cb.id_articulo = a.id AND cb.activa)`;
+/** Articulo sin ninguna garantia aplicable: comprado fuera del grupo, sin coberturas. */
+const SIN_GARANTIA = `NOT t.pertenece_al_grupo
+  AND NOT EXISTS (SELECT 1 FROM cobertura cb WHERE cb.id_articulo = a.id)`;
+
+function hace(dias: number): string {
+  return new Date(Date.now() - dias * 86_400_000).toISOString().slice(0, 10);
+}
+
+async function crearOrden(extra: Record<string, unknown>, filtro = PROVEEDOR_APLICA): Promise<string> {
+  const base = await articulo(filtro);
   const creada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente).send({
     ...base, modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'No enciende desde hace dos dias', ...extra,
   }).expect(201);
@@ -64,28 +76,85 @@ beforeAll(async () => {
 
 afterAll(async () => { await entorno.cerrar(); });
 
-describe('la decision al registrar', () => {
-  it('cada una de las tres opciones se registra tal cual, con fecha y responsable', async () => {
-    for (const tipo of [TIPO_GARANTIA.PROVEEDOR, TIPO_GARANTIA.ADICIONAL, TIPO_GARANTIA.PARTICULAR]) {
-      const id = await crearOrden({ tipoGarantiaElegida: tipo });
-      const datos = await garantia(agente, id);
-      expect(datos.tipoActual).toBe(tipo);
-      expect(datos.vigente).toMatchObject({ tipo, tipoAnterior: null, origen: 'registro' });
-      expect(datos.vigente.responsable).toBeTypeOf('string');
-      expect(Date.parse(datos.vigente.momento)).not.toBeNaN();
-      expect(datos.historial).toHaveLength(1);
-    }
+const crear = (base: { idCliente: string; idArticulo: string }, tipo: string) =>
+  peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente).send({
+    ...base, modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'No enciende desde ayer', tipoGarantiaElegida: tipo,
   });
 
-  it('una garantia adicional elegida sin poliza registrada se acepta y deja la advertencia anotada', async () => {
-    const base = await articulo('NOT EXISTS (SELECT 1 FROM cobertura cb WHERE cb.id_articulo = a.id)');
-    const creada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente).send({
-      ...base, modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'No enfria', tipoGarantiaElegida: 'adicional',
-    }).expect(201);
-    expect(creada.body.data.tipoGarantia).toBe(TIPO_GARANTIA.ADICIONAL);
-    const datos = await garantia(agente, creada.body.data.id);
-    expect(datos.advertencias[0]).toMatch(/^Garantia adicional \(la elegida\)/);
-    expect(datos.vigente.motivo).toMatch(/Advertencias al decidir/);
+describe('que garantias se pueden elegir', () => {
+  it('1. proveedor vigente y aplicable: se registra, con fecha y responsable', async () => {
+    const id = await crearOrden({ tipoGarantiaElegida: 'proveedor' });
+    const datos = await garantia(agente, id);
+    expect(datos.tipoActual).toBe(TIPO_GARANTIA.PROVEEDOR);
+    expect(datos.vigente).toMatchObject({ tipo: 'proveedor', tipoAnterior: null, origen: 'registro' });
+    expect(datos.vigente.responsable).toBeTypeOf('string');
+    expect(Date.parse(datos.vigente.momento)).not.toBeNaN();
+    expect(datos.advertencias).toEqual([]);
+  });
+
+  it('2. solo garantia adicional vigente: adicional y particular si, proveedor no', async () => {
+    const base = await articulo(SIN_GARANTIA);
+    await peticion(entorno.aplicacion).post(`${RAIZ}/articulos/${base.idArticulo}/coberturas`).set(jefatura)
+      .send({ tipo: 'adicional', vigenteDesde: hace(30), meses: 12, documentoRespaldo: 'POL-PRUEBA-1' }).expect(201);
+
+    const consultaGarantias = (await peticion(entorno.aplicacion).post(`${RAIZ}/coberturas/evaluar`).set(agente)
+      .send(base).expect(200)).body.data;
+    expect(consultaGarantias.garantias.proveedor.aplicable).toBe(false);
+    expect(consultaGarantias.garantias.adicional.aplicable).toBe(true);
+
+    const proveedor = await crear(base, 'proveedor');
+    expect(proveedor.status).toBe(422);
+    expect(proveedor.body.error.code).toBe('GARANTIA_NO_APLICABLE');
+    const adicional = await crear(base, 'adicional');
+    expect(adicional.status).toBe(201);
+    expect(adicional.body.data.tipoGarantia).toBe('adicional');
+  });
+
+  it('3. sin ninguna garantia vigente: solo particular', async () => {
+    const base = await articulo(SIN_GARANTIA);
+    for (const tipo of ['proveedor', 'adicional']) {
+      const respuesta = await crear(base, tipo);
+      expect(respuesta.status).toBe(422);
+      expect(respuesta.body.error.code).toBe('GARANTIA_NO_APLICABLE');
+    }
+    const particular = await crear(base, 'particular');
+    expect(particular.status).toBe(201);
+    expect(particular.body.data.tipoGarantia).toBe('particular');
+  });
+
+  it('una poliza a nombre de otra persona no habilita la garantia adicional', async () => {
+    const base = await articulo(SIN_GARANTIA);
+    const { rows } = await entorno.piscina.query<{ id: string }>(
+      'SELECT id FROM cliente WHERE id <> $1 AND activo LIMIT 1', [base.idCliente],
+    );
+    await peticion(entorno.aplicacion).post(`${RAIZ}/articulos/${base.idArticulo}/coberturas`).set(jefatura)
+      .send({ tipo: 'adicional', vigenteDesde: hace(30), meses: 12, idClienteContratante: rows[0]!.id }).expect(201);
+    expect((await crear(base, 'adicional')).status).toBe(422);
+  });
+
+  it('la vigencia de una orden registrada se mide a su fecha de recepcion', async () => {
+    // Una orden particular recibida el dia 200 atras, sobre un articulo cuya
+    // garantia del proveedor registrada cubria ese dia y ya vencio.
+    const id = await crearOrden({ tipoGarantiaElegida: 'particular' });
+    const { rows } = await entorno.piscina.query<{ id_articulo: string }>(
+      'SELECT id_articulo FROM orden_servicio WHERE id = $1', [id],
+    );
+    await entorno.piscina.query(
+      `INSERT INTO cobertura (id_articulo, tipo, vigente_desde, vigente_hasta, documento_respaldo, activa)
+       VALUES ($1, 'proveedor', $2, $3, 'Carta del fabricante', true)`,
+      [rows[0]!.id_articulo, hace(400), hace(100)],
+    );
+    await entorno.piscina.query('UPDATE orden_servicio SET fecha_recepcion = $2 WHERE id = $1', [id, hace(200)]);
+
+    const datos = await garantia(jefatura, id);
+    expect(datos.garantias.proveedor.vigencia).toBe('vigente');
+    await reclasificar(jefatura, id, { tipo: 'proveedor', motivo: 'Cliente presento la carta de garantia vigente al recibir' })
+      .expect(200);
+
+    // Hoy ya no se podria registrar una orden nueva con esa garantia.
+    const hoy = await peticion(entorno.aplicacion).post(`${RAIZ}/coberturas/evaluar`).set(agente)
+      .send({ idArticulo: rows[0]!.id_articulo }).expect(200);
+    expect(hoy.body.data.garantias.proveedor.vigencia).toBe('vencida');
   });
 
   it('una orden levantada en campo sin eleccion entra por validar y se confirma reclasificando', async () => {
@@ -104,22 +173,22 @@ describe('la decision al registrar', () => {
 
 describe('reclasificar', () => {
   it('exige el permiso: el agente y el usuario de consulta no pueden', async () => {
-    const id = await crearOrden({ tipoGarantiaElegida: 'proveedor' });
-    await reclasificar(agente, id, { tipo: 'particular', motivo: 'El agente quiere cambiarla' }).expect(403);
-    await reclasificar(consulta, id, { tipo: 'particular', motivo: 'Consulta quiere cambiarla' }).expect(403);
-    expect((await garantia(agente, id)).tipoActual).toBe(TIPO_GARANTIA.PROVEEDOR);
+    const id = await crearOrden({ tipoGarantiaElegida: 'particular' });
+    await reclasificar(agente, id, { tipo: 'proveedor', motivo: 'El agente quiere cambiarla' }).expect(403);
+    await reclasificar(consulta, id, { tipo: 'proveedor', motivo: 'Consulta quiere cambiarla' }).expect(403);
+    expect((await garantia(agente, id)).tipoActual).toBe(TIPO_GARANTIA.PARTICULAR);
     expect((await garantia(agente, id)).puedeReclasificar).toBe(false);
     expect((await garantia(jefatura, id)).puedeReclasificar).toBe(true);
   });
 
   it('exige motivo escrito', async () => {
-    const id = await crearOrden({ tipoGarantiaElegida: 'proveedor' });
-    const sin = await reclasificar(jefatura, id, { tipo: 'particular' });
+    const id = await crearOrden({ tipoGarantiaElegida: 'particular' });
+    const sin = await reclasificar(jefatura, id, { tipo: 'proveedor' });
     expect(sin.status).toBe(400);
     expect(sin.body.error.fields).toHaveProperty('motivo');
-    const corto = await reclasificar(jefatura, id, { tipo: 'particular', motivo: 'porque' });
+    const corto = await reclasificar(jefatura, id, { tipo: 'proveedor', motivo: 'porque' });
     expect(corto.status).toBe(400);
-    expect((await garantia(agente, id)).tipoActual).toBe(TIPO_GARANTIA.PROVEEDOR);
+    expect((await garantia(agente, id)).tipoActual).toBe(TIPO_GARANTIA.PARTICULAR);
   });
 
   it('no reclasifica a la misma clasificacion', async () => {
@@ -129,10 +198,25 @@ describe('reclasificar', () => {
     expect(respuesta.body.error.code).toBe('RECLASIFICACION_NO_PERMITIDA');
   });
 
-  it('conserva la anterior, la nueva, el responsable, la fecha y el motivo', async () => {
+  it('una orden de garantia NO se reclasifica a particular: remite a la exclusion', async () => {
     const id = await crearOrden({ tipoGarantiaElegida: 'proveedor' });
-    const motivo = 'Diagnostico constato golpe; lo paga el cliente';
-    await reclasificar(jefatura, id, { tipo: 'particular', motivo }).expect(200);
+    const respuesta = await reclasificar(jefatura, id, { tipo: 'particular', motivo: 'Golpe constatado en la visita' });
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.message).toMatch(/confirme la exclusion/);
+    expect((await garantia(agente, id)).tipoActual).toBe(TIPO_GARANTIA.PROVEEDOR);
+  });
+
+  it('no pasa a una garantia que no aplica', async () => {
+    const id = await crearOrden({ tipoGarantiaElegida: 'particular' }, SIN_GARANTIA);
+    const respuesta = await reclasificar(jefatura, id, { tipo: 'proveedor', motivo: 'Intento sin garantia vigente' });
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('GARANTIA_NO_APLICABLE');
+  });
+
+  it('conserva la anterior, la nueva, el responsable, la fecha y el motivo', async () => {
+    const id = await crearOrden({ tipoGarantiaElegida: 'particular' });
+    const motivo = 'El cliente presento la factura de compra';
+    await reclasificar(jefatura, id, { tipo: 'proveedor', motivo }).expect(200);
 
     const { rows } = await entorno.piscina.query<{
       accion: string; valor_anterior: string; valor_nuevo: string; motivo: string; id_usuario: string; momento: Date;
@@ -141,34 +225,26 @@ describe('reclasificar', () => {
         WHERE tabla = 'orden_servicio' AND id_registro = $1 AND campo = 'tipo_garantia' ORDER BY momento`, [id],
     );
     expect(rows).toHaveLength(2);
-    expect(rows[1]).toMatchObject({ accion: 'modificar', valor_anterior: 'proveedor', valor_nuevo: 'particular' });
-    // A particular no le afecta ninguna advertencia: el motivo queda tal cual.
-    expect(rows[1]!.motivo).toBe(motivo);
+    expect(rows[1]).toMatchObject({ accion: 'modificar', valor_anterior: 'particular', valor_nuevo: 'proveedor', motivo });
     expect(rows[1]!.id_usuario).toBeTypeOf('string');
 
     const datos = await garantia(agente, id);
-    expect(datos.historial.map((d: { tipo: string }) => d.tipo)).toEqual(['proveedor', 'particular']);
-    expect(datos.vigente).toMatchObject({ tipoAnterior: 'proveedor', tipo: 'particular', origen: 'reclasificacion' });
-    expect(datos.vigente.motivo).toContain(motivo);
+    expect(datos.historial.map((d: { tipo: string }) => d.tipo)).toEqual(['particular', 'proveedor']);
+    expect(datos.vigente).toMatchObject({ tipoAnterior: 'particular', tipo: 'proveedor', origen: 'reclasificacion' });
 
-    // Y se ve en el historial de la orden.
     const historial = (await peticion(entorno.aplicacion).get(`${RAIZ}/ordenes/${id}/historial`).set(agente)
       .expect(200)).body.data as Array<{ titulo: string }>;
-    expect(historial.some((e) => e.titulo.includes('Garantia reclasificada: proveedor → particular'))).toBe(true);
+    expect(historial.some((e) => e.titulo.includes('Garantia reclasificada: particular → proveedor'))).toBe(true);
   });
 
   it('una orden cerrada no se reclasifica', async () => {
     const { rows } = await entorno.piscina.query<{ id: string; tipo_garantia: string }>(
       `SELECT id, tipo_garantia::text FROM orden_servicio
-        WHERE estado = 'entregada' AND tipo_garantia <> 'particular' LIMIT 1`,
+        WHERE estado = 'entregada' AND tipo_garantia = 'particular' LIMIT 1`,
     );
-    const respuesta = await reclasificar(jefatura, rows[0]!.id, { tipo: 'particular', motivo: 'Intento sobre una entregada' });
+    const respuesta = await reclasificar(jefatura, rows[0]!.id, { tipo: 'proveedor', motivo: 'Intento sobre una entregada' });
     expect(respuesta.status).toBe(422);
     expect(respuesta.body.error.message).toMatch(/nota de correccion/);
-    const { rows: despues } = await entorno.piscina.query<{ tipo_garantia: string }>(
-      'SELECT tipo_garantia::text FROM orden_servicio WHERE id = $1', [rows[0]!.id],
-    );
-    expect(despues[0]!.tipo_garantia).toBe(rows[0]!.tipo_garantia);
   });
 });
 

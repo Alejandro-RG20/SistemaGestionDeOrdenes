@@ -8,13 +8,18 @@ function pedir(desde: TipoGarantia, hacia: TipoGarantia, cerrada = false) {
 }
 
 describe('reclasificar una orden abierta', () => {
-  it('entre proveedor, adicional y particular se permite en cualquier sentido', () => {
-    const tipos = [TIPO_GARANTIA.PROVEEDOR, TIPO_GARANTIA.ADICIONAL, TIPO_GARANTIA.PARTICULAR];
-    for (const desde of tipos) {
-      for (const hacia of tipos) {
-        if (desde === hacia) continue;
-        expect(pedir(desde, hacia).permitida).toBe(true);
-      }
+  it('particular a una garantia, y entre garantias, se permite (el servicio exige que aplique)', () => {
+    expect(pedir(TIPO_GARANTIA.PARTICULAR, TIPO_GARANTIA.PROVEEDOR).permitida).toBe(true);
+    expect(pedir(TIPO_GARANTIA.PARTICULAR, TIPO_GARANTIA.ADICIONAL).permitida).toBe(true);
+    expect(pedir(TIPO_GARANTIA.PROVEEDOR, TIPO_GARANTIA.ADICIONAL).permitida).toBe(true);
+    expect(pedir(TIPO_GARANTIA.ADICIONAL, TIPO_GARANTIA.PROVEEDOR).permitida).toBe(true);
+  });
+
+  it('una orden de garantia NO pasa a particular: se confirma la exclusion', () => {
+    for (const desde of [TIPO_GARANTIA.PROVEEDOR, TIPO_GARANTIA.ADICIONAL]) {
+      const veredicto = pedir(desde, TIPO_GARANTIA.PARTICULAR);
+      expect(veredicto.permitida).toBe(false);
+      expect(veredicto.motivo).toMatch(/confirme la exclusion/);
     }
   });
 
@@ -39,7 +44,7 @@ describe('ordenes levantadas en campo', () => {
 
 describe('despues del cierre', () => {
   it('ninguna reclasificacion, y remite a la nota de correccion', () => {
-    const veredicto = pedir(TIPO_GARANTIA.PROVEEDOR, TIPO_GARANTIA.PARTICULAR, true);
+    const veredicto = pedir(TIPO_GARANTIA.PARTICULAR, TIPO_GARANTIA.PROVEEDOR, true);
     expect(veredicto.permitida).toBe(false);
     expect(veredicto.motivo).toMatch(/nota de correccion/i);
   });

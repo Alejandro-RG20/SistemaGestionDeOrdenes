@@ -259,7 +259,7 @@ describe('garantia del proveedor y exclusion por daño (P-16 a P-18, P-24)', () 
   const recienteDelGrupo = `t.pertenece_al_grupo AND a.fecha_compra > current_date - interval '4 months'
     AND NOT EXISTS (SELECT 1 FROM cobertura cb WHERE cb.id_articulo = a.id)`;
 
-  it('muestra el estado de cada garantia y registra la elegida aunque este vencida, con la advertencia', async () => {
+  it('muestra el estado de cada garantia y no deja elegir una vencida', async () => {
     const base = await articulo(`t.pertenece_al_grupo AND a.fecha_compra < current_date - interval '37 months'
       AND NOT EXISTS (SELECT 1 FROM cobertura cb WHERE cb.id_articulo = a.id)`);
     const evaluacion = await peticion(entorno.aplicacion).post(`${RAIZ}/coberturas/evaluar`).set(agente)
@@ -267,19 +267,14 @@ describe('garantia del proveedor y exclusion por daño (P-16 a P-18, P-24)', () 
     expect(evaluacion.body.data.garantias.proveedor.vigencia).toBe('vencida');
     expect(evaluacion.body.data.garantias.proveedor.aplicable).toBe(false);
     expect(evaluacion.body.data.garantias.adicional.vigencia).toBe('no_registrada');
-    expect(evaluacion.body.data.advertencias.join(' ')).toMatch(/Vencio/);
 
-    // La decision es de quien registra: la advertencia no la impide, queda anotada.
     const vencida = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente).send({
       ...base, modalidad: MODALIDAD_SERVICIO.TALLER, fallaReportada: 'No enciende desde ayer', tipoGarantiaElegida: 'proveedor',
-    }).expect(201);
-    expect(vencida.body.data.tipoGarantia).toBe('proveedor');
-    const decision = await peticion(entorno.aplicacion).get(`${RAIZ}/ordenes/${vencida.body.data.id}/garantia`)
-      .set(agente).expect(200);
-    expect(decision.body.data.vigente.origen).toBe('registro');
-    expect(decision.body.data.vigente.motivo).toMatch(/Advertencias al decidir: .*Vencio/);
+    });
+    expect(vencida.status).toBe(422);
+    expect(vencida.body.error.code).toBe('GARANTIA_NO_APLICABLE');
 
-    // Particular siempre se puede, aunque haya garantia.
+    // Particular siempre se puede.
     const particular = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente).send({
       ...base, modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'Servicio particular a domicilio', tipoGarantiaElegida: 'particular',
     }).expect(201);
@@ -327,11 +322,19 @@ describe('garantia del proveedor y exclusion por daño (P-16 a P-18, P-24)', () 
     expect(eventos.some((e) => (e.detalle ?? '').includes('Golpe fuerte')
       && (e.detalle ?? '').includes('no cambia'))).toBe(true);
 
-    // Quien tiene permiso la reclasifica, con motivo.
-    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/garantia`).set(jefatura)
-      .send({ tipo: 'particular', motivo: 'Golpe constatado en el diagnostico; no lo cubre la garantia' }).expect(200);
-    expect((await ficha(agente, id)).tipoGarantia).toBe('particular');
-    expect((await ficha(agente, id)).modalidad).toBe('taller');
+    // No se reclasifica a particular: se confirma la exclusion, la orden se
+    // cierra sin reparar y se abre una particular vinculada.
+    const reclasificar = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/garantia`).set(jefatura)
+      .send({ tipo: 'particular', motivo: 'Golpe constatado en el diagnostico; no lo cubre la garantia' });
+    expect(reclasificar.status).toBe(422);
+    const exclusion = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/exclusion`).set(jefatura)
+      .send({ motivo: 'Golpe constatado en el diagnostico; no lo cubre la garantia' }).expect(201);
+    const original = await ficha(agente, id);
+    expect(original.estado).toBe('cerrada_sin_reparar');
+    expect(original.tipoGarantia).toBe('proveedor');
+    const nueva = await ficha(agente, exclusion.body.data.idOrdenNueva);
+    expect(nueva.tipoGarantia).toBe('particular');
+    expect(nueva.modalidad).toBe('taller');
   });
 });
 
@@ -347,8 +350,26 @@ describe('visita particular con pago previo (P-19, P-21, P-23, P-32, P-33)', () 
     expect(creada.body.data.cargoVisita).toBeGreaterThan(0);
   });
 
+  it('sin cotizacion de la visita no pasa a esperando autorizacion', async () => {
+    const sinCotizacion = await mover(agente, id, 'esperando_autorizacion');
+    expect(sinCotizacion.status).toBe(422);
+    expect(sinCotizacion.body.error.message).toMatch(/cotizacion valida/);
+  });
+
   it('espera autorizacion y no se autoriza sin pago registrado y confirmado por otra persona', async () => {
+    // La cotizacion de la visita: solo el cargo congelado; mano de obra no.
+    const conManoObra = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/cotizaciones`).set(jefatura)
+      .send({ manoObra: 300 });
+    expect(conManoObra.status).toBe(400);
+    const cotizada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/cotizaciones`).set(jefatura)
+      .send({ manoObra: 0 }).expect(201);
+    const cotizacionVisita = cotizada.body.data.cotizaciones.at(-1);
+    expect(cotizacionVisita.cargoVisita).toBeGreaterThan(0);
+    expect(cotizacionVisita.total).toBe(cotizacionVisita.cargoVisita);
     await mover(agente, id, 'esperando_autorizacion').expect(200);
+    // El cliente acepta pagar la visita.
+    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/cotizaciones/decision`).set(agente)
+      .send({ aceptada: true, forma: 'llamada', observacion: 'Acepta pagar la visita' }).expect(200);
     const sinPago = await mover(jefatura, id, 'autorizada');
     expect(sinPago.status).toBe(422);
     expect(sinPago.body.error.message).toMatch(/pago previo/);

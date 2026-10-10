@@ -548,3 +548,57 @@ La prueba de navegador creó una orden de prueba en la base local de desarrollo 
 - **Retirar o no la pantalla y los endpoints de reglas.** Se conservaron porque dan la duración de referencia de la garantía del proveedor (requisito 2). Si esa duración se registrará siempre en la ficha del artículo, se pueden retirar la pantalla y `POST /coberturas/reglas`; la tabla y sus versiones deben quedarse porque hay órdenes que las referencian.
 - **Exclusiones de las reglas** (`fallas_excluidas`): ya no se aplican; se muestran como referencia.
 - **Descripción del permiso `garantias.evaluar`** («Evaluar y reevaluar la cobertura»): no se cambió porque está en el catálogo sembrado.
+
+---
+
+# Sexta etapa · Garantías aplicables, exclusión con orden nueva y cotización detallada
+
+**Sin cambios de esquema ni migraciones; `npm run sembrar` y `semillas/garantia-provisional.ts` sin tocar** (verificado: siembra del commit anterior y de este con la misma fecha fija, huellas idénticas en 30 000 órdenes, 238 348 eventos, 35 523 movimientos, bitácora, usuarios y permisos). El servidor es Express + PostgreSQL (no NestJS); se siguieron sus convenciones.
+
+## Problemas encontrados y causas
+
+| Problema | Causa |
+|---|---|
+| Se podía registrar una orden con una garantía vencida o ajena | La etapa anterior la aceptaba con advertencia (comportamiento pedido entonces) |
+| Una garantía vigente al recibir el artículo podía «perderse» después | El estado de la garantía de una orden se medía con la fecha de hoy |
+| Una orden de garantía podía pasar a particular | La reclasificación lo permitía |
+| Algunas órdenes particulares no mostraban cómo registrar o ver la cotización | La sección solo aparecía con el permiso `taller.cotizacion.registrar` (técnicos) y en dos estados; la jefatura y los agentes no la veían si no había diagnóstico |
+| Los repuestos se escribían a mano como un total | La cotización no leía las solicitudes ni el precio del inventario (`repuesto.precio`) |
+| Una cotización nueva heredaba la aceptación de la anterior | «Cotización aceptada» era «alguna aceptada», no la vigente |
+| Se podía llegar a «esperando autorización» con la cotización de la visita, o sin cotización (visita con pago previo) | El requisito no exigía una cotización válida y posterior al diagnóstico |
+| Una póliza adicional que empieza en el futuro figuraba como «venció» | El resumen solo distinguía vigente y vencida |
+
+## Implementado
+
+1. **Garantías aplicables.** Proveedor o adicional solo si están registradas, vigentes y corresponden al artículo y al solicitante; si no, solo particular. Mismo criterio en el panel (opciones deshabilitadas con el motivo) y en el servidor (`422 GARANTIA_NO_APLICABLE` al crear y al reclasificar). Para una orden ya registrada la vigencia se mide a su **fecha de recepción**. Nuevo estado informativo `por_iniciar`.
+2. **Garantía que deja de aplicar** (`POST /ordenes/:id/exclusion`, permiso `garantias.reclasificar`, motivo obligatorio): exige diagnóstico; cierra la orden original como **cerrada sin reparar** (no anulada) por la máquina de estados, que además exige poder cerrar (`ordenes.cerrar`); la original conserva su tipo de garantía, diagnóstico, evidencias, repuestos e historial; abre (opcional, por defecto sí) una orden **particular** nueva para el mismo cliente y artículo, sin trasladar cargos, solicitudes, consumos ni movimientos. El vínculo queda en la bitácora inmutable de ambas (`orden_continuacion` / `orden_origen`) y se ve en las dos órdenes y en los antecedentes de la nueva. Reclasificar de garantía a particular ya no se permite.
+3. **Sección común «Diagnóstico y cotización»** en todas las órdenes: diagnóstico (falla, componente, técnico, fecha), repuestos de la orden con cantidad por estado (solicitado, reservado, preparado, entregado, recibido, rechazado, anulado) e instalado, precio de inventario y subtotal; cotización vigente con cada concepto (original, descuento o exoneración, final, quién paga), repuestos con precio de inventario y precio cotizado, total original y final, lo que paga el cliente, estado y decisión del cliente (fecha, canal y observación); versiones anteriores. Lo que el usuario puede hacer lo decide el servidor.
+4. **Precios automáticos.** La cotización toma los repuestos de las solicitudes vigentes de la orden y su precio de `repuesto.precio`; el total de repuestos ya no se escribe. Un repuesto sin precio (0) queda **pendiente** y la cotización no se registra (`422 PRECIO_PENDIENTE`). Cotizar otro precio es un ajuste con permiso y motivo, y se guardan los dos precios.
+5. **Responsable de pago** por concepto: proveedor, garantía adicional o cliente. En órdenes cubiertas el cliente paga 0 y no se le pide aceptación (`422 NO_REQUIERE_AUTORIZACION`).
+6. **Cotizaciones particulares editables por versiones**: mano de obra, visita, descuentos por % o importe, exoneración total (la parcial es un descuento) y precio de repuestos. Sin negativos ni descuentos mayores que el concepto (cálculo en céntimos, compartido por panel y servidor). Cada versión es una fila nueva de `cotizacion`; la anterior conserva importes y decisión. Toda versión posterior a la primera, y todo ajuste, exige motivo. El detalle completo (original, ajustado, quién paga, precios) queda como constancia en la bitácora inmutable con el total anterior, el usuario y la fecha.
+7. **Autorización del cliente.** «Esperando autorización» exige una cotización válida y vigente (la última, no rechazada y posterior al último diagnóstico), también en la visita con pago previo, que ahora se cotiza (solo la visita) y se acepta. «Autorizada» exige que el cliente haya aceptado la cotización vigente: si el precio cambia después de aceptar, hace falta una nueva aceptación. Después de «autorizada» la cotización no cambia.
+8. **«Reglas de garantía» fuera del panel** (menú, ruta y pantalla). Se conservan en el servidor la tabla, sus versiones, los endpoints y la selección de la regla de referencia, que siguen dando la duración de la garantía del proveedor y que referencian las órdenes existentes.
+
+## Permisos (sin cambios en el catálogo sembrado)
+- Confirmar exclusión: `garantias.reclasificar` (jefatura de atención al cliente, jefatura de técnicos, administración) y poder cerrar la orden (`ordenes.cerrar`).
+- Registrar cotización: `taller.cotizacion.registrar` (técnicos) o `garantias.reclasificar` (jefaturas).
+- **Descuentos, exoneraciones, cambio de visita o de precio**: provisionalmente `garantias.reclasificar`, porque no hay un permiso propio. Ver «Pendiente de autorización».
+- Aceptación o rechazo del cliente: `taller.cotizacion.autorizar`, solo en órdenes particulares.
+
+## Verificación
+
+| Verificación | Resultado |
+|---|---|
+| `npm run verificar-tipos` | sin errores |
+| `npm run prueba` (servidor) | **44 archivos, 590 pruebas, todas aprobadas** |
+| `npm run prueba -w panel` | **114 aprobadas** |
+| Siembra (prueba 17) | huellas idénticas entre el commit anterior y este, con fecha fija |
+| Navegador (Chromium, base local de desarrollo) | menú sin «Reglas de garantía»; artículo sin garantías: solo particular habilitado; cotización con mano de obra exonerada guardada y mostrada; exclusión confirmada → orden original cerrada y navegación a la particular vinculada con sus antecedentes; sin errores de consola ni 5xx |
+
+Pruebas nuevas: `cotizacion-y-exclusion.prueba.ts` (E-1 a E-16), `cotizacion.prueba.ts` (cálculo) y escenarios nuevos en `garantia-manual.prueba.ts`. Las pruebas antiguas que creaban órdenes «de proveedor» sobre artículos cualesquiera ahora eligen artículos con la garantía del proveedor aplicable; su flujo no cambió.
+
+## Pendiente de autorización (cambios de esquema o del catálogo)
+1. **Vínculo formal entre órdenes**: columna `orden_servicio.id_orden_origen uuid REFERENCES orden_servicio(id)` con índice. Hoy el vínculo vive en la bitácora; con la columna se podría rellenar desde ahí sin perder nada.
+2. **Líneas de cotización**: tabla `cotizacion_linea` (concepto, repuesto, cantidad, precio de inventario, precio cotizado, ajuste, importe final, responsable de pago, motivo) y columnas `cotizacion.total_original` y `cotizacion.descuento_total`. Hoy el detalle se guarda como constancia JSON en la bitácora inmutable y la tabla `cotizacion` conserva los importes finales.
+3. **Permiso propio para ajustes**: `taller.cotizacion.ajustar` («Aplicar descuentos, exoneraciones y precios cotizados»), asignado a jefatura de atención al cliente, jefatura de técnicos y administración. Cambia el catálogo que carga la siembra.
+4. **Solicitudes abiertas de la orden cerrada por exclusión**: hoy, como en cualquier cierre sin reparar, no se anulan solas (no se tocó el inventario). Decidir si al confirmar la exclusión deben anularse o pasarse a la orden nueva.

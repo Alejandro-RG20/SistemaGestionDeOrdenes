@@ -30,7 +30,6 @@ import { BuscarKardex, Kardex } from './pantallas/Kardex.js';
 import { Movimientos } from './pantallas/Movimientos.js';
 import { Disponibilidad } from './pantallas/Disponibilidad.js';
 import { Solicitudes } from './pantallas/Solicitudes.js';
-import { Coberturas } from './pantallas/Coberturas.js';
 import { Excepciones } from './pantallas/Excepciones.js';
 import { Indicadores } from './pantallas/Indicadores.js';
 import { Administracion } from './pantallas/Administracion.js';
@@ -214,9 +213,6 @@ function Privado(): JSX.Element {
         <Pantalla codigo="W-05" miga="Tiendas"><Tiendas /></Pantalla>
       } />
 
-      <Route path="/coberturas" element={
-        <Pantalla codigo="W-15" miga="Garantias › Reglas de referencia"><Coberturas /></Pantalla>
-      } />
       <Route path="/excepciones" element={
         <Pantalla codigo="W-10" miga="Excepciones de sincronizacion"><Excepciones /></Pantalla>
       } />

@@ -549,7 +549,7 @@ export function NuevaOrden(): JSX.Element {
                         <td>{estado.venceEl ?? '—'}</td>
                         <td>
                           <span className={estado.vigencia === 'vigente' ? 'tag t-t' : estado.vigencia === 'vencida' ? 'tag t-r' : 'tag t-g'}>
-                            {estado.vigencia === 'no_registrada' ? 'no registrada' : estado.vigencia}
+                            {estado.vigencia.replace(/_/g, ' ')}
                           </span>
                           {estado.origen === 'regla' ? <small className="tenue"> (duracion de referencia)</small> : null}
                         </td>
@@ -567,35 +567,36 @@ export function NuevaOrden(): JSX.Element {
                   { valor: 'adicional', nombre: 'Garantia adicional' },
                   { valor: 'particular', nombre: 'Servicio particular (lo paga el cliente)' },
                 ] as const).map((opcion) => (
-                  <label key={opcion.valor} className="opcion">
+                  <label key={opcion.valor} className="opcion"
+                    style={{ opacity: opcion.valor === 'particular' || cobertura.garantias[opcion.valor].aplicable ? 1 : 0.5 }}>
                     <input
                       type="radio" name="modalidad-garantia" value={opcion.valor}
+                      // Solo una garantia registrada, vigente y que corresponde al
+                      // articulo y al solicitante. El servidor aplica la misma regla.
+                      disabled={opcion.valor !== 'particular' && !cobertura.garantias[opcion.valor].aplicable}
                       checked={modalidadGarantia === opcion.valor}
                       onChange={() => setModalidadGarantia(opcion.valor)}
                     />{' '}
                     {opcion.nombre}
                     {opcion.valor !== 'particular' && !cobertura.garantias[opcion.valor].aplicable
-                      ? <small className="tenue"> — con advertencia</small> : null}
+                      ? <small className="tenue"> — no disponible: {cobertura.garantias[opcion.valor].motivo}</small> : null}
                   </label>
                 ))}
                 <small className="tenue">
-                  La decision es de quien registra. El sistema no la cambia: ni el diagnostico ni un cambio en la
-                  ficha del articulo la sustituyen. Si despues hay que cambiarla, la reclasifica quien tiene permiso,
-                  con motivo.
+                  La garantia del proveedor o la adicional cubren el 100 % de la reparacion cubierta; el cliente no paga
+                  esos conceptos. Si durante la visita o el diagnostico la garantia deja de aplicar, la orden se cierra y
+                  se abre otra particular vinculada.
                 </small>
               </fieldset>
 
               {/* Advertencias: informan, no impiden. Quedan anotadas con la decision. */}
               {cobertura.advertencias.length === 0 ? null : (
                 <Aviso tono="warn">
-                  <b>Advertencias (informativas):</b>
+                  <b>Garantias no disponibles para esta orden:</b>
                   <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
                     {cobertura.advertencias.map((texto) => <li key={texto}>{texto}</li>)}
                   </ul>
-                  {modalidadGarantia !== '' && modalidadGarantia !== 'particular'
-                    && !cobertura.garantias[modalidadGarantia].aplicable
-                    ? <span>Puede registrar la orden con la garantia elegida: la advertencia queda anotada con su decision.</span>
-                    : null}
+
                 </Aviso>
               )}
             </>

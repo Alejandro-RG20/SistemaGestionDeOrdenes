@@ -10,6 +10,10 @@
  *    ninguna, el expediente ya se presento; si hubo un error, nota de
  *    correccion;
  *  · de vuelta a "por validar": no, eso no es una clasificacion;
+ *  · de proveedor o adicional a particular: no; se cierra la orden y se
+ *    abre otra particular vinculada (exclusion confirmada);
+ *  · hacia una garantia: solo si aplica a la fecha de recepcion (lo
+ *    comprueba el servicio con los datos registrados);
  *  · desde "por validar" (orden levantada en campo): es confirmarla.
  *
  * Ni el diagnostico ni un cambio en la ficha del articulo reclasifican por
@@ -49,6 +53,18 @@ export function evaluarReclasificacion(peticion: PeticionReclasificacion): Vered
     return {
       permitida: false,
       motivo: 'No se puede devolver una orden ya clasificada a "por validar".',
+    };
+  }
+
+  // Una orden de garantia que deja de estar cubierta NO pasa a particular:
+  // se cierra (cerrada sin reparar, con el motivo) y se abre una orden
+  // particular nueva, vinculada a la original (servicio-exclusion).
+  if (hacia === TIPO_GARANTIA.PARTICULAR
+    && (desde === TIPO_GARANTIA.PROVEEDOR || desde === TIPO_GARANTIA.ADICIONAL)) {
+    return {
+      permitida: false,
+      motivo: 'Una orden de garantia no se reclasifica a particular. Si la garantia no aplica, '
+        + 'confirme la exclusion: la orden se cierra sin reparar y se abre una orden particular vinculada.',
     };
   }
 
