@@ -20,6 +20,28 @@ function fecha(iso: string | null): string {
   });
 }
 
+/**
+ * Lee la respuesta del portal. El contrato de la API es { success, data } y,
+ * si falla, { success: false, error: { code, message } }: el mismo que lee
+ * api/cliente.ts. Antes se leia `datos` y `mensaje`, que no existen: una
+ * consulta correcta dejaba la pantalla en blanco y un error perdia el
+ * mensaje del servidor.
+ */
+export function leerRespuestaDelPortal(estadoHttp: number, cuerpo: unknown): EstadoPublicoOrden {
+  const respuesta = (cuerpo ?? {}) as { data?: unknown; error?: { code?: string; message?: string } };
+  if (estadoHttp < 200 || estadoHttp >= 300) {
+    throw new ErrorDeApi(
+      respuesta.error?.code ?? 'ERROR',
+      respuesta.error?.message ?? 'No se pudo consultar la orden.',
+      estadoHttp,
+    );
+  }
+  if (respuesta.data === undefined || respuesta.data === null) {
+    throw new ErrorDeApi('RESPUESTA_INVALIDA', 'No se pudo leer la respuesta. Intente de nuevo.', estadoHttp);
+  }
+  return respuesta.data as EstadoPublicoOrden;
+}
+
 export function ConsultaPublica(): JSX.Element {
   const [numero, setNumero] = useState('');
   const [telefono, setTelefono] = useState('');
@@ -37,15 +59,8 @@ export function ConsultaPublica(): JSX.Element {
         `${RAIZ_API}/portal/ordenes/${encodeURIComponent(numero.trim())}`
         + `?telefono=${encodeURIComponent(telefono.trim())}`,
       );
-      const cuerpo = await respuesta.json().catch(() => ({}));
-      if (!respuesta.ok) {
-        throw new ErrorDeApi(
-          cuerpo.error?.codigo ?? 'ERROR',
-          cuerpo.error?.mensaje ?? 'No se pudo consultar la orden.',
-          respuesta.status,
-        );
-      }
-      setEstado(cuerpo.datos as EstadoPublicoOrden);
+      const cuerpo: unknown = await respuesta.json().catch(() => ({}));
+      setEstado(leerRespuestaDelPortal(respuesta.status, cuerpo));
     } catch (problema) {
       setError(problema instanceof ErrorDeApi
         ? problema.message
