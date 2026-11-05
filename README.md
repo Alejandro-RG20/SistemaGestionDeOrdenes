@@ -115,6 +115,21 @@ Eso no debilita nada de lo que el pliego pedía:
 - **Sigue exigiendo HTTPS** para cargar evidencia: la huella SHA-256 se calcula
   con `crypto.subtle`, que el navegador solo ofrece en contexto seguro.
 
+### Con Docker
+
+```bash
+docker compose up --build -d          # app + PostgreSQL 16; panel en http://localhost:8080
+docker compose run --rm app node servidor/dist/infraestructura/semillas/cli.js   # datos de demo (BORRA la base)
+```
+
+La imagen (`Dockerfile`, dos etapas) lleva la API, el panel compilado —que
+el mismo servidor sirve en el mismo origen— y las migraciones, que
+`docker/arranque.sh` aplica al arrancar. El pipeline
+`.github/workflows/ci-cd.yml` corre tipos y pruebas con PostgreSQL, construye
+la imagen, la prueba, la publica en GHCR y redespliega Render. Detrás de un
+proxy (Render) defina `TRUST_PROXY=1` para que el límite de peticiones del
+portal vea la IP real de cada cliente.
+
 ## Estructura
 
 ```

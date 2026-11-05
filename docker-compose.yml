@@ -1,0 +1,46 @@
+# ServiTotal completo en su PC con un solo comando:  docker compose up --build
+#
+#   bd   -> PostgreSQL 16 con sus datos en un volumen (sobreviven a reinicios)
+#   app  -> la imagen de ServiTotal (aplica migraciones y arranca)
+#
+# Panel: http://localhost:8080      Salud de la API: http://localhost:8080/api/v1/salud
+#
+# Datos de demostracion (SOLO la primera vez, BORRA lo que haya en la base):
+#   docker compose run --rm app node servidor/dist/infraestructura/semillas/cli.js
+services:
+  bd:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: servitotal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - datos-bd:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d servitotal"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    image: servitotal:local
+    depends_on:
+      bd:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      DATABASE_HOST: bd          # el nombre del servicio es el host dentro de la red de compose
+      DATABASE_PORT: 5432
+      DATABASE_NAME: servitotal
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      JWT_SECRET: clave-local-de-desarrollo-cambiela-en-produccion-123456
+    ports:
+      - "8080:3000"
+    volumes:
+      - evidencias:/app/datos/evidencias
+
+volumes:
+  datos-bd:
+  evidencias:

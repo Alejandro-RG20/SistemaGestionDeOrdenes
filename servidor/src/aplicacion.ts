@@ -7,6 +7,7 @@
 import express, { type Express } from 'express';
 import { asignarCorrelacion, crearExigirSesion } from './comun/autenticacion.js';
 import { manejarErrores, manejarRutaDesconocida } from './comun/manejador-errores.js';
+import { montarPanelEstatico } from './comun/panel-estatico.js';
 import { cargarUsuarioAutenticado } from './modulos/seguridad/servicio-autenticacion.js';
 import { rutasPrivadasDeSeguridad, rutasPublicasDeSeguridad } from './modulos/seguridad/rutas.js';
 import { rutasDeClientes } from './modulos/clientes/rutas.js';
@@ -48,6 +49,18 @@ export function construirAplicacion(): Express {
   const aplicacion = express();
 
   aplicacion.disable('x-powered-by');
+
+  /*
+   * Detras de un proxy (Render, un balanceador, nginx), la IP del socket es
+   * la del proxy y no la del cliente: el limite de peticiones del portal
+   * trataria a TODOS los clientes como uno solo. `TRUST_PROXY` dice cuantos
+   * saltos de proxy creer en X-Forwarded-For. Apagado por defecto: sin
+   * proxy delante, creer esa cabecera dejaria a cualquiera falsificar su IP.
+   */
+  const saltosDeProxy = Number.parseInt(process.env['TRUST_PROXY'] ?? '', 10);
+  if (Number.isInteger(saltosDeProxy) && saltosDeProxy > 0) {
+    aplicacion.set('trust proxy', saltosDeProxy);
+  }
 
   /*
    * EL IDENTIFICADOR DE CORRELACION VA PRIMERO, ANTES DEL PARSEO DEL CUERPO.
@@ -92,6 +105,9 @@ export function construirAplicacion(): Express {
     aplicacion.use(raiz, exigirSesion, rutasDeTiendas());
     aplicacion.use(raiz, exigirSesion, rutasDeReportes());
   }
+
+  // En el contenedor, el panel compilado se sirve desde aqui (mismo origen).
+  montarPanelEstatico(aplicacion);
 
   aplicacion.use(manejarRutaDesconocida);
   aplicacion.use(manejarErrores);

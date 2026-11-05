@@ -1,0 +1,154 @@
+# CI/CD de ServiTotal:  pruebas -> imagen Docker -> GHCR -> Render
+#
+#  push ──▶ Job 1 pruebas ──▶ Job 2 imagen (build + smoke test + push GHCR) ──▶ Job 3 deploy Render
+#
+# Un pull request hacia main corre los jobs 1 y 2 SIN publicar ni desplegar.
+name: CI/CD Docker -> GHCR -> Render
+
+on:
+  push:
+    branches: [main, DOCKERCICD]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}   # usuario/repo -> ghcr.io/usuario/repo (en minusculas)
+  NODE_VERSION: '22'
+
+jobs:
+  # ───────────────────────── Job 1: calidad del codigo ─────────────────────────
+  pruebas:
+    name: 1 · Tipos y pruebas
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # PostgreSQL de verdad para las pruebas de integracion del servidor.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      BD_HOST: 127.0.0.1
+      BD_PUERTO: '5432'
+      BD_USUARIO: postgres
+      BD_CONTRASENA: postgres
+      # Solo para las pruebas: no es la clave de produccion (esa va en Render).
+      JWT_SECRETO: clave-exclusiva-de-las-pruebas-de-ci-1234567890
+    steps:
+      - name: 1. Descargar el codigo
+        uses: actions/checkout@v4
+
+      - name: 2. Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: 3. Instalar dependencias (exactas, segun package-lock.json)
+        run: npm ci
+
+      - name: 4. Verificar tipos (compartido, servidor y panel)
+        run: npm run verificar-tipos
+
+      - name: 5. Pruebas del panel
+        run: npm run prueba:panel
+
+      - name: 6. Pruebas del servidor (unidad + integracion con PostgreSQL)
+        run: npm run prueba
+
+  # ─────────────────── Job 2: imagen Docker probada y publicada ──────────────────
+  imagen:
+    name: 2 · Imagen Docker (build, smoke test, GHCR)
+    needs: pruebas
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write          # para subir la imagen a GHCR
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: servitotal
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - name: 1. Descargar el codigo
+        uses: actions/checkout@v4
+
+      - name: 2. Construir la imagen
+        run: docker build -t servitotal:test .
+
+      - name: 3. Smoke test (migraciones + API + panel)
+        run: |
+          docker run -d --name app --network host \
+            -e PORT=3000 \
+            -e DATABASE_HOST=127.0.0.1 -e DATABASE_NAME=servitotal \
+            -e DATABASE_USER=postgres -e DATABASE_PASSWORD=postgres \
+            -e JWT_SECRET=clave-exclusiva-del-smoke-test-1234567890 \
+            servitotal:test
+          # Esperar hasta 60 s a que aplique las migraciones y escuche.
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/api/v1/salud && break
+            sleep 1
+          done
+          curl -sf http://localhost:3000/api/v1/salud | grep -q '"disponible"'
+          curl -sf http://localhost:3000/ | grep -q 'ServiTotal'
+          curl -sf http://localhost:3000/ordenes | grep -q 'ServiTotal'
+          echo "✅ La API responde, las migraciones se aplicaron y el panel se sirve"
+
+      - name: 4. Logs del contenedor (solo si fallo)
+        if: failure()
+        run: docker logs app
+
+      - name: 5. Login en GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 6. Calcular tags (latest + sha)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+
+      - name: 7. Publicar en GHCR la MISMA imagen que paso el smoke test
+        if: github.event_name != 'pull_request'
+        run: |
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            docker tag servitotal:test "$tag"
+            docker push "$tag"
+          done
+
+  # ─────────────────────────── Job 3: despliegue (CD) ───────────────────────────
+  deploy-render:
+    name: 3 · Desplegar en Render
+    needs: imagen
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Redesplegar el servicio (Render descarga la nueva imagen :latest)
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::error::Falta el secret RENDER_DEPLOY_HOOK_URL (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          curl -sf -X POST "$HOOK" > /dev/null
+          echo "✅ Render recibio la orden de redesplegar"

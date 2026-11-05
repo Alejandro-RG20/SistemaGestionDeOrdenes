@@ -1,0 +1,16 @@
+# Lo que NO entra al "docker build": imagen mas chica, build mas rapido y
+# ningun secreto copiado por accidente.
+.git
+.github
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.ejemplo
+datos
+documentos
+*.md
+docker-compose.yml
+coverage
+*.log
