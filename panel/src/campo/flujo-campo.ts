@@ -138,3 +138,23 @@ export function repuestoPorCodigo<T extends { codigo: string }>(repuestos: reado
   if (codigo === '') return null;
   return repuestos.find((repuesto) => repuesto.codigo.trim().toUpperCase() === codigo) ?? null;
 }
+
+/**
+ * La ruta del dia agrupada por zona (RF-39), para recorrer cada barrio de
+ * una vez. Dentro de cada zona, por plazo; el taller (sin zona) al final.
+ * No cambia ni reordena nada en el servidor: es como se presenta la ruta.
+ */
+export function agruparPorZona<T extends { zona: string | null; plazoVenceEn: string | null; numero: number }>(
+  ordenes: readonly T[],
+): Array<{ zona: string; ordenes: T[] }> {
+  const SIN_ZONA = 'Sin zona (taller o sin direccion)';
+  const grupos = new Map<string, T[]>();
+  for (const orden of ordenes) {
+    const zona = orden.zona ?? SIN_ZONA;
+    grupos.set(zona, [...(grupos.get(zona) ?? []), orden]);
+  }
+  const porPlazo = (a: T, b: T): number => (a.plazoVenceEn ?? '9999').localeCompare(b.plazoVenceEn ?? '9999') || a.numero - b.numero;
+  return [...grupos.entries()]
+    .sort(([a], [b]) => (a === SIN_ZONA ? 1 : b === SIN_ZONA ? -1 : a.localeCompare(b, 'es')))
+    .map(([zona, lista]) => ({ zona, ordenes: lista.sort(porPlazo) }));
+}

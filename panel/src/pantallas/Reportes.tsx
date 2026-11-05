@@ -281,9 +281,18 @@ export function Reportes(): JSX.Element {
             * Lleva los MISMOS filtros que la pantalla, asi que lo que se
             * descarga es exactamente lo que se esta viendo.
             */}
-          <p>
+          <p className="no-imprimir">
             <button type="button" className="btn chico" onClick={() => { void descargar(); }}>
               Descargar en CSV ({resultado.datos.filas.length} filas)
+            </button>
+            {/*
+              RF-65: PDF. Se imprime la vista del reporte con la hoja de
+              impresion del panel (sin menu ni controles) y el navegador lo
+              guarda como PDF ("Guardar como PDF" en el dialogo de imprimir).
+              Lo que sale es exactamente lo que se ve, con sus filtros.
+            */}
+            <button type="button" className="btn chico" style={{ marginLeft: 8 }} onClick={() => window.print()}>
+              Imprimir o guardar en PDF
             </button>
           </p>
           {falloDescarga === null ? null : <Aviso tono="warn">{falloDescarga}</Aviso>}

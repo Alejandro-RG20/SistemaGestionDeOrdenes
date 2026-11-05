@@ -18,7 +18,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ESTADO_ORDEN,
-  type CatalogosDeApoyo, type EstadoOrden, type EventoDeHistorial, type FichaOrden,
+  type CatalogosDeApoyo, type TecnicoSugerido, type EstadoOrden, type EventoDeHistorial, type FichaOrden,
 } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
@@ -66,6 +66,12 @@ export function DetalleOrden(): JSX.Element {
   const catalogos = useRecurso<CatalogosDeApoyo | null>(
     () => (puedeAsignar ? api.pedir<CatalogosDeApoyo>('/catalogos') : Promise.resolve(null)),
     [puedeAsignar],
+  );
+  const sugeridos = useRecurso<readonly TecnicoSugerido[] | null>(
+    () => (puedeAsignar
+      ? api.pedir<readonly TecnicoSugerido[]>(`/ordenes/${id}/tecnicos-sugeridos`).catch(() => null)
+      : Promise.resolve(null)),
+    [puedeAsignar, id],
   );
   const [idTecnicoNuevo, setIdTecnicoNuevo] = useState('');
   const [motivoAsignacion, setMotivoAsignacion] = useState('');
@@ -249,13 +255,28 @@ export function DetalleOrden(): JSX.Element {
                       && !(catalogos.datos?.tecnicos ?? []).some((t) => t.id === orden.idTecnico) ? (
                         <option value={orden.idTecnico}>{orden.tecnico ?? 'tecnico asignado'} · (inactivo)</option>
                       ) : null}
-                    {(catalogos.datos?.tecnicos ?? []).map((tecnico) => (
-                      <option key={tecnico.id} value={tecnico.id}>
-                        {tecnico.nombre} · {tecnico.tipo} · {tecnico.cargaActual} abiertas
-                        {tecnico.disponible ? '' : ' · no disponible'}
-                        {tecnico.id === orden.idTecnico ? ' · ASIGNADO' : ''}
-                      </option>
-                    ))}
+                    {/* RF-14: primero los sugeridos (especialidad, zona y carga); despues el resto. */}
+                    {(sugeridos.datos ?? []).length === 0 ? null : (
+                      <optgroup label="Sugeridos para esta orden">
+                        {(sugeridos.datos ?? []).map((tecnico, indice) => (
+                          <option key={`s-${tecnico.id}`} value={tecnico.id}>
+                            {indice === 0 ? '★ ' : ''}{tecnico.nombre} · {tecnico.razon}
+                            {tecnico.id === orden.idTecnico ? ' · ASIGNADO' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="Todos los tecnicos">
+                      {(catalogos.datos?.tecnicos ?? [])
+                        .filter((tecnico) => !(sugeridos.datos ?? []).some((s) => s.id === tecnico.id))
+                        .map((tecnico) => (
+                          <option key={tecnico.id} value={tecnico.id}>
+                            {tecnico.nombre} · {tecnico.tipo} · {tecnico.cargaActual} abiertas
+                            {tecnico.disponible ? '' : ' · no disponible'}
+                            {tecnico.id === orden.idTecnico ? ' · ASIGNADO' : ''}
+                          </option>
+                        ))}
+                    </optgroup>
                   </select>
                 </div>
                 <div>

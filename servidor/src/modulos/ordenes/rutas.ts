@@ -18,6 +18,8 @@ export function rutasDeOrdenes(): Router {
   router.get('/ordenes/:id/historial', consultar, asincrono(controlador.historial));
   router.post('/ordenes', exigirPermiso('ordenes.crear'), asincrono(controlador.crear));
   router.put('/ordenes/:id/tecnico', exigirPermiso('ordenes.asignar'), asincrono(controlador.asignarTecnico));
+  router.get('/ordenes/:id/tecnicos-sugeridos', exigirPermiso('ordenes.asignar'),
+    asincrono(controlador.tecnicosSugeridos));
 
   // Una sola puerta para mover la orden: la maquina de estados decide si el
   // paso vale y si quien lo pide es el responsable de turno.

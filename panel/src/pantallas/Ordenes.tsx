@@ -28,6 +28,10 @@ export function Ordenes(): JSX.Element {
   const idCliente = parametros.get('idCliente') ?? '';
   const idTecnico = parametros.get('idTecnico') ?? '';
   const idTienda = parametros.get('idTienda') ?? '';
+  const tipoGarantia = parametros.get('tipoGarantia') ?? '';
+  const idMarca = parametros.get('idMarca') ?? '';
+  const desde = parametros.get('desde') ?? '';
+  const hasta = parametros.get('hasta') ?? '';
   // Se aceptan «1» y «true»: los enlaces del tablero usan la segunda forma.
   const activo = (clave: string): boolean => ['1', 'true'].includes(parametros.get(clave) ?? '');
   const soloVencidas = activo('soloVencidas');
@@ -45,11 +49,16 @@ export function Ordenes(): JSX.Element {
         idCliente: idCliente === '' ? undefined : idCliente,
         idTecnico: idTecnico === '' ? undefined : idTecnico,
         idTienda: idTienda === '' ? undefined : idTienda,
+        tipoGarantia: tipoGarantia === '' ? undefined : tipoGarantia,
+        idMarca: idMarca === '' ? undefined : idMarca,
+        desde: desde === '' ? undefined : desde,
+        hasta: hasta === '' ? undefined : hasta,
         soloVencidas: soloVencidas ? 'true' : undefined,
         soloActivas: soloActivas ? 'true' : undefined,
         pagina,
       })),
-    [estado, numero, idCliente, idTecnico, idTienda, soloVencidas, soloActivas, enAlerta, pagina],
+    [estado, numero, idCliente, idTecnico, idTienda, tipoGarantia, idMarca, desde, hasta,
+      soloVencidas, soloActivas, enAlerta, pagina],
   );
 
   // Tecnicos y tiendas para los filtros. Si no carga, los filtros no se
@@ -152,8 +161,37 @@ export function Ordenes(): JSX.Element {
                   ))}
                 </select>
               </div>
+              <div>
+                <label>Marca</label>
+                <select value={idMarca} onChange={(e) => cambiar('idMarca', e.target.value)}>
+                  <option value="">Todas</option>
+                  {catalogos.datos.marcas.map((una) => (
+                    <option key={una.id} value={una.id}>{una.nombre}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
+          <div className="g g4" style={{ marginTop: 8 }}>
+            <div>
+              <label>Garantia</label>
+              <select value={tipoGarantia} onChange={(e) => cambiar('tipoGarantia', e.target.value)}>
+                <option value="">Todas</option>
+                <option value="proveedor">Proveedor</option>
+                <option value="adicional">Adicional</option>
+                <option value="particular">Particular</option>
+                <option value="por_validar">Por validar</option>
+              </select>
+            </div>
+            <div>
+              <label>Recibidas desde</label>
+              <input type="date" value={desde} onChange={(e) => cambiar('desde', e.target.value)} />
+            </div>
+            <div>
+              <label>Recibidas hasta</label>
+              <input type="date" value={hasta} onChange={(e) => cambiar('hasta', e.target.value)} />
+            </div>
+          </div>
         </Tarjeta>
       )}
 

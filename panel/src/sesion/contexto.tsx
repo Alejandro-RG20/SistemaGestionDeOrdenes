@@ -3,13 +3,14 @@
  * se habla. Lo consume cualquier pantalla sin pasarlo de mano en mano.
  */
 import {
-  createContext, useCallback, useContext, useMemo, useState, type ReactNode,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
 } from 'react';
 import type { UsuarioAutenticado } from '@servitotal/compartido';
 import { ClienteApi, ErrorDeApi } from '../api/cliente.js';
 import { TokensEnNavegador } from './almacen.js';
 import { identificadorDeEsteDispositivo } from './dispositivo.js';
 import { trabajaEnCampo } from './navegacion.js';
+import { MENSAJE_INACTIVIDAD, debeCerrarPorInactividad } from './inactividad.js';
 
 interface ValorDeSesion {
   readonly usuario: UsuarioAutenticado | null;
@@ -24,6 +25,8 @@ interface ValorDeSesion {
   readonly dispositivoVinculado: boolean | null;
   /** El identificador que la jefatura necesita para vincular este navegador. */
   readonly identificadorDispositivo: string | null;
+  /** Por que se cerro la sesion, si no fue a pedido (inactividad). */
+  readonly motivoSalida: string | null;
 }
 
 const Contexto = createContext<ValorDeSesion | null>(null);
@@ -42,6 +45,28 @@ export function ProveedorDeSesion({ children }: { children: ReactNode }): JSX.El
   }, [tokens]);
 
   const api = useMemo(() => new ClienteApi(tokens, salir), [tokens, salir]);
+
+  // RF-06: cierre automatico por inactividad en el panel (no en campo).
+  const [motivoSalida, setMotivoSalida] = useState<string | null>(null);
+  const ultimaActividad = useRef(Date.now());
+  useEffect(() => {
+    if (usuario === null) return undefined;
+    setMotivoSalida(null);
+    ultimaActividad.current = Date.now();
+    const anotar = (): void => { ultimaActividad.current = Date.now(); };
+    const eventos = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
+    eventos.forEach((nombre) => window.addEventListener(nombre, anotar, { passive: true }));
+    const revision = window.setInterval(() => {
+      if (debeCerrarPorInactividad(ultimaActividad.current, Date.now(), window.location.pathname)) {
+        salir();
+        setMotivoSalida(MENSAJE_INACTIVIDAD);
+      }
+    }, 30_000);
+    return () => {
+      eventos.forEach((nombre) => window.removeEventListener(nombre, anotar));
+      window.clearInterval(revision);
+    };
+  }, [usuario, salir]);
 
   /**
    * Se entra DOS VECES cuando el usuario es de campo, y a proposito.
@@ -80,8 +105,8 @@ export function ProveedorDeSesion({ children }: { children: ReactNode }): JSX.El
   }, [api, identificadorDispositivo]);
 
   const valor = useMemo(
-    () => ({ usuario, api, entrar, salir, dispositivoVinculado, identificadorDispositivo }),
-    [usuario, api, entrar, salir, dispositivoVinculado, identificadorDispositivo],
+    () => ({ usuario, api, entrar, salir, dispositivoVinculado, identificadorDispositivo, motivoSalida }),
+    [usuario, api, entrar, salir, dispositivoVinculado, identificadorDispositivo, motivoSalida],
   );
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;

@@ -361,3 +361,20 @@ export interface PeticionDecisionCotizacion {
   readonly forma: 'firma_presencial' | 'llamada' | 'mensaje' | 'correo';
   readonly observacion?: string | null;
 }
+
+/**
+ * Tecnico sugerido para una orden (RF-14), de mejor a peor: primero el de
+ * la especialidad del articulo, despues el que ya tiene visitas pendientes
+ * en la misma zona (va a pasar por ahi) y, a igualdad, el de menos carga.
+ */
+export interface TecnicoSugerido {
+  readonly id: string;
+  readonly nombre: string;
+  readonly tipo: string;
+  readonly especialidad: string | null;
+  readonly coincideEspecialidad: boolean;
+  readonly cargaActual: number;
+  readonly visitasEnLaZona: number;
+  /** Por que se sugiere, para mostrarlo tal cual. */
+  readonly razon: string;
+}

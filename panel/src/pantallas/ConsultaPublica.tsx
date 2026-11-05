@@ -153,6 +153,14 @@ export function ConsultaPublica(): JSX.Element {
 
             <p style={{ fontSize: 12.5, margin: '10px 0 0' }}>{estado.explicacion}</p>
 
+            {/* RF-67: la visita pendiente, solo dia y franja. */}
+            {estado.visitaProgramada === null || estado.visitaProgramada === undefined ? null : (
+              <p style={{ fontSize: 12.5, margin: '8px 0 0' }}>
+                <b>Visita programada:</b> {fecha(`${estado.visitaProgramada.fecha}T12:00:00`)}, entre las{' '}
+                {estado.visitaProgramada.franja.replace('-', ' y las ')}.
+              </p>
+            )}
+
             {/* La línea de tiempo del prototipo: cinco etapas en lenguaje de
                 cliente, no los trece estados internos del taller. */}
             <ul className="tl">

@@ -235,3 +235,13 @@ table.d td a:hover { text-decoration: underline; }
 /* Opciones de radio o casilla: texto normal, control de su tamano. */
 label.opcion{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:normal;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--ink);margin:4px 0}
 label.opcion input{width:auto;margin:0}
+
+/* RF-65: hoja de impresion. Imprimir un reporte (o guardarlo en PDF desde
+   el dialogo del navegador) saca solo el contenido, sin menu ni botones. */
+@media print {
+  nav.side, nav.tabbar, .no-imprimir, .stickybar, button { display: none !important; }
+  .app { display: block !important; }
+  body { background: #fff !important; color: #000 !important; }
+  .card, table { break-inside: auto; box-shadow: none !important; }
+  tr { break-inside: avoid; }
+}

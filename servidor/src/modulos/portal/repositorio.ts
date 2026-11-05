@@ -26,6 +26,8 @@ export interface FilaOrdenPublica {
   readonly fecha_entrega: Date | null;
   readonly fecha_estado_desde: Date;
   readonly repuesto_esperado_para: Date | null;
+  readonly visita_fecha: Date | null;
+  readonly visita_franja: string | null;
 }
 
 /**
@@ -63,11 +65,17 @@ export async function buscarPorNumeroYTelefono(
             trim(m.nombre || ' ' || coalesce(a.modelo, '')) AS articulo,
             o.fecha_recepcion, o.plazo_vence_en, o.fecha_entrega, o.fecha_estado_desde,
             (SELECT min(s.fecha_estimada) FROM solicitud_repuesto s
-              WHERE s.id_orden = o.id AND s.fecha_ingreso IS NULL) AS repuesto_esperado_para
+              WHERE s.id_orden = o.id AND s.fecha_ingreso IS NULL) AS repuesto_esperado_para,
+            vp.fecha_programada AS visita_fecha, vp.franja_horaria::text AS visita_franja
        FROM orden_servicio o
        JOIN cliente c  ON c.id = o.id_cliente
        JOIN articulo a ON a.id = o.id_articulo
        JOIN marca m    ON m.id = a.id_marca
+       LEFT JOIN LATERAL (
+         SELECT v.fecha_programada, v.franja_horaria FROM visita v
+          WHERE v.id_orden = o.id AND v.vigente AND v.resultado = 'programada'
+          ORDER BY v.fecha_programada LIMIT 1
+       ) vp ON true
       WHERE ($1::bigint IS NOT NULL AND o.numero = $1
              OR $3::text IS NOT NULL AND o.codigo = $3)
         AND (

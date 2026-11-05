@@ -319,6 +319,38 @@ export const REPORTES: readonly Reporte[] = [
                 GROUP BY m.tipo ORDER BY count(*) DESC`,
   },
   {
+    // RF-63: las diferencias de inventario son los ajustes (conteos,
+    // faltantes, sobrantes y los consumos de campo aceptados sin existencia),
+    // cada uno con su justificacion y quien lo registro.
+    clave: 'diferencias_inventario',
+    titulo: 'Diferencias de inventario',
+    proposito: 'Que se ajusto, en que bodega, cuanto, por que y quien lo registro.',
+    grupo: 'inventario',
+    admiteRango: true,
+    columnas: [
+      col('fecha', 'Fecha', TEXTO), col('bodega', 'Bodega', TEXTO), col('repuesto', 'Repuesto', TEXTO),
+      col('sentido', 'Sentido', TEXTO), col('piezas', 'Piezas', NUMERO),
+      col('justificacion', 'Justificacion', TEXTO), col('responsable', 'Responsable', TEXTO),
+    ],
+    sumar: ['piezas'],
+    consulta: `SELECT to_char(m.creado_en, 'YYYY-MM-DD HH24:MI') AS fecha,
+                      coalesce(bo.nombre, bd.nombre, '—') AS bodega,
+                      r.codigo || ' · ' || r.descripcion AS repuesto,
+                      CASE WHEN m.id_bodega_origen IS NOT NULL THEN 'faltante (sale)' ELSE 'sobrante (entra)' END AS sentido,
+                      m.cantidad AS piezas, m.justificacion, trim(u.nombres) AS responsable
+                 FROM movimiento_repuesto m
+                 JOIN repuesto r ON r.id = m.id_repuesto
+                 LEFT JOIN bodega bo ON bo.id = m.id_bodega_origen
+                 LEFT JOIN bodega bd ON bd.id = m.id_bodega_destino
+                 LEFT JOIN usuario u ON u.id = m.id_responsable
+                WHERE m.tipo = 'ajuste'
+                  AND ($1::timestamptz IS NULL OR m.creado_en >= $1)
+                  AND ($2::timestamptz IS NULL OR m.creado_en < $2)
+                  AND ${FILTRO_MOVIMIENTO}
+                ORDER BY m.creado_en DESC
+                LIMIT 1000`,
+  },
+  {
     clave: 'compras_por_proveedor',
     titulo: 'Reposicion por proveedor',
     proposito: 'A quien se le piden repuestos y cuantos pedidos siguen sin llegar a bodega.',

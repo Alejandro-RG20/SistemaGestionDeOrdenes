@@ -55,3 +55,17 @@ describe('lista de verificacion (RF-22)', () => {
     expect(accion.carga['mediciones']).toEqual([{ idItem: 't', valor: 12 }]);
   });
 });
+
+describe('ruta por zona (RF-39)', () => {
+  it('agrupa por zona en orden alfabetico, por plazo dentro de cada una, y el taller al final', async () => {
+    const { agruparPorZona } = await import('../src/campo/flujo-campo.js');
+    const grupos = agruparPorZona([
+      { numero: 1, zona: null, plazoVenceEn: '2026-01-01' },
+      { numero: 2, zona: 'Villa Fontana', plazoVenceEn: '2026-01-03' },
+      { numero: 3, zona: 'Altamira', plazoVenceEn: '2026-01-05' },
+      { numero: 4, zona: 'Villa Fontana', plazoVenceEn: '2026-01-02' },
+    ]);
+    expect(grupos.map((g) => g.zona)).toEqual(['Altamira', 'Villa Fontana', 'Sin zona (taller o sin direccion)']);
+    expect(grupos[1]!.ordenes.map((o) => o.numero)).toEqual([4, 2]);
+  });
+});

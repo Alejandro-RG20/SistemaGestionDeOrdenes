@@ -8,7 +8,7 @@
  */
 import type {
   EventoDeHistorial,
-  FichaOrden, Paginacion, PeticionAsignarTecnico, PeticionCrearOrden, ResumenOrden,
+  FichaOrden, Paginacion, PeticionAsignarTecnico, PeticionCrearOrden, ResumenOrden, TecnicoSugerido,
 } from '@servitotal/compartido';
 import { ACCION_BITACORA, ESTADO_ORDEN, MODALIDAD_SERVICIO, TIPO_GARANTIA, type TipoGarantia } from '@servitotal/compartido';
 import { auditar } from '../../comun/auditoria.js';
@@ -417,4 +417,21 @@ export async function asignarTecnico(
   const fila = await repositorio.buscarPorId(idOrden);
   const calendario = await servicioAgenda.obtenerCalendarioLaboral(actor.idCentro);
   return conPlazo(fila!, new Date(), calendario);
+}
+
+/** RF-14: tecnicos para asignar, del mas adecuado al menos. */
+export async function tecnicosSugeridos(actor: Actor, idOrden: string): Promise<readonly TecnicoSugerido[]> {
+  const fila = await repositorio.buscarPorId(idOrden);
+  if (fila === null) throw new ErrorNoEncontrado('No existe una orden con ese identificador.');
+  exigirCerco(await alcanceDe(actor), fila);
+  const filas = await repositorio.tecnicosSugeridos(idOrden);
+  return filas.map((f) => ({
+    id: f.id, nombre: f.nombre, tipo: f.tipo, especialidad: f.especialidad,
+    coincideEspecialidad: f.coincide, cargaActual: f.carga, visitasEnLaZona: f.visitas_en_zona,
+    razon: [
+      f.coincide ? `especialista en ${(f.especialidad ?? '').replace(/_/g, ' ')}` : 'otra especialidad',
+      ...(f.visitas_en_zona > 0 ? [`${f.visitas_en_zona} visita(s) pendiente(s) en la zona`] : []),
+      `${f.carga} orden(es) abiertas`,
+    ].join(' · '),
+  }));
 }

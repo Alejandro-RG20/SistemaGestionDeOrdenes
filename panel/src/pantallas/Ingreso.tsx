@@ -13,7 +13,7 @@ import { useSesion } from '../sesion/contexto.js';
 import { ErrorDeApi } from '../api/cliente.js';
 
 export function Ingreso(): JSX.Element {
-  const { entrar } = useSesion();
+  const { entrar, motivoSalida } = useSesion();
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [contrasena, setContrasena] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +38,9 @@ export function Ingreso(): JSX.Element {
         <div className="brand">Servi<span>Total</span></div>
         <p className="sub">Gestion de ordenes · Distrito VI</p>
 
+        {motivoSalida === null ? null : (
+          <p role="status" style={{ fontSize: 12.5, color: 'var(--amber)', margin: '0 0 10px' }}>{motivoSalida}</p>
+        )}
         <form onSubmit={enviar}>
           <div style={{ marginBottom: 11 }}>
             <label htmlFor="usuario">Usuario</label>

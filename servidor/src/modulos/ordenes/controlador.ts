@@ -1,5 +1,7 @@
 /** Controladores de ordenes. Sin SQL y sin reglas de negocio. */
 import type { Request, Response } from 'express';
+import { TIPO_GARANTIA } from '@servitotal/compartido';
+import { ErrorValidacion } from '../../comun/errores.js';
 import { responderDatos, responderListado, responderSinContenido } from '../../comun/respuesta.js';
 import { leerParametrosPagina } from '../../comun/paginacion.js';
 import { actorDe } from '../../comun/autenticacion.js';
@@ -29,6 +31,19 @@ export async function listar(peticion: Request, respuesta: Response): Promise<vo
   const idTecnico = textoDeConsulta(peticion, 'idTecnico');
   const idCliente = textoDeConsulta(peticion, 'idCliente');
   const idTienda = textoDeConsulta(peticion, 'idTienda');
+  const idMarca = textoDeConsulta(peticion, 'idMarca');
+  const tipoGarantia = textoDeConsulta(peticion, 'tipoGarantia');
+  const fecha = (campo: string): string | undefined => {
+    const valor = textoDeConsulta(peticion, campo);
+    if (valor === undefined) return undefined;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(valor) || Number.isNaN(Date.parse(valor))) {
+      throw new ErrorValidacion('La fecha debe tener la forma AAAA-MM-DD.', { [campo]: 'Fecha no valida.' });
+    }
+    return valor;
+  };
+  if (tipoGarantia !== undefined && !(Object.values(TIPO_GARANTIA) as string[]).includes(tipoGarantia)) {
+    throw new ErrorValidacion('Ese tipo de garantia no existe.', { tipoGarantia: 'No valido.' });
+  }
 
   /*
    * `numero` acepta las dos formas en que la gente nombra una orden: el
@@ -50,6 +65,10 @@ export async function listar(peticion: Request, respuesta: Response): Promise<vo
     codigo: esCodigo ? buscado.toUpperCase() : undefined,
     soloActivas: peticion.query['soloActivas'] === 'true',
     soloVencidas: peticion.query['soloVencidas'] === 'true',
+    tipoGarantia,
+    idMarca: idMarca === undefined ? undefined : validar(esquemaIdentificador, idMarca),
+    desde: fecha('desde'),
+    hasta: fecha('hasta'),
   }, pagina);
   responderListado(respuesta, resultado.datos, resultado.paginacion);
 }
@@ -97,6 +116,10 @@ export async function registrarBitacora(peticion: Request, respuesta: Response):
 
 export async function datosDeTaller(peticion: Request, respuesta: Response): Promise<void> {
   responderDatos(respuesta, await servicioTaller.obtener(actorDe(peticion), identificador(peticion)));
+}
+
+export async function tecnicosSugeridos(peticion: Request, respuesta: Response): Promise<void> {
+  responderDatos(respuesta, await servicio.tecnicosSugeridos(actorDe(peticion), identificador(peticion)));
 }
 
 export async function garantia(peticion: Request, respuesta: Response): Promise<void> {

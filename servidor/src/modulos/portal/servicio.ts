@@ -83,6 +83,9 @@ export async function consultar(
       ? fila.repuesto_esperado_para?.toISOString() ?? null
       : null,
     recorrido,
+    visitaProgramada: cerrada || fila.visita_fecha === null || fila.visita_franja === null
+      ? null
+      : { fecha: fila.visita_fecha.toISOString().slice(0, 10), franja: fila.visita_franja },
     actualizadoEn: fila.fecha_estado_desde.toISOString(),
   };
 }

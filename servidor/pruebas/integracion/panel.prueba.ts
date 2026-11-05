@@ -196,6 +196,25 @@ describe('portal publico', () => {
     }
   });
 
+  it('muestra la visita programada pendiente, solo dia y franja (RF-67)', async () => {
+    const { rows } = await entorno.piscina.query<{
+      codigo: string; telefono_contacto: string; fecha: string; franja: string;
+    }>(
+      `SELECT o.codigo, o.telefono_contacto, v.fecha_programada::text AS fecha, v.franja_horaria AS franja
+         FROM visita v JOIN orden_servicio o ON o.id = v.id_orden
+        WHERE v.vigente AND v.resultado = 'programada'
+          AND o.estado NOT IN ('entregada', 'cerrada_sin_reparar', 'anulada')
+          AND NOT EXISTS (SELECT 1 FROM visita v2 WHERE v2.id_orden = o.id AND v2.vigente
+                            AND v2.resultado = 'programada' AND v2.fecha_programada < v.fecha_programada)
+        LIMIT 1`,
+    );
+    const fila = rows[0]!;
+    const respuesta = await peticion(entorno.aplicacion)
+      .get(`${RAIZ}/portal/ordenes/${fila.codigo}?telefono=${encodeURIComponent(fila.telefono_contacto)}`)
+      .expect(200);
+    expect(respuesta.body.data.visitaProgramada).toEqual({ fecha: fila.fecha, franja: fila.franja });
+  });
+
   it('NO devuelve datos personales ni internos', async () => {
     // Es la prueba que de verdad importa de este endpoint.
     const { codigo, telefono } = await ordenConsultable();

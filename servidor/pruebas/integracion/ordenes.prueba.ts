@@ -543,3 +543,51 @@ describe('nota de correccion', () => {
       .expect(403);
   });
 });
+
+describe('filtros de la bandeja (RF-16)', () => {
+  it('filtra por tipo de garantia, marca y fecha de recepcion', async () => {
+    const { rows } = await entorno.piscina.query<{ id_marca: string; tipo: string; dia: string }>(
+      `SELECT a.id_marca, o.tipo_garantia::text AS tipo, o.fecha_recepcion::date::text AS dia
+         FROM orden_servicio o JOIN articulo a ON a.id = o.id_articulo LIMIT 1`,
+    );
+    const { id_marca: idMarca, tipo, dia } = rows[0]!;
+    const respuesta = await peticion(entorno.aplicacion).get(`${RAIZ}/ordenes`).set(jefeTecnicos)
+      .query({ idMarca, tipoGarantia: tipo, desde: dia, hasta: dia, tamano: 100 }).expect(200);
+    expect(respuesta.body.pagination.total).toBeGreaterThan(0);
+    const { rows: esperadas } = await entorno.piscina.query<{ total: string }>(
+      `SELECT count(*)::text AS total FROM orden_servicio o JOIN articulo a ON a.id = o.id_articulo
+        WHERE a.id_marca = $1 AND o.tipo_garantia::text = $2 AND o.fecha_recepcion::date = $3::date`,
+      [idMarca, tipo, dia],
+    );
+    expect(respuesta.body.pagination.total).toBe(Number(esperadas[0]!.total));
+
+    const mala = await peticion(entorno.aplicacion).get(`${RAIZ}/ordenes`).set(jefeTecnicos)
+      .query({ tipoGarantia: 'inventada' });
+    expect(mala.status).toBe(400);
+    const fecha = await peticion(entorno.aplicacion).get(`${RAIZ}/ordenes`).set(jefeTecnicos).query({ desde: 'ayer' });
+    expect(fecha.status).toBe(400);
+  });
+});
+
+describe('tecnicos sugeridos para asignar (RF-14)', () => {
+  it('del tipo que pide la modalidad, por especialidad, zona y carga; y solo con permiso de asignar', async () => {
+    const creada = await crearOrden({ modalidad: MODALIDAD_SERVICIO.TALLER });
+    const respuesta = await peticion(entorno.aplicacion).get(`${RAIZ}/ordenes/${creada.id}/tecnicos-sugeridos`)
+      .set(jefeTecnicos).expect(200);
+    const lista = respuesta.body.data as Array<{
+      tipo: string; coincideEspecialidad: boolean; visitasEnLaZona: number; cargaActual: number; razon: string;
+    }>;
+    expect(lista.length).toBeGreaterThan(0);
+    expect(lista.every((t) => t.tipo === 'planta')).toBe(true);
+    // Orden: especialidad primero, despues visitas en la zona, despues menos carga.
+    for (let i = 1; i < lista.length; i++) {
+      const antes = lista[i - 1]!; const despues = lista[i]!;
+      const clave = (t: typeof antes): number[] => [t.coincideEspecialidad ? 0 : 1, -t.visitasEnLaZona, t.cargaActual];
+      const [a, b] = [clave(antes), clave(despues)];
+      const comparacion = a[0]! - b[0]! || a[1]! - b[1]! || a[2]! - b[2]!;
+      expect(comparacion).toBeLessThanOrEqual(0);
+    }
+    expect(lista[0]!.razon).toMatch(/orden\(es\) abiertas/);
+    await peticion(entorno.aplicacion).get(`${RAIZ}/ordenes/${creada.id}/tecnicos-sugeridos`).set(agente).expect(403);
+  });
+});

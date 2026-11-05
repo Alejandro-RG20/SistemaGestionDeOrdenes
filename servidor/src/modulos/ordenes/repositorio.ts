@@ -75,6 +75,12 @@ export interface FiltroOrdenes {
    * quedaba invisible.
    */
   readonly idCreadorAlcance?: string | undefined;
+  /** RF-16: por tipo de garantia, marca del articulo y fecha de recepcion. */
+  readonly tipoGarantia?: string | undefined;
+  readonly idMarca?: string | undefined;
+  /** Recibidas desde / hasta este dia (AAAA-MM-DD), inclusive. */
+  readonly desde?: string | undefined;
+  readonly hasta?: string | undefined;
 }
 
 const DONDE = `
@@ -89,7 +95,11 @@ const DONDE = `
     AND ($8::text IS NULL OR o.codigo = $8)
     AND ($9::uuid IS NULL
          OR o.id_tecnico = $9
-         OR ($10::uuid IS NOT NULL AND o.creado_por = $10))`;
+         OR ($10::uuid IS NOT NULL AND o.creado_por = $10))
+    AND ($11::text IS NULL OR o.tipo_garantia::text = $11)
+    AND ($12::uuid IS NULL OR EXISTS (SELECT 1 FROM articulo fa WHERE fa.id = o.id_articulo AND fa.id_marca = $12))
+    AND ($13::date IS NULL OR o.fecha_recepcion >= $13::date)
+    AND ($14::date IS NULL OR o.fecha_recepcion < $14::date + 1)`;
 
 /**
  * Los parametros del filtro, en el orden del WHERE.
@@ -105,11 +115,12 @@ function parametros(filtro: FiltroOrdenes): unknown[] {
     filtro.numero ?? null, filtro.soloActivas, filtro.soloVencidas,
     filtro.idTienda ?? null, filtro.codigo ?? null,
     filtro.idTecnicoAlcance ?? null, filtro.idCreadorAlcance ?? null,
+    filtro.tipoGarantia ?? null, filtro.idMarca ?? null, filtro.desde ?? null, filtro.hasta ?? null,
   ];
 }
 
 /** Cuantos parametros ocupa el filtro. La paginacion va despues de estos. */
-const PARAMETROS_DEL_FILTRO = 10;
+const PARAMETROS_DEL_FILTRO = 14;
 const LIMITE = `$${PARAMETROS_DEL_FILTRO + 1}`;
 const DESPLAZAMIENTO = `$${PARAMETROS_DEL_FILTRO + 2}`;
 
@@ -1102,4 +1113,40 @@ export async function repuestosDelCatalogo(
     'SELECT id, codigo, descripcion, precio FROM repuesto WHERE activo AND id = ANY ($1::uuid[])', [ids],
   );
   return rows.map((f) => ({ ...f, precio: Number(f.precio) > 0 ? Number(f.precio) : null }));
+}
+
+/**
+ * Tecnicos activos del tipo que corresponde a la modalidad (ruta o planta),
+ * ordenados por especialidad, visitas pendientes en la zona y carga (RF-14).
+ * No hay una relacion tecnico-zona en el esquema: la afinidad de zona sale
+ * de las visitas que el tecnico ya tiene programadas ahi.
+ */
+export async function tecnicosSugeridos(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<Array<{
+  id: string; nombre: string; tipo: string; especialidad: string | null;
+  coincide: boolean; carga: number; visitas_en_zona: number;
+}>> {
+  const { rows } = await ejecutor.query<{
+    id: string; nombre: string; tipo: string; especialidad: string | null;
+    coincide: boolean; carga: number; visitas_en_zona: number;
+  }>(
+    `SELECT t.id, trim(u.nombres) AS nombre, t.tipo AS tipo, t.especialidad,
+            coalesce(t.especialidad = k.nombre, false) AS coincide,
+            (SELECT count(*) FROM orden_servicio x WHERE x.id_tecnico = t.id
+               AND x.estado NOT IN ('entregada', 'cerrada_sin_reparar', 'anulada'))::int AS carga,
+            CASE WHEN o.id_zona IS NULL THEN 0 ELSE
+              (SELECT count(*) FROM visita v JOIN orden_servicio x ON x.id = v.id_orden
+                WHERE v.id_tecnico = t.id AND v.vigente AND v.resultado = 'programada' AND x.id_zona = o.id_zona)
+            END::int AS visitas_en_zona
+       FROM orden_servicio o
+       JOIN articulo a ON a.id = o.id_articulo
+       JOIN categoria_articulo k ON k.id = a.id_categoria
+       JOIN tecnico t ON t.activo AND t.tipo = CASE WHEN o.modalidad = 'ruta' THEN 'ruta' ELSE 'planta' END
+       JOIN usuario u ON u.id = t.id_usuario AND u.activo AND NOT u.bloqueado
+      WHERE o.id = $1
+      ORDER BY coincide DESC, visitas_en_zona DESC, carga ASC, nombre`,
+    [idOrden],
+  );
+  return rows;
 }

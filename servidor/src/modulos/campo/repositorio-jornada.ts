@@ -78,7 +78,8 @@ export async function ordenesDelTecnico(
        LEFT JOIN zona z  ON z.id = o.id_zona
       WHERE o.id_tecnico = $1
         AND NOT (o.estado = ANY ($2::estado_orden[]))
-      ORDER BY o.plazo_vence_en NULLS LAST, o.numero`,
+      -- RF-39: la ruta por zona y, dentro de cada zona, por plazo.
+      ORDER BY z.nombre NULLS LAST, o.plazo_vence_en NULLS LAST, o.numero`,
     [idTecnico, ESTADOS_FINALES],
   );
   return rows;

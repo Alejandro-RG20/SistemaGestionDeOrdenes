@@ -52,6 +52,11 @@ export interface EstadoPublicoOrden {
   readonly cerrada: boolean;
   /** RF-68: cuando se espera el repuesto, si es lo que la detiene. */
   readonly repuestoEsperadoPara: string | null;
+  /**
+   * RF-67: la visita a domicilio pendiente, si la hay. Solo dia y franja:
+   * ni el nombre del tecnico ni nada que sirva para ubicarlo.
+   */
+  readonly visitaProgramada: { readonly fecha: string; readonly franja: string } | null;
   readonly recorrido: readonly PasoPublico[];
   readonly actualizadoEn: string;
 }

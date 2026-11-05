@@ -602,3 +602,49 @@ Pruebas nuevas: `cotizacion-y-exclusion.prueba.ts` (E-1 a E-16), `cotizacion.pru
 2. **Líneas de cotización**: tabla `cotizacion_linea` (concepto, repuesto, cantidad, precio de inventario, precio cotizado, ajuste, importe final, responsable de pago, motivo) y columnas `cotizacion.total_original` y `cotizacion.descuento_total`. Hoy el detalle se guarda como constancia JSON en la bitácora inmutable y la tabla `cotizacion` conserva los importes finales.
 3. **Permiso propio para ajustes**: `taller.cotizacion.ajustar` («Aplicar descuentos, exoneraciones y precios cotizados»), asignado a jefatura de atención al cliente, jefatura de técnicos y administración. Cambia el catálogo que carga la siembra.
 4. **Solicitudes abiertas de la orden cerrada por exclusión**: hoy, como en cualquier cierre sin reparar, no se anulan solas (no se tocó el inventario). Decidir si al confirmar la exclusión deben anularse o pasarse a la orden nueva.
+
+---
+
+# Séptima etapa · Requerimientos del Informe (Cap. I) que faltaban o estaban a medias
+
+Contraste con `Informe_SERVITOTAL_Cap_I_y_II.docx`. **Sin cambios de esquema, migraciones ni siembra.**
+
+## Construidos (faltaban)
+| RF | Qué se hizo |
+|---|---|
+| RF-22 | Listas de verificación por categoría (tablas `checklist_plantilla` y `diagnostico_item`, que ya existían sin uso): la plantilla baja con la jornada y se llena en el diagnóstico de campo y en el del panel, con un solo componente (`ListaVerificacion`). Números con unidad y rango, sí/no, selección y texto. Validación compartida (`compartido/dominio/checklist.ts`). Desde el panel se exige completa; por la cola, una operación antigua sin lista se acepta y una incompleta va a excepciones. |
+| RF-23 | Medición fuera de rango: aviso en vivo, `diagnostico_item.fuera_de_rango` y advertencia en el historial de la orden. |
+| RF-25 | Lectura del código del repuesto con la cámara (`BarcodeDetector` del navegador, sin conexión) o con lector de mano (teclado + Enter), en el consumo de campo y en los movimientos de bodega. Elige la pieza exacta; nunca una parecida. |
+| RF-27 | Paso 5 «Cotización» de la app de campo, sin conexión: mano de obra, repuestos de la bodega móvil al precio descargado y cargo de visita de la zona. Operación de cola `cotizacion.registrar` (la columna `tipo_operacion` es texto: no hubo cambio de esquema), aplicada con las mismas reglas que la cotización del panel; el precio mostrado al cliente prevalece y la diferencia queda anotada (RN-19). |
+| RF-28 | Firma del cliente en pantalla (`LienzoDeFirma`), como evidencia de tipo firma por el mismo circuito que las fotos (huella, autor, cola). En la app de campo y en el panel. |
+
+## Completados (estaban parciales)
+| RF | Qué se hizo |
+|---|---|
+| RF-06 | Cierre de sesión del panel tras 30 min sin actividad, con aviso. No en la app de campo (el técnico puede estar sin señal y no podría volver a entrar). |
+| RF-14 | `GET /ordenes/:id/tecnicos-sugeridos`: técnicos del tipo de la modalidad, ordenados por especialidad = categoría del artículo, visitas pendientes en la misma zona y menor carga, con la razón. El panel los muestra primero al asignar. *Sin relación técnico–zona en el esquema, la afinidad de zona sale de las visitas ya programadas.* |
+| RF-16 | Filtros de órdenes por garantía, marca y rango de fecha de recepción (servidor y pantalla). |
+| RF-21 | Con RF-27 y RF-28, la cotización y la firma también funcionan sin conexión. |
+| RF-39 | La ruta del técnico se ordena y agrupa por zona; dentro de cada zona, por plazo. |
+| RF-63 | Reporte «Diferencias de inventario» (ajustes con bodega, sentido, piezas, justificación y responsable). |
+| RF-65 | «Imprimir o guardar en PDF» en reportes, con hoja de impresión sin menú ni botones. El PDF lo genera el navegador; no el servidor. |
+| RF-67 | El portal muestra la visita programada pendiente (día y franja; sin datos del técnico). |
+
+## Siguen pendientes
+- **RF-45** (firma de la cotización obligatoria antes de intervenir): la firma ya se puede tomar, pero exigirla rompería la aceptación remota (llamada, mensaje) que hoy se usa. Decisión de negocio.
+- **RF-55** (conteo cíclico con autorización aparte): exige un estado «pendiente de autorizar» para el ajuste → cambio de esquema; requiere autorización.
+- **RF-49**: el despacho por solicitud ya tiene la confirmación del técnico («recibida»); un despacho directo a bodega móvil fuera de una solicitud no la tiene.
+- **RF-42**: la pantalla de reglas se retiró por decisión; la API existe.
+- Retirados por decisión: RF-13, RF-44, RF-37, RF-56 a RF-59.
+- **RNF** sin cumplir o sin medir: RNF-14 (cifrado de los datos locales), RNF-10 (almacenamiento de objetos), RNF-18 (respaldo diario), rendimiento y disponibilidad (RNF-01 a 06), RNF-11, RNF-12, RNF-21.
+
+## Verificación
+| Verificación | Resultado |
+|---|---|
+| `npm run verificar-tipos` | sin errores |
+| `npm run construir -w panel` | correcto |
+| Servidor | **45 archivos, 603 pruebas, todas aprobadas** |
+| Panel | **125 pruebas aprobadas** |
+| Navegador (Chromium, base local) | lista de verificación con aviso fuera de rango; código por lector de mano elige la pieza; cotización de campo guardada sin conexión; firma dibujada y verificada; portal con visita programada; filtros por garantía y fecha; técnicos sugeridos; reporte de diferencias impreso a PDF sin menú; sin errores de consola ni 5xx |
+
+No probado: la lectura con cámara en un teléfono real (Chromium de escritorio no trae `BarcodeDetector`; se probó el lector de mano), y el cierre por inactividad esperando 30 minutos reales (cubierto por prueba unitaria).

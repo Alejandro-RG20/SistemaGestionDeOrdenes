@@ -15,7 +15,9 @@
  * control de acceso —eso lo hace el servidor— sino no ofrecerle a alguien un
  * formulario que va a rechazarsele al enviarlo.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { LectorDeCodigo } from '../componentes/LectorDeCodigo.js';
+import { repuestoPorCodigo } from '../campo/flujo-campo.js';
 import type {
   ExistenciaEnBodega, ResumenBodega, ResumenMovimiento, TipoMovimiento,
 } from '@servitotal/compartido';
@@ -91,6 +93,12 @@ export function Movimientos(): JSX.Element {
     () => api.pedirPagina('/repuestos', { texto: texto === '' ? undefined : texto, tamano: 25 }),
     [texto],
   );
+  // RF-25/RF-49: un codigo leido (camara o lector de mano) elige la pieza
+  // exacta en cuanto la busqueda la trae; nunca una parecida.
+  useEffect(() => {
+    const exacto = repuestoPorCodigo(repuestos.datos?.datos ?? [], texto);
+    if (exacto !== null) setIdRepuesto(exacto.id);
+  }, [repuestos.datos, texto]);
   const movimientos = useRecurso<PaginaDeDatos<ResumenMovimiento>>(
     () => api.pedirPagina<ResumenMovimiento>('/movimientos', { tamano: 25 }),
     [hecho],
@@ -210,6 +218,7 @@ export function Movimientos(): JSX.Element {
               onChange={(e) => setTexto(e.target.value)}
               placeholder="Codigo o descripcion"
             />
+            <LectorDeCodigo alLeer={(codigo) => setTexto(codigo.trim())} />
             <select
               aria-label="Repuesto elegido"
               value={idRepuesto}

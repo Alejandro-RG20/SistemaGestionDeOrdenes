@@ -29,7 +29,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCampo } from '../../campo/contexto.js';
 import { Aviso, Garantia, EtiquetaEstado } from '../../componentes/piezas.js';
 import { BarraDeSincronizacion } from '../../componentes/ArmazonCampo.js';
-import { avancesDisponibles } from '../../campo/flujo-campo.js';
+import { avancesDisponibles, agruparPorZona } from '../../campo/flujo-campo.js';
 import { useDelCampo } from './datos.js';
 
 function hora(iso: string | null): string {
@@ -109,7 +109,15 @@ export function MiRuta(): JSX.Element {
         )
         : null}
 
-      {enSusManos.map(tarjeta)}
+      {/* RF-39: la ruta por zona, para recorrer cada barrio de una vez. */}
+      {agruparPorZona(enSusManos).map((grupo) => (
+        <div key={grupo.zona}>
+          <h3 style={{ fontSize: 12.5, margin: '12px 0 4px', color: 'var(--soft)' }}>
+            {grupo.zona} · {grupo.ordenes.length}
+          </h3>
+          {grupo.ordenes.map(tarjeta)}
+        </div>
+      ))}
 
       {!cargando && descargadaEn !== null && ordenes.length === 0
         ? (
