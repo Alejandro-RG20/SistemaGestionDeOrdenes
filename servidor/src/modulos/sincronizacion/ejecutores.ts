@@ -15,6 +15,7 @@ import * as repositorioSincronizacion from './repositorio.js';
 import * as servicioOrdenes from '../ordenes/servicio.js';
 import * as servicioTransiciones from '../ordenes/servicio-transiciones.js';
 import * as servicioAgenda from '../agenda/servicio.js';
+import * as servicioDiagnostico from '../ordenes/servicio-diagnostico.js';
 import { consumirDesdeCampo } from '../inventario/servicio-consumo-campo.js';
 import * as repositorioCampo from '../campo/repositorio.js';
 
@@ -150,7 +151,23 @@ const EJECUTORES: Readonly<Record<TipoOperacion, Ejecutador>> = {
       momentoDispositivo,
       creadoPor: actor.id,
     });
-    return { idEntidad: id, mensaje: 'Diagnostico registrado.' };
+    // Lista de verificacion (RF-22/23). Una operacion guardada en el
+    // dispositivo antes de esta version no trae `mediciones`: se acepta
+    // sin ellas, para no descartar trabajo de campo (RN-20).
+    const mediciones = carga['mediciones'];
+    if (mediciones !== undefined && !Array.isArray(mediciones)) {
+      throw new ErrorValidacion('Las mediciones del diagnostico no tienen el formato esperado.', {});
+    }
+    const fuera = await servicioDiagnostico.registrarMediciones(ejecutor, {
+      idOrden, idDiagnostico: id, estadoOrden: await repositorioSincronizacion.estadoDeOrden(idOrden, ejecutor) ?? '',
+      idResponsable: actor.id, respuestas: mediciones as never, exigirLista: false,
+    });
+    return {
+      idEntidad: id,
+      mensaje: fuera.length === 0
+        ? 'Diagnostico registrado.'
+        : `Diagnostico registrado con ${fuera.length} medicion(es) fuera de rango.`,
+    };
   },
 
   [TIPO_OPERACION.INVENTARIO_CONSUMO]: async ({ actor, carga, momentoDispositivo, ejecutor }) => {

@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import peticion from 'supertest';
 import { CODIGO_ROL, MODALIDAD_SERVICIO } from '@servitotal/compartido';
 import { CONTRASENA_DE_PRUEBA, montarApi, usuarioConRol, type EntornoApi } from '../apoyo/entorno-api.js';
+import { medicionesValidas } from '../apoyo/mediciones.js';
 
 const RAIZ = '/api/v1';
 type Cabecera = { Authorization: string };
@@ -206,7 +207,7 @@ describe('reparacion particular: cotizacion, autorizacion y «autorizada» (P-20
 
   it('diagnostica y cotiza desde el panel; sin cotizacion aceptada no se autoriza', async () => {
     await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/diagnostico`).set(tecnico)
-      .send({ fallaReal: 'Tarjeta principal danada por humedad', componente: 'tarjeta' }).expect(201);
+      .send({ ...(await medicionesValidas(entorno.aplicacion, tecnico, id)), fallaReal: 'Tarjeta principal danada por humedad', componente: 'tarjeta' }).expect(201);
     await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/cotizaciones`).set(tecnico)
       .send({ manoObra: 800, totalRepuestos: 2400 }).expect(201);
     await evidencia(id, 'diagnostico');
@@ -313,7 +314,7 @@ describe('garantia del proveedor y exclusion por daño (P-16 a P-18, P-24)', () 
     expect((await ficha(agente, id)).tipoGarantia).toBe('proveedor');
     await hastaDiagnostico(id);
     await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/diagnostico`).set(tecnico)
-      .send({ fallaReal: 'Carcasa partida y tarjeta danada', exclusion: 'Golpe fuerte en la parte trasera' }).expect(201);
+      .send({ ...(await medicionesValidas(entorno.aplicacion, tecnico, id)), fallaReal: 'Carcasa partida y tarjeta danada', exclusion: 'Golpe fuerte en la parte trasera' }).expect(201);
 
     const orden = await ficha(agente, id);
     expect(orden.tipoGarantia).toBe('proveedor');
@@ -551,7 +552,7 @@ describe('el diagnostico no cambia la garantia por si solo', () => {
     }).expect(201);
 
     await hastaDiagnostico(id);
-    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/diagnostico`).set(tecnico).send({
+    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/diagnostico`).set(tecnico).send({ ...(await medicionesValidas(entorno.aplicacion, tecnico, id)), ...(await medicionesValidas(entorno.aplicacion, tecnico, id)),
       fallaReal: 'Tarjeta quemada por sobrecarga electrica',
       componente: 'tarjeta principal',
       observaciones: 'Se midio el voltaje de la toma: 145 V',

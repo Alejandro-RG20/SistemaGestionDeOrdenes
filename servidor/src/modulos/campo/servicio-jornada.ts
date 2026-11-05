@@ -12,6 +12,7 @@ import type { JornadaDelDispositivo } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import { ErrorDominio } from '../../comun/errores.js';
 import * as repositorio from './repositorio-jornada.js';
+import { plantillasPorCategoria } from '../ordenes/servicio-diagnostico.js';
 
 export async function descargar(actor: Actor): Promise<JornadaDelDispositivo> {
   const tecnico = await repositorio.tecnicoDelUsuario(actor.id);
@@ -31,6 +32,8 @@ export async function descargar(actor: Actor): Promise<JornadaDelDispositivo> {
     ? []
     : await repositorio.existenciasDeBodega(tecnico.id_bodega);
   const reglas = await repositorio.reglasDeEvidencia();
+  // La lista de verificacion de cada categoria, para diagnosticar sin senal.
+  const plantillas = await plantillasPorCategoria(ordenes.map((fila) => fila.id_categoria));
 
   return {
     descargadaEn: new Date().toISOString(),
@@ -56,6 +59,8 @@ export async function descargar(actor: Actor): Promise<JornadaDelDispositivo> {
       zona: fila.zona,
       plazoVenceEn: fila.plazo_vence_en?.toISOString() ?? null,
       evidenciasRegistradas: fila.evidencias,
+      checklist: plantillas.get(fila.id_categoria) ?? null,
+      cargoVisita: Number(fila.cargo_visita ?? 0),
     })),
     repuestos: repuestos.map((fila) => ({
       id: fila.id,

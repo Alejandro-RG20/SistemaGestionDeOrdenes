@@ -7,6 +7,7 @@
  * medias. Lo que baja aqui es exactamente lo que necesita para trabajar y
  * nada mas.
  */
+import type { PlantillaChecklist } from '../dominio/checklist.js';
 import type { EstadoOrden, ModalidadServicio, TipoGarantia } from '../dominio/orden.js';
 
 export interface OrdenDeJornada {
@@ -35,6 +36,10 @@ export interface OrdenDeJornada {
    * volveria a pedir una fotografia que ya esta subida.
    */
   readonly evidenciasRegistradas: readonly string[];
+  /** Lista de verificacion de la categoria del articulo, para diagnosticar sin conexion (RF-22). */
+  readonly checklist?: PlantillaChecklist | null;
+  /** Cargo de visita congelado en la orden, para cotizar sin conexion (RF-27). */
+  readonly cargoVisita?: number;
 }
 
 export interface RepuestoDeJornada {

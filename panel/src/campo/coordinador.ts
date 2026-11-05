@@ -19,7 +19,7 @@
 import {
   ESTADO_ORDEN, TIPO_GARANTIA, TIPO_OPERACION,
   type EstadoOrden, type JornadaDelDispositivo, type ReglaEvidenciaDeJornada,
-  type ResultadoVisita,
+  type RespuestaChecklist, type ResultadoVisita,
 } from '@servitotal/compartido';
 import type { ClienteApi } from '../api/cliente.js';
 import type { AlmacenDeEspejo, OrdenEnEspejo, RepuestoConExistencia } from './espejo.js';
@@ -198,6 +198,7 @@ export class Coordinador {
 
   async registrarDiagnostico(
     idOrden: string, fallaReal: string, componente?: string,
+    mediciones?: readonly RespuestaChecklist[],
   ): Promise<void> {
     const { idTecnico } = await this.espejo.identidad();
     if (idTecnico === null) {
@@ -211,6 +212,7 @@ export class Coordinador {
       idTecnico,
       fallaReal,
       ...(componente === undefined ? {} : { componente }),
+      ...(mediciones === undefined ? {} : { mediciones }),
     }));
   }
 

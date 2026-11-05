@@ -9,6 +9,7 @@ export * from './dominio/evidencia.js';
 export * from './dominio/auditoria.js';
 export * from './dominio/fechas.js';
 export * from './dominio/cotizacion.js';
+export * from './dominio/checklist.js';
 export * from './dominio/proceso-final.js';
 export * from './dominio/seguridad.js';
 export * from './dominio/matriz-permisos.js';

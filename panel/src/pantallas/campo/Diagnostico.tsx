@@ -1,10 +1,11 @@
 /**
  * M-03 · Diagnostico.
  *
- * Dos campos y nada mas: componente afectado y falla real. No es una
- * pantalla pobre, es una pantalla honesta — el servidor solo persiste esos
- * dos datos, y un formulario con cinco casillas que se pierden al
- * sincronizar es peor que ninguno.
+ * Componente afectado, falla real y la lista de verificacion de la
+ * categoria del articulo (RF-22): mediciones con unidad y rango, que
+ * advierten en vivo si caen fuera de parametro (RF-23). Todo se guarda en
+ * el dispositivo y viaja en la cola; el servidor lo valida con la misma
+ * funcion.
  *
  * La falla real se escribe SIEMPRE, aunque coincida con lo que reporto el
  * cliente. Es lo que despues sostiene la reparacion y el reclamo de garantia:
@@ -18,6 +19,9 @@ import { Aviso, Garantia } from '../../componentes/piezas.js';
 import { BarraDeSincronizacion, Pasos } from '../../componentes/ArmazonCampo.js';
 import { admiteDiagnostico } from '../../campo/flujo-campo.js';
 import { useDelCampo } from './datos.js';
+import {
+  ListaVerificacion, problemasDe, respuestasDe, type ValoresChecklist,
+} from '../../componentes/ListaVerificacion.js';
 
 /**
  * Los componentes que se repiten en el taller, para no escribirlos a mano
@@ -45,12 +49,16 @@ export function Diagnostico(): JSX.Element {
   const [guardando, setGuardando] = useState(false);
   const [fallo, setFallo] = useState<string | null>(null);
   const [guardado, setGuardado] = useState(false);
+  const [valores, setValores] = useState<ValoresChecklist>({});
 
   if (cargando) return <p className="sub">Leyendo la orden guardada…</p>;
   if (orden === null) return <Aviso tono="warn">Esta orden no esta en la ruta que bajo.</Aviso>;
 
   const componenteFinal = componente === 'otro' ? otro.trim() : componente;
-  const puedeGuardar = fallaReal.trim().length >= 10 && !guardando;
+  // Ordenes bajadas antes de esta version no traen la lista: se diagnostica sin ella.
+  const plantilla = orden.checklist ?? null;
+  const problemas = plantilla === null ? [] : problemasDe(plantilla, valores);
+  const puedeGuardar = fallaReal.trim().length >= 10 && problemas.length === 0 && !guardando;
 
   const guardar = async (): Promise<void> => {
     if (campo === null) return;
@@ -61,6 +69,7 @@ export function Diagnostico(): JSX.Element {
         orden.id,
         fallaReal.trim(),
         componenteFinal === '' ? undefined : componenteFinal,
+        plantilla === null ? undefined : respuestasDe(plantilla, valores),
       );
       await refrescar();
       setGuardado(true);
@@ -135,6 +144,16 @@ export function Diagnostico(): JSX.Element {
           )
           : null}
       </div>
+
+      {plantilla === null ? null : (
+        <div className="card">
+          <h3>Lista de verificacion · {plantilla.nombre}</h3>
+          <ListaVerificacion plantilla={plantilla} valores={valores} alCambiar={setValores} />
+          {problemas.length === 0 ? null : (
+            <p style={{ fontSize: 11, color: 'var(--amber)', margin: '5px 0 0' }}>{problemas.join(' ')}</p>
+          )}
+        </div>
+      )}
 
       {fallo === null ? null : <Aviso tono="warn">{fallo}</Aviso>}
 

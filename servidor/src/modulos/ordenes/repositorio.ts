@@ -1,6 +1,7 @@
 /** Acceso a datos de ordenes. Uso interno del modulo. */
 import type {
-  DetalleCotizacion, DiagnosticoDeOrden, EntradaBitacora, EstadoOrden, RepuestoDeLaOrden,
+  DetalleCotizacion, DiagnosticoDeOrden, EntradaBitacora, EstadoOrden, ItemChecklist, MedicionRegistrada,
+  PlantillaChecklist, RepuestoDeLaOrden,
 } from '@servitotal/compartido';
 import type { Ejecutor } from '../../comun/transacciones.js';
 import { ejecutorPorDefecto } from '../../comun/transacciones.js';
@@ -840,9 +841,11 @@ export async function diagnosticosDeOrden(
       WHERE d.id_orden = $1 ORDER BY d.momento_dispositivo`,
     [idOrden],
   );
+  const mediciones = await medicionesDe(rows.map((f) => f.id), ejecutor);
   return rows.map((f) => ({
     id: f.id, fallaReal: f.falla_real, componente: f.componente,
     momento: f.momento.toISOString(), tecnico: f.tecnico.trim(),
+    mediciones: mediciones.get(f.id) ?? [],
   }));
 }
 
@@ -999,4 +1002,93 @@ export async function fallaReportada(idOrden: string, ejecutor: Ejecutor = ejecu
 export async function tieneDiagnostico(idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto()): Promise<boolean> {
   const { rows } = await ejecutor.query('SELECT 1 FROM diagnostico WHERE id_orden = $1 LIMIT 1', [idOrden]);
   return rows.length > 0;
+}
+
+// ── listas de verificacion del diagnostico (RF-22, RF-23) ───────────────
+
+/** Plantillas vigentes (la de mayor version por categoria), con sus campos. */
+export async function plantillasVigentes(
+  idsCategoria: readonly string[], ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<Map<string, PlantillaChecklist>> {
+  if (idsCategoria.length === 0) return new Map();
+  const { rows } = await ejecutor.query<{
+    id_categoria: string; id: string; nombre: string; items: ItemChecklist[] | null;
+  }>(
+    `SELECT DISTINCT ON (p.id_categoria) p.id_categoria, p.id, p.nombre,
+            (SELECT json_agg(json_build_object(
+                'id', i.id, 'orden', i.orden, 'etiqueta', i.etiqueta, 'tipoCampo', i.tipo_campo,
+                'unidad', i.unidad, 'rangoMin', i.rango_min::float, 'rangoMax', i.rango_max::float,
+                'opciones', i.opciones, 'obligatorio', i.obligatorio) ORDER BY i.orden)
+               FROM checklist_item_plantilla i WHERE i.id_plantilla = p.id) AS items
+       FROM checklist_plantilla p
+      WHERE p.activa AND p.id_categoria = ANY ($1::uuid[])
+      ORDER BY p.id_categoria, p.version DESC`,
+    [idsCategoria],
+  );
+  return new Map(rows.map((f) => [f.id_categoria, { id: f.id, nombre: f.nombre, items: f.items ?? [] }]));
+}
+
+/** La plantilla vigente para la categoria del articulo de la orden. */
+export async function plantillaDeOrden(
+  idOrden: string, ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<PlantillaChecklist | null> {
+  const { rows } = await ejecutor.query<{ id_categoria: string }>(
+    `SELECT a.id_categoria FROM orden_servicio o JOIN articulo a ON a.id = o.id_articulo WHERE o.id = $1`,
+    [idOrden],
+  );
+  if (rows[0] === undefined) return null;
+  return (await plantillasVigentes([rows[0].id_categoria], ejecutor)).get(rows[0].id_categoria) ?? null;
+}
+
+export async function guardarMediciones(
+  ejecutor: Ejecutor, idDiagnostico: string, idPlantilla: string, mediciones: readonly MedicionRegistrada[],
+): Promise<void> {
+  await ejecutor.query('UPDATE diagnostico SET id_plantilla = $2 WHERE id = $1', [idDiagnostico, idPlantilla]);
+  if (mediciones.length === 0) return;
+  await ejecutor.query(
+    `INSERT INTO diagnostico_item (id_diagnostico, id_item_plantilla, etiqueta, tipo_campo, valor_numerico,
+                                   valor_texto, valor_booleano, unidad, rango_min, rango_max, fuera_de_rango)
+     SELECT $1, m.id_item, m.etiqueta, m.tipo_campo::tipo_campo_checklist, m.valor_numerico, m.valor_texto,
+            m.valor_booleano, m.unidad, m.rango_min, m.rango_max, m.fuera_de_rango
+       FROM jsonb_to_recordset($2::jsonb) AS m(id_item uuid, etiqueta text, tipo_campo text, valor_numerico numeric,
+            valor_texto text, valor_booleano boolean, unidad text, rango_min numeric, rango_max numeric,
+            fuera_de_rango boolean)`,
+    [idDiagnostico, JSON.stringify(mediciones.map((m) => ({
+      id_item: m.idItem, etiqueta: m.etiqueta, tipo_campo: m.tipoCampo, valor_numerico: m.valorNumerico,
+      valor_texto: m.valorTexto, valor_booleano: m.valorBooleano, unidad: m.unidad,
+      rango_min: m.rangoMin, rango_max: m.rangoMax, fuera_de_rango: m.fueraDeRango,
+    })))],
+  );
+}
+
+/** Mediciones de varios diagnosticos, agrupadas por diagnostico. */
+export async function medicionesDe(
+  idsDiagnostico: readonly string[], ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<Map<string, MedicionRegistrada[]>> {
+  if (idsDiagnostico.length === 0) return new Map();
+  const { rows } = await ejecutor.query<{
+    id_diagnostico: string; id_item_plantilla: string | null; etiqueta: string; tipo_campo: string;
+    valor_numerico: string | null; valor_texto: string | null; valor_booleano: boolean | null; unidad: string | null;
+    rango_min: string | null; rango_max: string | null; fuera_de_rango: boolean;
+  }>(
+    `SELECT di.id_diagnostico, di.id_item_plantilla, di.etiqueta, di.tipo_campo::text AS tipo_campo,
+            di.valor_numerico, di.valor_texto, di.valor_booleano, di.unidad, di.rango_min, di.rango_max,
+            di.fuera_de_rango
+       FROM diagnostico_item di LEFT JOIN checklist_item_plantilla ip ON ip.id = di.id_item_plantilla
+      WHERE di.id_diagnostico = ANY ($1::uuid[])
+      ORDER BY di.id_diagnostico, ip.orden NULLS LAST, di.etiqueta`,
+    [idsDiagnostico],
+  );
+  const numero = (valor: string | null): number | null => (valor === null ? null : Number(valor));
+  const resultado = new Map<string, MedicionRegistrada[]>();
+  for (const f of rows) {
+    const lista = resultado.get(f.id_diagnostico) ?? [];
+    lista.push({
+      idItem: f.id_item_plantilla, etiqueta: f.etiqueta, tipoCampo: f.tipo_campo as never,
+      valorNumerico: numero(f.valor_numerico), valorTexto: f.valor_texto, valorBooleano: f.valor_booleano,
+      unidad: f.unidad, rangoMin: numero(f.rango_min), rangoMax: numero(f.rango_max), fueraDeRango: f.fuera_de_rango,
+    });
+    resultado.set(f.id_diagnostico, lista);
+  }
+  return resultado;
 }

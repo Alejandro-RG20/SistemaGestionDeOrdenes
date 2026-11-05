@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import peticion from 'supertest';
 import { CODIGO_ROL, MODALIDAD_SERVICIO } from '@servitotal/compartido';
 import { CONTRASENA_DE_PRUEBA, montarApi, usuarioConRol, type EntornoApi } from '../apoyo/entorno-api.js';
+import { medicionesValidas } from '../apoyo/mediciones.js';
 
 const RAIZ = '/api/v1';
 type Cabecera = { Authorization: string };
@@ -91,7 +92,7 @@ async function diagnosticada(tipo: string, filtro: string): Promise<string> {
   await mover(gestor, id, 'en_cola_taller').expect(200);
   await mover(gestor, id, 'en_diagnostico').expect(200);
   await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/diagnostico`).set(tecnico)
-    .send({ fallaReal: 'Compresor sin arranque', componente: 'compresor', observaciones: 'Se midio 0 ohm en el devanado' })
+    .send({ ...(await medicionesValidas(entorno.aplicacion, tecnico, id)), fallaReal: 'Compresor sin arranque', componente: 'compresor', observaciones: 'Se midio 0 ohm en el devanado' })
     .expect(201);
   return id;
 }
@@ -176,7 +177,7 @@ describe('ordenes cubiertas por garantia (E-1, E-2)', () => {
     await mover(gestor, id, 'en_cola_taller').expect(200);
     await mover(gestor, id, 'en_diagnostico').expect(200);
     await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/diagnostico`).set(tecnico)
-      .send({ fallaReal: 'Termostato abierto' }).expect(201);
+      .send({ ...(await medicionesValidas(entorno.aplicacion, tecnico, id)), fallaReal: 'Termostato abierto' }).expect(201);
 
     const conDescuento = await cotizar(jefatura, id, {
       manoObra: 500, ajustes: { manoObra: { tipo: 'porcentaje', valor: 10 } }, motivo: 'Intento de descuento en garantia',
@@ -200,7 +201,7 @@ describe('garantia que deja de aplicar (E-4, E-5, E-16)', () => {
     const pieza = await repuesto(90);
     await pedir(original, pieza.id, 1, 'aprobada');
     await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${original}/diagnostico`).set(tecnico)
-      .send({ fallaReal: 'Carcasa partida', exclusion: 'Golpe en la parte trasera' }).expect(201);
+      .send({ ...(await medicionesValidas(entorno.aplicacion, tecnico, original)), fallaReal: 'Carcasa partida', exclusion: 'Golpe en la parte trasera' }).expect(201);
     const orden = await ficha(agente, original);
     expect(orden.estado).toBe('en_diagnostico');
     expect(orden.tipoGarantia).toBe('proveedor');
@@ -468,5 +469,41 @@ describe('autorizacion del cliente (E-13, E-14)', () => {
     // Ya autorizada, la cotizacion no se cambia.
     const tarde = await cotizar(jefatura, id, { manoObra: 200, motivo: 'Cambio despues de autorizar la orden' });
     expect(tarde.status).toBe(422);
+  });
+});
+
+describe('lista de verificacion en el panel (RF-22, RF-23)', () => {
+  it('se exige completa, guarda las mediciones y advierte lo que esta fuera de rango', async () => {
+    const id = await ordenDeTaller('particular', `${PROVEEDOR_APLICA} AND EXISTS (
+      SELECT 1 FROM categoria_articulo k WHERE k.id = a.id_categoria AND k.nombre = 'refrigeracion')`);
+    await peticion(entorno.aplicacion).put(`${RAIZ}/ordenes/${id}/tecnico`).set(gestor).send({ idTecnico }).expect(200);
+    await evidencia(id, 'recepcion');
+    await mover(gestor, id, 'asignada').expect(200);
+    await evidencia(id, 'validacion_garantia');
+    await mover(gestor, id, 'en_cola_taller').expect(200);
+    await mover(gestor, id, 'en_diagnostico').expect(200);
+
+    const { checklist } = await taller(tecnico, id);
+    expect(checklist.items.length).toBeGreaterThan(0);
+
+    const sinLista = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/diagnostico`).set(tecnico)
+      .send({ fallaReal: 'Compresor con corriente alta' });
+    expect(sinLista.status).toBe(400);
+    expect(sinLista.body.error.message).toMatch(/Complete la lista de verificacion/);
+
+    const { mediciones } = await medicionesValidas(entorno.aplicacion, tecnico, id);
+    const numerico = checklist.items.find((i: { tipoCampo: string }) => i.tipoCampo === 'numerico');
+    const conFuera = mediciones.map((m) => (m.idItem === numerico.id ? { ...m, valor: numerico.rangoMax + 5 } : m));
+    await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${id}/diagnostico`).set(tecnico)
+      .send({ fallaReal: 'Compresor con corriente alta', mediciones: conFuera }).expect(201);
+
+    const datos = await taller(agente, id);
+    const guardadas = datos.diagnosticos[0].mediciones;
+    expect(guardadas).toHaveLength(mediciones.length);
+    expect(guardadas.filter((m: { fueraDeRango: boolean }) => m.fueraDeRango).map((m: { etiqueta: string }) => m.etiqueta))
+      .toEqual([numerico.etiqueta]);
+    const eventos = (await peticion(entorno.aplicacion).get(`${RAIZ}/ordenes/${id}/historial`).set(agente).expect(200))
+      .body.data as Array<{ detalle: string | null }>;
+    expect(eventos.some((e) => (e.detalle ?? '').startsWith('Advertencia: medicion fuera de rango'))).toBe(true);
   });
 });

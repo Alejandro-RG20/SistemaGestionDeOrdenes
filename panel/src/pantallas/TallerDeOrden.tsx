@@ -20,6 +20,9 @@ import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
 import { Aviso, Cargando, Fallo, Tarjeta, Vacio, cordobas, fechaHora } from '../componentes/piezas.js';
 import { ErrorDeApi } from '../api/cliente.js';
+import {
+  ListaVerificacion, MedicionesGuardadas, problemasDe, respuestasDe, type ValoresChecklist,
+} from '../componentes/ListaVerificacion.js';
 
 const FORMAS = [
   { valor: 'llamada', nombre: 'Por llamada' },
@@ -144,6 +147,7 @@ export function TallerDeOrden({ orden, alCambiar }: { orden: FichaOrden; alCambi
     precios: {} as Record<string, string>,
   });
   const [decision, setDecision] = useState({ forma: 'llamada', observacion: '' });
+  const [valores, setValores] = useState<ValoresChecklist>({});
 
   if (datos.cargando) return <Cargando que="diagnostico y cotizacion" />;
   if (datos.error !== null || datos.datos === null) return <Fallo error={datos.error} alReintentar={datos.recargar} />;
@@ -220,7 +224,10 @@ export function TallerDeOrden({ orden, alCambiar }: { orden: FichaOrden; alCambi
           <thead><tr><th>Fecha</th><th>Tecnico</th><th>Falla encontrada</th><th>Componente</th></tr></thead>
           <tbody>
             {taller.diagnosticos.map((d) => (
-              <tr key={d.id}><td>{fechaHora(d.momento)}</td><td>{d.tecnico}</td><td>{d.fallaReal}</td><td>{d.componente ?? '—'}</td></tr>
+              <tr key={d.id}>
+                <td>{fechaHora(d.momento)}</td><td>{d.tecnico}</td>
+                <td>{d.fallaReal}<MedicionesGuardadas mediciones={d.mediciones} /></td><td>{d.componente ?? '—'}</td>
+              </tr>
             ))}
           </tbody>
         </table>
@@ -249,6 +256,12 @@ export function TallerDeOrden({ orden, alCambiar }: { orden: FichaOrden; alCambi
                 placeholder="Golpe en la carcasa trasera; tarjeta con humedad…" />
             </>
           ) : null}
+          {taller.checklist === null ? null : (
+            <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+              <b style={{ fontSize: 12.5 }}>Lista de verificacion · {taller.checklist.nombre}</b>
+              <ListaVerificacion plantilla={taller.checklist} valores={valores} alCambiar={setValores} />
+            </div>
+          )}
           <p className="tenue" style={{ fontSize: 11.5, margin: '6px 0 0' }}>
             El diagnostico no cambia la garantia de la orden. Las observaciones y la exclusion quedan en el historial;
             las fotos se cargan en la pestaña de evidencias. Si la garantia debe cambiar, la reclasifica quien tiene
@@ -256,15 +269,17 @@ export function TallerDeOrden({ orden, alCambiar }: { orden: FichaOrden; alCambi
           </p>
           <button
             type="button" className="btn pri" style={{ marginTop: 8 }}
-            disabled={guardando || diagnostico.fallaReal.trim().length < 5 || (diagnostico.noCubierta && diagnostico.exclusion.trim().length < 5)}
+            disabled={guardando || diagnostico.fallaReal.trim().length < 5 || (diagnostico.noCubierta && diagnostico.exclusion.trim().length < 5)
+              || (taller.checklist !== null && problemasDe(taller.checklist, valores).length > 0)}
             onClick={() => {
               void enviar(`/ordenes/${orden.id}/diagnostico`, {
                 fallaReal: diagnostico.fallaReal.trim(),
                 componente: diagnostico.componente.trim() === '' ? null : diagnostico.componente.trim(),
                 observaciones: diagnostico.observaciones.trim() === '' ? null : diagnostico.observaciones.trim(),
                 exclusion: diagnostico.noCubierta ? diagnostico.exclusion.trim() : null,
+                ...(taller.checklist === null ? {} : { mediciones: respuestasDe(taller.checklist, valores) }),
               }, 'Diagnostico registrado. La garantia de la orden no cambio.',
-              () => setDiagnostico({ fallaReal: '', componente: '', observaciones: '', noCubierta: false, exclusion: '' }));
+              () => { setDiagnostico({ fallaReal: '', componente: '', observaciones: '', noCubierta: false, exclusion: '' }); setValores({}); });
             }}
           >
             Registrar diagnostico

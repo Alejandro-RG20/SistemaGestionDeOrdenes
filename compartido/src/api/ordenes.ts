@@ -3,6 +3,7 @@ import type {
   EstadoOrden, ModalidadServicio, TipoGarantia,
 } from '../dominio/orden.js';
 import type { AjusteConcepto, DetalleCotizacion, ResponsablePago } from '../dominio/cotizacion.js';
+import type { MedicionRegistrada, PlantillaChecklist, RespuestaChecklist } from '../dominio/checklist.js';
 
 export interface ResumenOrden {
   readonly id: string;
@@ -234,6 +235,8 @@ export interface DiagnosticoDeOrden {
   readonly componente: string | null;
   readonly momento: string;
   readonly tecnico: string;
+  /** Lista de verificacion: mediciones con unidad, rango y si quedaron fuera. */
+  readonly mediciones: readonly MedicionRegistrada[];
 }
 
 /** Estado de una cotizacion. Solo la ultima puede estar pendiente. */
@@ -294,6 +297,8 @@ export interface DatosDeTaller {
   /** Cargo de visita congelado al crear la orden (0 en taller). */
   readonly cargoVisita: number;
   readonly diagnosticos: readonly DiagnosticoDeOrden[];
+  /** Lista de verificacion vigente para la categoria del articulo (RF-22). */
+  readonly checklist: PlantillaChecklist | null;
   readonly repuestos: readonly RepuestoDeLaOrden[];
   readonly cotizaciones: readonly CotizacionDeOrden[];
   /** Orden de garantia de la que viene esta (si es la continuacion particular). */
@@ -312,6 +317,11 @@ export interface PeticionRegistrarDiagnostico {
   readonly componente?: string | null;
   /** Observaciones del tecnico sobre lo encontrado. */
   readonly observaciones?: string | null;
+  /**
+   * Respuestas a la lista de verificacion de la categoria del articulo. Si
+   * la categoria tiene lista, los campos obligatorios son exigidos (RF-22).
+   */
+  readonly mediciones?: readonly RespuestaChecklist[];
   /**
    * Golpe, mal uso u otra posible exclusion que el tecnico constata. Queda
    * anotada; NO cambia la garantia de la orden. Si corresponde, quien tiene

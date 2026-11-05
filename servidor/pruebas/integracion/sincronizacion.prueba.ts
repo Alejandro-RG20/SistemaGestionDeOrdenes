@@ -574,3 +574,100 @@ describe('la cola no deja hacer lo que el panel no deja', () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+describe('lista de verificacion en campo (RF-22, RF-23)', () => {
+  /** Articulo de refrigeracion (categoria con lista) y los campos de su plantilla vigente. */
+  async function articuloConLista(): Promise<{
+    idCliente: string; idArticulo: string; items: Array<{ id: string; etiqueta: string; tipo_campo: string; rango_min: string | null; rango_max: string | null }>;
+  }> {
+    const { rows } = await entorno.piscina.query<{ id_cliente: string; id: string; id_categoria: string }>(
+      `SELECT a.id_cliente, a.id, a.id_categoria FROM articulo a
+         JOIN cliente c ON c.id = a.id_cliente JOIN categoria_articulo k ON k.id = a.id_categoria
+        WHERE a.activo AND c.activo AND c.id_cliente_principal IS NULL AND k.nombre = 'refrigeracion'
+          AND EXISTS (SELECT 1 FROM cliente_telefono WHERE id_cliente = c.id AND vigente)
+        LIMIT 1`,
+    );
+    const { rows: items } = await entorno.piscina.query<{
+      id: string; etiqueta: string; tipo_campo: string; rango_min: string | null; rango_max: string | null;
+    }>(
+      `SELECT i.id, i.etiqueta, i.tipo_campo::text AS tipo_campo, i.rango_min, i.rango_max
+         FROM checklist_item_plantilla i JOIN checklist_plantilla p ON p.id = i.id_plantilla
+        WHERE p.activa AND p.id_categoria = $1 ORDER BY i.orden`, [rows[0]!.id_categoria],
+    );
+    return { idCliente: rows[0]!.id_cliente, idArticulo: rows[0]!.id, items };
+  }
+
+  function respuestas(items: Awaited<ReturnType<typeof articuloConLista>>['items'], fueraEn?: string) {
+    return items.map((item) => {
+      if (item.tipo_campo === 'numerico') {
+        const min = Number(item.rango_min); const max = Number(item.rango_max);
+        return { idItem: item.id, valor: item.id === fueraEn ? max + 10 : (min + max) / 2 };
+      }
+      if (item.tipo_campo === 'booleano') return { idItem: item.id, valor: true };
+      if (item.tipo_campo === 'seleccion') return { idItem: item.id, valor: 'si' };
+      return { idItem: item.id, valor: 'Sin novedad' };
+    });
+  }
+
+  it('la jornada baja la lista de la categoria con unidades y rangos', async () => {
+    const base = await articuloConLista();
+    const idOrden = randomUUID();
+    await sincronizar(movil, [operacion(TIPO_OPERACION.ORDEN_CREAR, {
+      id: idOrden, idCliente: base.idCliente, idArticulo: base.idArticulo,
+      modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'No enfria; lista de verificacion',
+    })]).expect(200);
+    await encargarAlTecnico(idOrden);
+    const jornada = await peticion(entorno.aplicacion).get(`${RAIZ}/campo/jornada`).set(movil).expect(200);
+    const orden = jornada.body.data.ordenes.find((o: { id: string }) => o.id === idOrden);
+    expect(orden.checklist.items.length).toBe(base.items.length);
+    expect(orden.checklist.items.find((i: { tipoCampo: string }) => i.tipoCampo === 'numerico'))
+      .toMatchObject({ unidad: expect.any(String), rangoMin: expect.any(Number), rangoMax: expect.any(Number) });
+  });
+
+  it('una medicion fuera de rango se guarda marcada y queda la advertencia en el historial', async () => {
+    const base = await articuloConLista();
+    const idOrden = randomUUID();
+    const numerico = base.items.find((i) => i.tipo_campo === 'numerico')!;
+    const respuesta = await sincronizar(movil, [
+      operacion(TIPO_OPERACION.ORDEN_CREAR, {
+        id: idOrden, idCliente: base.idCliente, idArticulo: base.idArticulo,
+        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'No enfria; medicion fuera de rango',
+      }),
+      operacion(TIPO_OPERACION.DIAGNOSTICO_REGISTRAR, {
+        idOrden, fallaReal: 'Compresor con corriente alta', componente: 'compresor',
+        mediciones: respuestas(base.items, numerico.id),
+      }),
+    ]).expect(200);
+    expect(respuesta.body.data.resultados[1].estado).toBe(ESTADO_OPERACION.APLICADA);
+    expect(respuesta.body.data.resultados[1].mensaje).toMatch(/1 medicion\(es\) fuera de rango/);
+
+    const { rows } = await entorno.piscina.query<{ etiqueta: string; fuera_de_rango: boolean; valor_numerico: string | null }>(
+      `SELECT di.etiqueta, di.fuera_de_rango, di.valor_numerico FROM diagnostico_item di
+         JOIN diagnostico d ON d.id = di.id_diagnostico WHERE d.id_orden = $1`, [idOrden],
+    );
+    expect(rows).toHaveLength(base.items.length);
+    expect(rows.filter((r) => r.fuera_de_rango).map((r) => r.etiqueta)).toEqual([numerico.etiqueta]);
+    const { rows: eventos } = await entorno.piscina.query<{ observacion: string }>(
+      "SELECT observacion FROM evento_orden WHERE id_orden = $1 AND observacion LIKE 'Advertencia: medicion fuera de rango%'",
+      [idOrden],
+    );
+    expect(eventos[0]!.observacion).toContain(numerico.etiqueta);
+  });
+
+  it('una lista incompleta no se descarta: queda en la bandeja de excepciones', async () => {
+    const base = await articuloConLista();
+    const idOrden = randomUUID();
+    const respuesta = await sincronizar(movil, [
+      operacion(TIPO_OPERACION.ORDEN_CREAR, {
+        id: idOrden, idCliente: base.idCliente, idArticulo: base.idArticulo,
+        modalidad: MODALIDAD_SERVICIO.RUTA, fallaReportada: 'No enfria; lista incompleta',
+      }),
+      operacion(TIPO_OPERACION.DIAGNOSTICO_REGISTRAR, {
+        idOrden, fallaReal: 'Compresor con corriente alta', mediciones: respuestas(base.items).slice(1),
+      }),
+    ]).expect(200);
+    expect(respuesta.body.data.resultados[1].estado).toBe(ESTADO_OPERACION.EN_EXCEPCION);
+    const { rows } = await entorno.piscina.query('SELECT 1 FROM diagnostico WHERE id_orden = $1', [idOrden]);
+    expect(rows).toHaveLength(0);
+  });
+});

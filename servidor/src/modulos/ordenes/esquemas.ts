@@ -85,6 +85,10 @@ export const esquemaRegistrarDiagnostico = z.object({
   componente: z.string().trim().max(120).nullish(),
   observaciones: z.string().trim().max(1000).nullish(),
   exclusion: z.string().trim().max(500).nullish(),
+  mediciones: z.array(z.object({
+    idItem: z.string().uuid(),
+    valor: z.union([z.number(), z.string().max(1000), z.boolean(), z.null()]),
+  })).max(100).optional(),
 });
 
 /** Reclasificar la garantia: a cual, y por que (obligatorio). */

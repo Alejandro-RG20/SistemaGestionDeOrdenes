@@ -28,6 +28,7 @@ import { enTransaccion } from '../../comun/transacciones.js';
 import { ErrorAutorizacion, ErrorDominio, ErrorNoEncontrado, ErrorValidacion } from '../../comun/errores.js';
 import { alcanceDe, exigirCerco } from './alcance.js';
 import * as repositorio from './repositorio.js';
+import { registrarMediciones } from './servicio-diagnostico.js';
 
 /** Donde se diagnostica: el tecnico ya tiene el articulo delante. */
 const ESTADOS_DE_DIAGNOSTICO: readonly string[] = [ESTADO_ORDEN.EN_DIAGNOSTICO];
@@ -127,6 +128,7 @@ export async function obtener(actor: Actor, idOrden: string): Promise<DatosDeTal
     modalidad: orden.modalidad,
     cargoVisita: Number(orden.cargo_visita),
     diagnosticos,
+    checklist: await repositorio.plantillaDeOrden(idOrden),
     repuestos,
     cotizaciones,
     antecedentes,
@@ -160,8 +162,14 @@ export async function registrarDiagnostico(
       throw new ErrorDominio('SIN_TECNICO', 'La orden no tiene tecnico asignado: asignelo antes de diagnosticar.');
     }
 
-    await repositorio.insertarDiagnosticoDelPanel(cliente, {
+    const idDiagnostico = await repositorio.insertarDiagnosticoDelPanel(cliente, {
       idOrden, idTecnico, fallaReal: peticion.fallaReal, componente: peticion.componente ?? null,
+    });
+    // Lista de verificacion de la categoria del articulo (RF-22): si la
+    // hay, se exige; lo que caiga fuera de rango queda advertido (RF-23).
+    await registrarMediciones(cliente, {
+      idOrden, idDiagnostico, estadoOrden: orden.estado, idResponsable: actor.id,
+      respuestas: peticion.mediciones, exigirLista: true,
     });
 
     // Observaciones y posible exclusion: una nota en el historial de la

@@ -11,7 +11,7 @@
  */
 import {
   ESTADO_ORDEN, RESULTADO_VISITA, TIPO_OPERACION,
-  type EstadoOrden, type ModalidadServicio, type ResultadoVisita,
+  type EstadoOrden, type ModalidadServicio, type RespuestaChecklist, type ResultadoVisita,
 } from '@servitotal/compartido';
 import type { AccionSinConexion } from './cola.js';
 
@@ -107,6 +107,8 @@ export interface DatosDiagnostico {
   readonly idTecnico: string;
   readonly fallaReal: string;
   readonly componente?: string;
+  /** Respuestas a la lista de verificacion (RF-22). */
+  readonly mediciones?: readonly RespuestaChecklist[];
 }
 
 export function registrarDiagnostico(
@@ -120,6 +122,7 @@ export function registrarDiagnostico(
       idTecnico: datos.idTecnico,
       fallaReal: datos.fallaReal,
       componente: datos.componente,
+      mediciones: datos.mediciones,
     }),
   };
 }
