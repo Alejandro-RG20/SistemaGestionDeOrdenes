@@ -130,6 +130,8 @@ la imagen, la prueba, la publica en GHCR y redespliega Render. Detrás de un
 proxy (Render) defina `TRUST_PROXY=1` para que el límite de peticiones del
 portal vea la IP real de cada cliente.
 
+Paso a paso completo (local, GitHub Actions, GHCR y Render): [`DOCKER-CICD.md`](DOCKER-CICD.md).
+
 ## Estructura
 
 ```

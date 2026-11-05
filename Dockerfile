@@ -53,7 +53,10 @@ COPY base-datos/migraciones base-datos/migraciones
 COPY docker/arranque.sh /usr/local/bin/arranque.sh
 
 # No se corre como root. La carpeta de evidencias debe ser escribible.
-RUN chmod +x /usr/local/bin/arranque.sh \
+# El `sed` quita los finales de linea de Windows (CRLF): si el script se
+# edito en Windows, sin esto el contenedor no arranca ("not found").
+RUN sed -i 's/\r$//' /usr/local/bin/arranque.sh \
+ && chmod +x /usr/local/bin/arranque.sh \
  && mkdir -p /app/datos/evidencias \
  && chown -R node:node /app/datos
 USER node
