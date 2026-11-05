@@ -347,6 +347,11 @@ export interface PeticionRegistrarCotizacion {
   };
   /** Precio cotizado distinto del inventario (o para un repuesto sin precio), con motivo. */
   readonly preciosRepuestos?: readonly { readonly idRepuesto: string; readonly precioUnitario: number }[];
+  /**
+   * Repuestos que el tecnico de ruta lleva en su bodega movil y que va a
+   * instalar (no pasan por una solicitud a bodega). Se suman a lo pedido.
+   */
+  readonly repuestosDeBodega?: readonly { readonly idRepuesto: string; readonly cantidad: number }[];
   /** Obligatorio si hay ajustes, precios cambiados o si reemplaza una cotizacion anterior. */
   readonly motivo?: string | null;
 }

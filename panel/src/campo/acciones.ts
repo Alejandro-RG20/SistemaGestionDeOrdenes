@@ -127,6 +127,25 @@ export function registrarDiagnostico(
   };
 }
 
+export interface DatosCotizacion {
+  readonly idOrden: string;
+  readonly manoObra: number;
+  readonly repuestos: readonly { idRepuesto: string; cantidad: number; precioUnitario: number }[];
+}
+
+/** Cotizacion en el domicilio (RF-27). La visita la pone el servidor: la congelada en la orden. */
+export function registrarCotizacion(datos: DatosCotizacion, momento?: string): AccionSinConexion {
+  return {
+    tipoOperacion: TIPO_OPERACION.COTIZACION_REGISTRAR,
+    ...(momento === undefined ? {} : { momentoDispositivo: momento }),
+    carga: {
+      idOrden: datos.idOrden,
+      manoObra: datos.manoObra,
+      repuestos: datos.repuestos.map((r) => ({ ...r })),
+    },
+  };
+}
+
 export interface DatosConsumo {
   readonly idOrden: string;
   readonly idRepuesto: string;

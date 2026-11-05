@@ -208,6 +208,15 @@ export async function registrarDiagnostico(
  */
 export async function registrarCotizacion(
   actor: Actor, idOrden: string, peticion: PeticionRegistrarCotizacion,
+  opciones: {
+    /**
+     * Cotizacion hecha en el domicilio sin conexion (RF-27): el precio de
+     * cada repuesto de la bodega movil es el que el tecnico le mostro al
+     * cliente (catalogo al bajar la ruta). Prevalece lo que se pacto en la
+     * casa (RN-19); si difiere del inventario de hoy, queda anotado.
+     */
+    readonly preciosDeCampo?: ReadonlyMap<string, number>;
+  } = {},
 ): Promise<DatosDeTaller> {
   await enTransaccion(async (cliente) => {
     const orden = await ordenCercada(actor, idOrden, cliente, true);
@@ -229,8 +238,28 @@ export async function registrarCotizacion(
       }
     }
 
-    // Repuestos: lo pedido y vigente para la orden, al precio del inventario.
-    const repuestos = (await repositorio.repuestosDeOrden(idOrden, cliente)).filter((r) => r.cantidad > 0);
+    // Repuestos: lo pedido y vigente para la orden, al precio del inventario,
+    // mas lo que el tecnico de ruta instalara de su bodega movil.
+    const pedidos = (await repositorio.repuestosDeOrden(idOrden, cliente)).filter((r) => r.cantidad > 0);
+    const deBodega = peticion.repuestosDeBodega ?? [];
+    const catalogo = await repositorio.repuestosDelCatalogo(deBodega.map((r) => r.idRepuesto), cliente);
+    const repuestos = [...pedidos.map((r) => ({ ...r }))];
+    for (const linea of deBodega) {
+      const existente = repuestos.find((r) => r.idRepuesto === linea.idRepuesto);
+      if (existente !== undefined) {
+        existente.cantidad += linea.cantidad;
+        continue;
+      }
+      const ficha = catalogo.find((r) => r.id === linea.idRepuesto);
+      if (ficha === undefined) {
+        throw new ErrorValidacion('Un repuesto de la cotizacion no existe o esta inactivo.', { repuestosDeBodega: linea.idRepuesto });
+      }
+      repuestos.push({
+        idRepuesto: ficha.id, codigo: ficha.codigo, descripcion: ficha.descripcion, cantidad: linea.cantidad,
+        porEstado: {}, utilizada: 0, precioInventario: ficha.precio,
+      });
+    }
+    const preciosDeCampo = opciones.preciosDeCampo ?? new Map<string, number>();
     const cambiados = new Map((peticion.preciosRepuestos ?? []).map((p) => [p.idRepuesto, p.precioUnitario]));
     for (const id of cambiados.keys()) {
       if (!repuestos.some((r) => r.idRepuesto === id)) {
@@ -238,12 +267,25 @@ export async function registrarCotizacion(
       }
     }
     const motivo = peticion.motivo?.trim() ?? '';
-    const lineas = repuestos.map((r) => ({
-      idRepuesto: r.idRepuesto, codigo: r.codigo, descripcion: r.descripcion, cantidad: r.cantidad,
-      precioInventario: r.precioInventario,
-      precioUnitario: cambiados.get(r.idRepuesto) ?? r.precioInventario,
-      motivoPrecio: cambiados.has(r.idRepuesto) ? motivo || null : null,
-    }));
+    const lineas = repuestos.map((r) => {
+      const deCampo = preciosDeCampo.get(r.idRepuesto);
+      if (deCampo !== undefined && !cambiados.has(r.idRepuesto)) {
+        return {
+          idRepuesto: r.idRepuesto, codigo: r.codigo, descripcion: r.descripcion, cantidad: r.cantidad,
+          precioInventario: r.precioInventario,
+          precioUnitario: deCampo,
+          motivoPrecio: deCampo === r.precioInventario
+            ? null
+            : `Precio mostrado al cliente sin conexion (inventario hoy: ${r.precioInventario ?? 'sin precio'})`,
+        };
+      }
+      return {
+        idRepuesto: r.idRepuesto, codigo: r.codigo, descripcion: r.descripcion, cantidad: r.cantidad,
+        precioInventario: r.precioInventario,
+        precioUnitario: cambiados.get(r.idRepuesto) ?? r.precioInventario,
+        motivoPrecio: cambiados.has(r.idRepuesto) ? motivo || null : null,
+      };
+    });
 
     const visitaOriginal = peticion.cargoVisita ?? Number(orden.cargo_visita);
     const entrada = {
@@ -256,7 +298,11 @@ export async function registrarCotizacion(
 
     // Un ajuste es descuento, exoneracion, precio distinto del inventario o
     // un cargo de visita distinto del congelado en la orden.
-    const ajusta = hayAjustes(entrada) || visitaOriginal !== Number(orden.cargo_visita);
+    // El precio pactado en la casa sin conexion no es un ajuste (RN-19).
+    const ajusta = hayAjustes({
+      ...entrada,
+      lineas: lineas.filter((l) => !(preciosDeCampo.has(l.idRepuesto) && !cambiados.has(l.idRepuesto))),
+    }) || visitaOriginal !== Number(orden.cargo_visita);
     if (ajusta) {
       if (orden.tipo_garantia !== TIPO_GARANTIA.PARTICULAR) {
         throw new ErrorDominio('AJUSTE_NO_APLICA',

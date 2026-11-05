@@ -1092,3 +1092,14 @@ export async function medicionesDe(
   }
   return resultado;
 }
+
+/** Repuestos del catalogo por identificador (activos), con su precio de hoy. */
+export async function repuestosDelCatalogo(
+  ids: readonly string[], ejecutor: Ejecutor = ejecutorPorDefecto(),
+): Promise<Array<{ id: string; codigo: string; descripcion: string; precio: number | null }>> {
+  if (ids.length === 0) return [];
+  const { rows } = await ejecutor.query<{ id: string; codigo: string; descripcion: string; precio: string }>(
+    'SELECT id, codigo, descripcion, precio FROM repuesto WHERE activo AND id = ANY ($1::uuid[])', [ids],
+  );
+  return rows.map((f) => ({ ...f, precio: Number(f.precio) > 0 ? Number(f.precio) : null }));
+}

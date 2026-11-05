@@ -32,6 +32,7 @@ const NOMBRE_OPERACION: Readonly<Record<string, string>> = {
   [TIPO_OPERACION.DIAGNOSTICO_REGISTRAR]: 'Registro del diagnostico',
   [TIPO_OPERACION.INVENTARIO_CONSUMO]: 'Consumo de repuesto en campo',
   [TIPO_OPERACION.EVIDENCIA_REGISTRAR]: 'Registro de evidencia (fotografia o firma)',
+  [TIPO_OPERACION.COTIZACION_REGISTRAR]: 'Cotizacion hecha en el domicilio',
 };
 
 /**
@@ -51,12 +52,15 @@ const CONDICION_OPERACION: Readonly<Record<string, string>> = {
     'Se aplica si la orden no esta cerrada; si la pieza no figuraba en la bodega del tecnico se acepta '
     + 'igual y queda una diferencia por conciliar.',
   [TIPO_OPERACION.EVIDENCIA_REGISTRAR]: 'Se aplica si la orden no esta cerrada.',
+  [TIPO_OPERACION.COTIZACION_REGISTRAR]:
+    'Se aplica con las mismas reglas que la cotizacion del panel: orden con diagnostico, en un estado '
+    + 'que admite cotizar, y repuestos con precio.',
 };
 
 /** Operaciones que ocurren en el domicilio o en el banco sobre una orden viva. */
 const DE_CAMPO = new Set<string>([
   TIPO_OPERACION.VISITA_REGISTRAR, TIPO_OPERACION.DIAGNOSTICO_REGISTRAR,
-  TIPO_OPERACION.INVENTARIO_CONSUMO, TIPO_OPERACION.EVIDENCIA_REGISTRAR,
+  TIPO_OPERACION.INVENTARIO_CONSUMO, TIPO_OPERACION.EVIDENCIA_REGISTRAR, TIPO_OPERACION.COTIZACION_REGISTRAR,
 ]);
 
 /** Etiquetas legibles de los campos que suelen venir en la carga. */

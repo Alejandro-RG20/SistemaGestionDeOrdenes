@@ -46,6 +46,7 @@ const DESCRIPCION_OPERACION: Readonly<Record<string, string>> = {
   [TIPO_OPERACION.VISITA_REGISTRAR]: 'Resultado de la visita',
   [TIPO_OPERACION.INVENTARIO_CONSUMO]: 'Repuesto consumido',
   [TIPO_OPERACION.EVIDENCIA_REGISTRAR]: 'Ficha de evidencia',
+  [TIPO_OPERACION.COTIZACION_REGISTRAR]: 'Cotizacion',
 };
 
 export interface EstadoDeLaApp {
@@ -268,6 +269,19 @@ export class Coordinador {
       precioUnitario,
     }));
     await this.espejo.descontarExistencia(idRepuesto, cantidad);
+  }
+
+  /**
+   * Cotizacion hecha en el domicilio (RF-27). Viaja por la cola y el
+   * servidor la aplica con las mismas reglas que la del panel. Los precios
+   * de los repuestos de la bodega movil son los del catalogo descargado:
+   * los que el tecnico le mostro al cliente.
+   */
+  async registrarCotizacion(
+    idOrden: string, manoObra: number,
+    repuestos: readonly { idRepuesto: string; cantidad: number; precioUnitario: number }[],
+  ): Promise<void> {
+    await this.cola.encolar(acciones.registrarCotizacion({ idOrden, manoObra, repuestos }));
   }
 
   /**

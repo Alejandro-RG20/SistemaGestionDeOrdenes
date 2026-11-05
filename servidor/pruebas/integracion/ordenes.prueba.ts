@@ -413,7 +413,10 @@ describe('agenda: la doble programacion es imposible', () => {
     const primera = await crearOrden({ modalidad: MODALIDAD_SERVICIO.RUTA });
     const segunda = await crearOrden({ modalidad: MODALIDAD_SERVICIO.RUTA });
     const idTec = await idTecnico('ruta');
-    const franja = { idTecnico: idTec, fechaProgramada: '2026-11-10', franjaHoraria: '13:00-15:00' };
+    // Una fecha lejana, fuera del periodo que cubren los datos sembrados: una
+    // fecha fija termina cayendo, con el calendario, sobre una visita sembrada.
+    const lejana = new Date(Date.now() + 900 * 86_400_000).toISOString().slice(0, 10);
+    const franja = { idTecnico: idTec, fechaProgramada: lejana, franjaHoraria: '13:00-15:00' };
 
     await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes/${primera.id}/visitas`)
       .set(jefeTecnicos).send(franja).expect(201);

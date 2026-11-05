@@ -14,6 +14,8 @@ export const TIPO_OPERACION = {
   DIAGNOSTICO_REGISTRAR: 'diagnostico.registrar',
   INVENTARIO_CONSUMO: 'inventario.consumo',
   EVIDENCIA_REGISTRAR: 'evidencia.registrar',
+  /** Cotizacion de servicio particular hecha en el domicilio, sin conexion (RF-27). */
+  COTIZACION_REGISTRAR: 'cotizacion.registrar',
 } as const;
 export type TipoOperacion = (typeof TIPO_OPERACION)[keyof typeof TIPO_OPERACION];
 

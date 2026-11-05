@@ -126,3 +126,15 @@ export function admiteDiagnostico(estado: EstadoOrden): boolean {
 export function admiteVisita(estado: EstadoOrden): boolean {
   return estado === ESTADO_ORDEN.EN_RUTA;
 }
+
+/**
+ * El repuesto cuyo codigo coincide EXACTAMENTE con lo leido (RF-25), sin
+ * importar mayusculas ni espacios alrededor. Una lectura no busca por
+ * parecido: si el codigo no esta en el catalogo descargado, no se elige
+ * otra pieza "parecida".
+ */
+export function repuestoPorCodigo<T extends { codigo: string }>(repuestos: readonly T[], leido: string): T | null {
+  const codigo = leido.trim().toUpperCase();
+  if (codigo === '') return null;
+  return repuestos.find((repuesto) => repuesto.codigo.trim().toUpperCase() === codigo) ?? null;
+}

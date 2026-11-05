@@ -183,6 +183,9 @@ export function OrdenDeCampo(): JSX.Element {
           <Link className="btn" to={`/campo/ordenes/${orden.id}/repuestos`}>
             Repuestos
           </Link>
+          <Link className="btn" to={`/campo/ordenes/${orden.id}/cotizacion`}>
+            Cotizacion
+          </Link>
           <Link className="btn" to={`/campo/ordenes/${orden.id}/cierre`}>
             Cierre
           </Link>

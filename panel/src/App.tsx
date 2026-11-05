@@ -48,6 +48,7 @@ import { Diagnostico } from './pantallas/campo/Diagnostico.js';
 import { Evidencia } from './pantallas/campo/Evidencia.js';
 import { MiBodega, Repuestos } from './pantallas/campo/Repuestos.js';
 import { Cierre, Envios } from './pantallas/campo/Cierre.js';
+import { Cotizacion as CotizacionDeCampo } from './pantallas/campo/Cotizacion.js';
 import { trabajaEnCampo } from './sesion/navegacion.js';
 
 /** Envuelve una pantalla en el armazon, con su codigo del prototipo. */
@@ -97,6 +98,9 @@ function Campo(): JSX.Element {
         } />
         <Route path="/ordenes/:id/repuestos" element={
           <PantallaDeCampo codigo="M-05" miga="Orden › paso 4 de 6"><Repuestos /></PantallaDeCampo>
+        } />
+        <Route path="/ordenes/:id/cotizacion" element={
+          <PantallaDeCampo codigo="M-06" miga="Orden › paso 5 de 6"><CotizacionDeCampo /></PantallaDeCampo>
         } />
         <Route path="/ordenes/:id/cierre" element={
           <PantallaDeCampo codigo="M-07" miga="Orden › paso 6 de 6"><Cierre /></PantallaDeCampo>

@@ -24,6 +24,7 @@ import { Aviso, Garantia } from '../../componentes/piezas.js';
 import { BarraDeSincronizacion, Pasos } from '../../componentes/ArmazonCampo.js';
 import { prepararEvidencia, ubicacionSiLlegaRapido } from '../../campo/captura-evidencia.js';
 import { useDelCampo } from './datos.js';
+import { LienzoDeFirma } from '../../componentes/LienzoDeFirma.js';
 
 /** Un identificador local para el archivo, sin depender del servidor. */
 function nuevoIdentificador(): string {
@@ -48,6 +49,8 @@ export function Evidencia(): JSX.Element {
   const [comoDocumento, setComoDocumento] = useState(false);
   const [trabajando, setTrabajando] = useState(false);
   const [fallo, setFallo] = useState<string | null>(null);
+  /** Clave de la firma que se esta capturando en pantalla (RF-28). */
+  const [firmando, setFirmando] = useState<string | null>(null);
 
   if (cargando) return <p className="sub">Leyendo la orden guardada…</p>;
   if (datos === null) return <Aviso tono="warn">Esta orden no esta en la ruta que bajo.</Aviso>;
@@ -66,6 +69,12 @@ export function Evidencia(): JSX.Element {
    * la pantalla de su propio celular.
    */
   const pedirArchivo = (clave: string, tipoArchivo: string): void => {
+    // La firma del cliente se toma en la pantalla, no con la camara.
+    if (tipoArchivo === 'firma') {
+      setFallo(null);
+      setFirmando(clave);
+      return;
+    }
     setClaveEnCurso(clave);
     setComoDocumento(tipoArchivo === 'documento');
     setFallo(null);
@@ -74,9 +83,11 @@ export function Evidencia(): JSX.Element {
     requestAnimationFrame(() => entrada.current?.click());
   };
 
-  const recibirArchivo = async (archivo: File): Promise<void> => {
-    if (campo === null || claveEnCurso === null) return;
-    const regla = reglas.find((cada) => cada.clave === claveEnCurso);
+  const recibirArchivo = async (archivo: File, claveDirecta?: string): Promise<void> => {
+    const clave = claveDirecta ?? claveEnCurso;
+    if (campo === null || clave === null) return;
+    setClaveEnCurso(clave);
+    const regla = reglas.find((cada) => cada.clave === clave);
     setTrabajando(true);
     setFallo(null);
     try {
@@ -87,7 +98,7 @@ export function Evidencia(): JSX.Element {
       const preparada = await prepararEvidencia(campo.archivos, {
         idLocal: nuevoIdentificador(),
         idOrden: orden.id,
-        clave: claveEnCurso,
+        clave,
         tipo: regla?.tipoArchivo ?? 'foto',
         archivo,
         latitud: ubicacion?.latitud ?? null,
@@ -101,6 +112,7 @@ export function Evidencia(): JSX.Element {
     } finally {
       setTrabajando(false);
       setClaveEnCurso(null);
+      setFirmando(null);
     }
   };
 
@@ -135,6 +147,15 @@ export function Evidencia(): JSX.Element {
       />
 
       {fallo === null ? null : <Aviso tono="warn">{fallo}</Aviso>}
+
+      {firmando === null ? null : (
+        <LienzoDeFirma
+          titulo={reglas.find((regla) => regla.clave === firmando)?.etiqueta ?? 'Firma del cliente'}
+          ocupado={trabajando}
+          alCancelar={() => setFirmando(null)}
+          alConfirmar={(firma) => { void recibirArchivo(firma, firmando); }}
+        />
+      )}
 
       <div className="card">
         <h3>Capturas requeridas</h3>
@@ -173,7 +194,7 @@ export function Evidencia(): JSX.Element {
                 >
                   {trabajando && claveEnCurso === regla.clave
                     ? 'Guardando…'
-                    : `Tomar: ${regla.etiqueta}`}
+                    : `${regla.tipoArchivo === 'firma' ? 'Firmar en pantalla' : 'Tomar'}: ${regla.etiqueta}`}
                 </button>
               ))}
             </div>

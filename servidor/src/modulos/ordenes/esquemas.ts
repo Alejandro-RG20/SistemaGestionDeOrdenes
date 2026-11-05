@@ -125,6 +125,10 @@ export const esquemaRegistrarCotizacion = z.object({
     idRepuesto: z.string().uuid(),
     precioUnitario: monto('El precio del repuesto'),
   })).max(100).optional(),
+  repuestosDeBodega: z.array(z.object({
+    idRepuesto: z.string().uuid(),
+    cantidad: z.number().int('La cantidad debe ser entera.').positive('La cantidad debe ser positiva.').max(1000),
+  })).max(100).optional(),
   motivo: z.string().trim().max(500).nullish(),
 });
 

@@ -18,7 +18,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useCampo } from '../../campo/contexto.js';
 import { Aviso, cordobas } from '../../componentes/piezas.js';
 import { BarraDeSincronizacion, Pasos } from '../../componentes/ArmazonCampo.js';
-import { admiteConsumo } from '../../campo/flujo-campo.js';
+import { admiteConsumo, repuestoPorCodigo } from '../../campo/flujo-campo.js';
+import { LectorDeCodigo } from '../../componentes/LectorDeCodigo.js';
 import { useDelCampo } from './datos.js';
 
 export function Repuestos(): JSX.Element {
@@ -61,6 +62,19 @@ export function Repuestos(): JSX.Element {
 
   const { orden } = datos;
   const repuesto = datos.repuestos.find((cada) => cada.id === elegido) ?? null;
+
+  /** Codigo leido con la camara o el lector de mano: elige la pieza exacta (RF-25). */
+  const usarCodigo = (leido: string): void => {
+    const encontrado = repuestoPorCodigo(datos.repuestos, leido);
+    setBusqueda(leido.trim());
+    if (encontrado === null) {
+      setElegido(null);
+      setFallo(`El codigo ${leido.trim()} no esta en el catalogo descargado. Revise la etiqueta o busquelo por nombre.`);
+      return;
+    }
+    setFallo(null);
+    setElegido(encontrado.id);
+  };
   const sinExistencia = repuesto !== null && repuesto.cantidad < cantidad;
 
   const consumir = async (): Promise<void> => {
@@ -126,8 +140,11 @@ export function Repuestos(): JSX.Element {
             id="busqueda"
             value={busqueda}
             onChange={(evento) => { setBusqueda(evento.target.value); setElegido(null); }}
+            // Un lector de mano escribe el codigo y pulsa Enter.
+            onKeyDown={(evento) => { if (evento.key === 'Enter') { evento.preventDefault(); usarCodigo(busqueda); } }}
             placeholder="Codigo o descripcion"
           />
+          <LectorDeCodigo alLeer={usarCodigo} />
         </div>
 
         {resultados.map((cada) => (

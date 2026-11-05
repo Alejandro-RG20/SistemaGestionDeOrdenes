@@ -671,3 +671,59 @@ describe('lista de verificacion en campo (RF-22, RF-23)', () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+describe('cotizacion en el domicilio, sin conexion (RF-27)', () => {
+  /** Orden particular del tecnico del movil, ya en diagnostico y diagnosticada por la cola. */
+  async function ordenParticularDiagnosticada(): Promise<string> {
+    const base = await clienteConArticulo();
+    const creada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente).send({
+      ...base, modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'particular',
+      fallaReportada: 'No enfria; cotizacion en el domicilio',
+    }).expect(201);
+    const idOrden = creada.body.data.id as string;
+    await encargarAlTecnico(idOrden);
+    await entorno.piscina.query("UPDATE orden_servicio SET estado = 'en_diagnostico' WHERE id = $1", [idOrden]);
+    await sincronizar(movil, [operacion(TIPO_OPERACION.DIAGNOSTICO_REGISTRAR, {
+      idOrden, fallaReal: 'Compresor sin arranque por capacitor abierto',
+    })]).expect(200);
+    return idOrden;
+  }
+
+  it('se aplica con las reglas del panel; el precio mostrado al cliente prevalece y queda anotado', async () => {
+    const idOrden = await ordenParticularDiagnosticada();
+    const idRepuesto = await repuestoNuevo(150);
+    const { rows } = await entorno.piscina.query<{ cargo_visita: string }>(
+      'SELECT cargo_visita FROM orden_servicio WHERE id = $1', [idOrden],
+    );
+    const visita = Number(rows[0]!.cargo_visita);
+
+    // El catalogo que el tecnico bajo decia 120; hoy el inventario dice 150.
+    const respuesta = await sincronizar(movil, [operacion(TIPO_OPERACION.COTIZACION_REGISTRAR, {
+      idOrden, manoObra: 400, repuestos: [{ idRepuesto, cantidad: 2, precioUnitario: 120 }],
+    })]).expect(200);
+    expect(respuesta.body.data.resultados[0].estado).toBe(ESTADO_OPERACION.APLICADA);
+
+    const taller = (await peticion(entorno.aplicacion).get(`${RAIZ}/ordenes/${idOrden}/taller`).set(jefatura)
+      .expect(200)).body.data;
+    const vigente = taller.cotizaciones.at(-1);
+    const linea = vigente.detalle.repuestos.lineas[0];
+    expect(linea).toMatchObject({ cantidad: 2, precioUnitario: 120, precioInventario: 150, subtotal: 240 });
+    expect(linea.motivoPrecio).toMatch(/mostrado al cliente sin conexion/);
+    expect(vigente.detalle.visita.original).toBe(visita);
+    expect(vigente.total).toBe(400 + 240 + visita);
+    expect(vigente.estado).toBe('pendiente');
+  });
+
+  it('sin diagnostico no se cotiza: la operacion va a la bandeja de excepciones', async () => {
+    const base = await clienteConArticulo();
+    const creada = await peticion(entorno.aplicacion).post(`${RAIZ}/ordenes`).set(agente).send({
+      ...base, modalidad: MODALIDAD_SERVICIO.RUTA, tipoGarantiaElegida: 'particular', fallaReportada: 'Sin diagnostico',
+    }).expect(201);
+    await encargarAlTecnico(creada.body.data.id);
+    await entorno.piscina.query("UPDATE orden_servicio SET estado = 'en_diagnostico' WHERE id = $1", [creada.body.data.id]);
+    const respuesta = await sincronizar(movil, [operacion(TIPO_OPERACION.COTIZACION_REGISTRAR, {
+      idOrden: creada.body.data.id, manoObra: 300, repuestos: [],
+    })]).expect(200);
+    expect(respuesta.body.data.resultados[0].estado).toBe(ESTADO_OPERACION.EN_EXCEPCION);
+  });
+});

@@ -9,13 +9,14 @@
 import { ESTADOS_FINALES, TIPO_OPERACION, type EstadoOrden, type TipoOperacion } from '@servitotal/compartido';
 import type { Actor } from '../../comun/contexto-peticion.js';
 import type { Ejecutor } from '../../comun/transacciones.js';
-import { ErrorDominio, ErrorValidacion } from '../../comun/errores.js';
+import { ErrorAutorizacion, ErrorDominio, ErrorValidacion } from '../../comun/errores.js';
 import { exigirCercoSobreOrden } from '../ordenes/alcance.js';
 import * as repositorioSincronizacion from './repositorio.js';
 import * as servicioOrdenes from '../ordenes/servicio.js';
 import * as servicioTransiciones from '../ordenes/servicio-transiciones.js';
 import * as servicioAgenda from '../agenda/servicio.js';
 import * as servicioDiagnostico from '../ordenes/servicio-diagnostico.js';
+import * as servicioTaller from '../ordenes/servicio-taller.js';
 import { consumirDesdeCampo } from '../inventario/servicio-consumo-campo.js';
 import * as repositorioCampo from '../campo/repositorio.js';
 
@@ -80,6 +81,47 @@ async function exigirOrdenDeCampo(actor: Actor, idOrden: string, ejecutor: Ejecu
 }
 
 const EJECUTORES: Readonly<Record<TipoOperacion, Ejecutador>> = {
+  /*
+   * Cotizacion en el domicilio, sin conexion (RF-27). Las mismas reglas que
+   * el panel (servicio-taller): repuestos pedidos al precio del inventario,
+   * mas los de la bodega movil al precio que el tecnico mostro al cliente.
+   * Si no puede aplicarse (sin diagnostico, sin permiso, orden de garantia
+   * con ajustes...), la operacion va a la bandeja de excepciones: el
+   * trabajo de campo no se pierde.
+   */
+  [TIPO_OPERACION.COTIZACION_REGISTRAR]: async ({ actor, carga, ejecutor }) => {
+    const idOrden = exigir<string>(carga, 'idOrden', 'string');
+    await exigirOrdenDeCampo(actor, idOrden, ejecutor);
+    if (!actor.permisos.includes('taller.cotizacion.registrar')) {
+      throw new ErrorAutorizacion('Esta cuenta no puede registrar cotizaciones.');
+    }
+    const lineas = Array.isArray(carga['repuestos']) ? carga['repuestos'] as unknown[] : [];
+    const repuestosDeBodega: Array<{ idRepuesto: string; cantidad: number }> = [];
+    const preciosDeCampo = new Map<string, number>();
+    for (const linea of lineas) {
+      const fila = (linea ?? {}) as Record<string, unknown>;
+      const idRepuesto = exigir<string>(fila, 'idRepuesto', 'string');
+      const cantidad = exigir<number>(fila, 'cantidad', 'number');
+      if (!Number.isInteger(cantidad) || cantidad <= 0) {
+        throw new ErrorValidacion('La cantidad de cada repuesto debe ser un entero positivo.', { repuestos: idRepuesto });
+      }
+      repuestosDeBodega.push({ idRepuesto, cantidad });
+      const precio = opcional<number>(fila, 'precioUnitario', 'number');
+      if (precio !== undefined) preciosDeCampo.set(idRepuesto, precio);
+    }
+    const motivo = opcional<string>(carga, 'motivo', 'string');
+    const datos = await servicioTaller.registrarCotizacion(actor, idOrden, {
+      manoObra: exigir<number>(carga, 'manoObra', 'number'),
+      repuestosDeBodega,
+      ...(motivo === undefined ? {} : { motivo }),
+    }, { preciosDeCampo });
+    const vigente = datos.cotizaciones[datos.cotizaciones.length - 1];
+    return {
+      idEntidad: vigente?.id ?? null,
+      mensaje: `Cotizacion registrada: total ${vigente?.total ?? 0}.`,
+    };
+  },
+
   [TIPO_OPERACION.ORDEN_CREAR]: async ({ actor, carga }) => {
     const ficha = await servicioOrdenes.crear(actor, {
       id: opcional<string>(carga, 'id', 'string'),

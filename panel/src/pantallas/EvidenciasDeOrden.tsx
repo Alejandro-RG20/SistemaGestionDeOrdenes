@@ -13,6 +13,7 @@
  * imagen o un PDF, no solo que se llame asi.
  */
 import { useState } from 'react';
+import { LienzoDeFirma } from '../componentes/LienzoDeFirma.js';
 import type { EvidenciaDeOrden } from '@servitotal/compartido';
 import { useSesion } from '../sesion/contexto.js';
 import { useRecurso } from '../componentes/recurso.js';
@@ -60,12 +61,16 @@ export function EvidenciasDeOrden(
   );
 
   const [clave, setClave] = useState(CLAVES[0]![1]);
-  const [archivo, setArchivo] = useState<File | null>(null);
+  const [archivoElegido, setArchivo] = useState<File | null>(null);
   const [progreso, setProgreso] = useState<string | null>(null);
   const [fallo, setFallo] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
 
-  async function subir(): Promise<void> {
+  const [firmando, setFirmando] = useState(false);
+  const esFirma = (CLAVES.find(([, c]) => c === clave)?.[3] ?? '') === 'firma';
+
+  async function subir(archivoDirecto?: File): Promise<void> {
+    const archivo = archivoDirecto ?? archivoElegido;
     setFallo(null);
     setExito(null);
     if (archivo === null) { setFallo('Elija el archivo a adjuntar.'); return; }
@@ -112,6 +117,7 @@ export function EvidenciasDeOrden(
       }
       setExito(`${etiquetaDe(clave)}: guardada y verificada.`);
       setArchivo(null);
+      setFirmando(false);
       evidencias.recargar();
     } catch (error) {
       setFallo(error instanceof ErrorDeApi || error instanceof Error
@@ -147,13 +153,27 @@ export function EvidenciasDeOrden(
             <div style={{ alignSelf: 'end' }}>
               <button
                 type="button" className="btn pri"
-                disabled={archivo === null || progreso !== null}
+                disabled={archivoElegido === null || progreso !== null}
                 onClick={() => { void subir(); }}
               >
                 {progreso ?? 'Subir evidencia'}
               </button>
+              {esFirma ? (
+                <button type="button" className="btn" style={{ marginLeft: 8 }} disabled={progreso !== null}
+                  onClick={() => setFirmando(true)}>
+                  Firmar en pantalla
+                </button>
+              ) : null}
             </div>
           </div>
+          {esFirma && firmando ? (
+            <LienzoDeFirma
+              titulo={etiquetaDe(clave)}
+              ocupado={progreso !== null}
+              alCancelar={() => setFirmando(false)}
+              alConfirmar={(firma) => { void subir(firma); }}
+            />
+          ) : null}
           {fallo === null ? null : <Aviso tono="warn">{fallo}</Aviso>}
           {exito === null ? null : <Aviso tono="ok">{exito}</Aviso>}
         </Tarjeta>
