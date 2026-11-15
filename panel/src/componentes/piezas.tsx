@@ -167,6 +167,10 @@ export function plazoEnPalabras(
   horasParaVencer: number | null, vencida: boolean,
 ): { texto: string; color?: string } {
   if (horasParaVencer === null) return { texto: '—' };
+  // Una orden ya cerrada o entregada conserva su plazo como registro, pero
+  // el servidor no la marca vencida porque ya no corre nada. Sus horas
+  // restantes son negativas y, sin esta guarda, se leia «vence en -3754 h».
+  if (!vencida && horasParaVencer < 0) return { texto: '—' };
   if (vencida) {
     const horas = Math.abs(Math.round(horasParaVencer));
     return horas >= 24
